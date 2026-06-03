@@ -13,6 +13,10 @@ authors = ["rojcad contributors"]
 opencascade = { git = "https://github.com/bschwind/opencascade-rs.git", features = ["builtin"] }
 glam = "0.24"
 thiserror = "1"
+wgpu = "24"
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
 
 [build-dependencies]
 cc = "1"

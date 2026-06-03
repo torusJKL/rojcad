@@ -44,6 +44,9 @@ extern int rust_write_stl(void *data, const char *path);
 extern void rust_shape_set_visible(void *data, int visible);
 extern int rust_shape_get_visible(void *data);
 
+/* Selection */
+extern uint64_t rust_poll_selection(void);
+
 /* ── Abstract type definition ───────────────────────────────────────────── */
 
 /* The abstract type descriptor for rojcad/shape.
@@ -271,6 +274,61 @@ JANET_FN(cad_visible_q,
     return visible ? janet_wrap_true() : janet_wrap_false();
 }
 
+/* Global callback for selection events */
+static Janet on_select_callback = {0};
+
+JANET_FN(cad_on_select,
+         "(on-select callback)",
+         "Register a Janet function to be called when a shape is selected"
+         " in the viewer. The function receives the selected shape's ID"
+         " as an integer, or nil when deselected.\n\n"
+         "Pass nil to unregister the callback.")
+{
+    janet_arity(argc, 1, 1);
+    if (janet_checktype(argv[0], JANET_NIL)) {
+        on_select_callback = janet_wrap_nil();
+    } else if (janet_checktype(argv[0], JANET_FUNCTION)) {
+        on_select_callback = argv[0];
+    } else {
+        janet_panic("on-select expects a function or nil");
+    }
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_poll_selection,
+         "(poll-selection)",
+         "Check for a pending selection event from the viewer.\n\n"
+         "Returns nil if no event, the shape ID (integer) if a shape was"
+         " selected, or :deselected if the selection was cleared.\n\n"
+         "If a callback was registered via (on-select), it will be"
+         " invoked automatically with the result.")
+{
+    janet_arity(argc, 0, 0);
+    uint64_t result = rust_poll_selection();
+    if (result == 0) {
+        /* Invoke the callback if one is registered and there's an event.
+         * Since poll returns 0 after consuming, we only reach this when
+         * there's genuinely no event. */
+        return janet_wrap_nil();
+    }
+
+    Janet event;
+    if (result == UINT64_MAX) {
+        event = janet_wrap_nil();
+    } else {
+        event = janet_wrap_number((double)result);
+    }
+
+    /* Invoke the stored callback if registered */
+    if (janet_checktype(on_select_callback, JANET_FUNCTION)) {
+        JanetFunction *fn = janet_unwrap_function(on_select_callback);
+        Janet args[] = { event };
+        janet_call(fn, 1, args);
+    }
+
+    return event;
+}
+
 JANET_FN(cad_write_step,
          "(write-step shape path)",
          "Export a shape to a STEP file at the given path. "
@@ -322,16 +380,18 @@ void cad_register_functions(JanetTable *env) {
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
     JanetReg cfuns[] = {
-        {"make-box",     cad_make_box,     cad_make_box_docstring_},
-        {"make-sphere",  cad_make_sphere,  cad_make_sphere_docstring_},
-        {"cut",          cad_cut,          cad_cut_docstring_},
-        {"common",       cad_common,       cad_common_docstring_},
-        {"shape-type",   cad_shape_type,   cad_shape_type_docstring_},
-        {"hide",         cad_hide,         cad_hide_docstring_},
-        {"show",         cad_show,         cad_show_docstring_},
-        {"visible?",     cad_visible_q,    cad_visible_q_docstring_},
-        {"write-step",   cad_write_step,   cad_write_step_docstring_},
-        {"write-stl",    cad_write_stl,    cad_write_stl_docstring_},
+        {"make-box",         cad_make_box,         cad_make_box_docstring_},
+        {"make-sphere",      cad_make_sphere,      cad_make_sphere_docstring_},
+        {"cut",              cad_cut,              cad_cut_docstring_},
+        {"common",           cad_common,           cad_common_docstring_},
+        {"shape-type",       cad_shape_type,       cad_shape_type_docstring_},
+        {"hide",             cad_hide,             cad_hide_docstring_},
+        {"show",             cad_show,             cad_show_docstring_},
+        {"visible?",         cad_visible_q,        cad_visible_q_docstring_},
+        {"write-step",       cad_write_step,       cad_write_step_docstring_},
+        {"write-stl",        cad_write_stl,        cad_write_stl_docstring_},
+        {"on-select",        cad_on_select,        cad_on_select_docstring_},
+        {"poll-selection",   cad_poll_selection,   cad_poll_selection_docstring_},
         {NULL, NULL, NULL}
     };
 

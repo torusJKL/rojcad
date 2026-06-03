@@ -1,37 +1,70 @@
 # boot.janet — TCP REPL server for rojcad
-#
-# Starts a Janet REPL on TCP port 9000 (loopback only).
-# Each client gets their own REPL session via ev/spawn.
-# Must be run after cad_register_functions has been called.
 
+(def try-catch (fn [body err-handler]
+  (def f (fiber/new body))
+  (def result (resume f))
+  (if (= (fiber/status f) :error)
+    (err-handler result)
+    result)))
+
+(def core-env (fiber/getenv (fiber/current)))
+
+(def my-parse (fn [str]
+  (def p (parser/new))
+  (parser/consume p str)
+  (parser/produce p)))
+
+(def my-eval (fn [form _env]
+  (def compiled (compile form core-env))
+  (if (= (type compiled) :function)
+    (resume (fiber/new compiled))
+    (string "compile error: " (get compiled :error) " line:" (get compiled :line)))))
 (def port 9000)
 (def addr "127.0.0.1")
 
-(defn connect-handler [stream]
+(def connect-handler (fn [stream]
   (eprint "● client connected")
-  (defer (:close stream)
-    (def env (fiber/getenv (fiber/current)))
-    (while true
-      (def line (string/trim (net/read stream 4096)))
-      (when (or (= line nil) (= line "") (= line "")) (break))
-      (def result
-        (try
-          (eval (parse line) env)
-          ([e] (string "error: " e))))
-      (when (not= result nil)
-        (:write stream (string result "\n")))))
-  (eprint "● client disconnected"))
+  (def env (fiber/getenv (fiber/current)))
+  (while true
+    (def line-raw (try-catch (fn [] (net/read stream 4096)) (fn [e] nil)))
+    (if (= line-raw nil) (break))
+    (def line (string/trim line-raw))
+    (if (= line "") (break))
+    (def parsed (my-parse line))
+    (if (not= parsed nil)
+      (do
+        (def eval-result (my-eval parsed env))
+        (def result-str (string eval-result))
+        (:write stream result-str)
+        (:write stream "\n"))
+      (:write stream "parse error\n")))
+  (:close stream)
+  (eprint "● client disconnected")))
 
-# Start the server. On failure (e.g. port in use), print error and exit non-zero.
 (def listen
-  (try
-    (net/listen addr port)
-    ([e]
-      (eprint "rojcad: failed to listen on " addr ":" port " — " e)
-      (os/exit 1))))
+  (do
+    (def listen-fiber (fiber/new (fn [] (net/listen addr port))))
+    (def listen-val (resume listen-fiber))
+    (def listen-status (fiber/status listen-fiber))
+    (if (= listen-status :dead) listen-val
+      (do (eprint "rojcad: failed to listen on " addr ":" port) (os/exit 1)))))
 
 (eprint "◆ rojcad ready — connect via: nc " addr " " port)
 
-(forever
-  (def conn (net/accept listen))
-  (ev/spawn (connect-handler conn)))
+(def poll-viewer (fn []
+  (while true
+    (def event (poll-selection))
+    (if (not= event nil)
+      (if (not= event :deselected)
+        (eprint "■ selected: " event)
+        (eprint "■ deselected")))
+    (ev/sleep 0.1))))
+
+(ev/go (fiber/new poll-viewer))
+
+(def accept-loop (fn []
+  (while true
+    (def conn (net/accept listen))
+    (ev/go (fiber/new (fn [] (connect-handler conn)))))))
+
+(ev/go (fiber/new accept-loop))

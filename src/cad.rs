@@ -5,7 +5,54 @@
 use glam::DVec3;
 use opencascade::primitives::{Shape, ShapeType};
 
-use crate::types::ShapeData;
+use crate::types::{MeshData, ShapeData, global_shape_registry};
+
+/// Extract tessellated mesh data from an OCCT shape.
+pub fn extract_mesh(shape: &Shape) -> Option<MeshData> {
+    match shape.mesh() {
+        Ok(occt_mesh) => {
+            let vertices: Vec<[f32; 3]> = occt_mesh
+                .vertices
+                .iter()
+                .map(|v| [v.x as f32, v.y as f32, v.z as f32])
+                .collect();
+            let normals: Vec<[f32; 3]> = occt_mesh
+                .normals
+                .iter()
+                .map(|n| [n.x as f32, n.y as f32, n.z as f32])
+                .collect();
+            let indices: Vec<u32> = occt_mesh.indices.iter().map(|i| *i as u32).collect();
+            Some(MeshData {
+                vertices,
+                normals,
+                indices,
+            })
+        }
+        Err(_) => None,
+    }
+}
+
+/// Extract edge polylines from an OCCT shape by sampling each topological edge.
+pub fn extract_edge_polylines(shape: &Shape) -> Vec<Vec<[f64; 3]>> {
+    let mut polylines = Vec::new();
+    for edge in shape.edges() {
+        let points: Vec<[f64; 3]> = edge
+            .approximation_segments()
+            .map(|p| [p.x, p.y, p.z])
+            .collect();
+        if points.len() >= 2 {
+            polylines.push(points);
+        }
+    }
+    polylines
+}
+
+/// Tessellate a shape and update its entry in the global registry.
+pub fn tessellate_and_update(shape_id: u64, shape: &Shape) {
+    let mesh = extract_mesh(shape);
+    let edge_polylines = extract_edge_polylines(shape);
+    global_shape_registry().update(shape_id, mesh, edge_polylines);
+}
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
@@ -35,7 +82,9 @@ pub fn make_box(
             cz - height / 2.0,
         );
     }
-    ShapeData::new(shape)
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
 }
 
 /// Create a sphere with the given radius.
@@ -49,7 +98,9 @@ pub fn make_sphere(radius: f64, center: Option<(f64, f64, f64)>) -> ShapeData {
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
-    ShapeData::new(shape)
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
 }
 
 // ── Boolean Operations ────────────────────────────────────────────────────────
@@ -65,7 +116,9 @@ pub fn cut(a: &ShapeData, b: &ShapeData) -> ShapeData {
     if shape.shape_type() == ShapeType::Shape {
         panic!("cut: shapes do not intersect or produced an empty result");
     }
-    ShapeData::new(shape)
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
 }
 
 /// Intersect shape `a` with shape `b`.
@@ -79,7 +132,9 @@ pub fn common(a: &ShapeData, b: &ShapeData) -> ShapeData {
     if shape.shape_type() == ShapeType::Shape {
         panic!("common: shapes do not intersect or produced an empty result");
     }
-    ShapeData::new(shape)
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
 }
 
 // ── Shape Translation ─────────────────────────────────────────────────────────

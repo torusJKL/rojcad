@@ -89,6 +89,27 @@ unsafe extern "C" {
     pub fn janet_buffer_push_cstring(buffer: *mut c_void, s: *const c_char);
 }
 
+// ── Janet library registration functions ──────────────────────────────────────
+
+unsafe extern "C" {
+    pub fn janet_lib_io(env: *mut JanetTable);
+    pub fn janet_lib_math(env: *mut JanetTable);
+    pub fn janet_lib_array(env: *mut JanetTable);
+    pub fn janet_lib_tuple(env: *mut JanetTable);
+    pub fn janet_lib_buffer(env: *mut JanetTable);
+    pub fn janet_lib_table(env: *mut JanetTable);
+    pub fn janet_lib_struct(env: *mut JanetTable);
+    pub fn janet_lib_fiber(env: *mut JanetTable);
+    pub fn janet_lib_os(env: *mut JanetTable);
+    pub fn janet_lib_parse(env: *mut JanetTable);
+    pub fn janet_lib_compile(env: *mut JanetTable);
+    pub fn janet_lib_debug(env: *mut JanetTable);
+    pub fn janet_lib_string(env: *mut JanetTable);
+    pub fn janet_lib_marsh(env: *mut JanetTable);
+    pub fn janet_lib_net(env: *mut JanetTable);
+    pub fn janet_lib_ev(env: *mut JanetTable);
+}
+
 // ── Rust callback declarations (called from C) ───────────────────────────────
 
 unsafe extern "C" {

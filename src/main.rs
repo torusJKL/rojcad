@@ -9,12 +9,14 @@
 mod bridge;
 mod cad;
 mod types;
+mod viewer;
 
 use std::ffi::{c_char, c_double, c_int, c_void, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
+use std::sync::atomic::Ordering;
 
-use types::ShapeData;
+use types::{global_shape_registry, ShapeData, LAST_SELECTION};
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
 
@@ -177,7 +179,9 @@ pub unsafe extern "C" fn rust_shape_type(data: *mut c_void) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_shape_set_visible(data: *mut c_void, visible: c_int) {
     let shape_data = unsafe { &mut *(data as *mut ShapeData) };
-    shape_data.visible = visible != 0;
+    let is_visible = visible != 0;
+    shape_data.visible = is_visible;
+    global_shape_registry().set_visible(shape_data.shape_id, is_visible);
 }
 
 /// Get the visible flag from a shape.
@@ -211,6 +215,16 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
     }
 }
 
+// ── Selection callback ───────────────────────────────────────────────────────
+
+/// Poll for a pending selection event.
+/// Returns 0 if no event, u64::MAX for deselected, or the selected shape ID.
+/// Resets the event to 0 after reading.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_poll_selection() -> u64 {
+    LAST_SELECTION.swap(0, Ordering::SeqCst)
+}
+
 // ── C bridge registration forward declaration ────────────────────────────────
 
 unsafe extern "C" {
@@ -220,6 +234,9 @@ unsafe extern "C" {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Parse CLI arguments
+    let headless: bool = std::env::args().any(|arg| arg == "--headless");
+
     // Initialize Janet
     unsafe {
         bridge::janet_init();
@@ -231,10 +248,39 @@ fn main() {
         env = bridge::janet_core_env(ptr::null());
     }
 
+    // Register Janet core library modules.
+    // Under JANET_BOOTSTRAP these aren't auto-registered, so we do it manually.
+    unsafe {
+        bridge::janet_lib_io(env);
+        bridge::janet_lib_math(env);
+        bridge::janet_lib_array(env);
+        bridge::janet_lib_tuple(env);
+        bridge::janet_lib_buffer(env);
+        bridge::janet_lib_table(env);
+        bridge::janet_lib_struct(env);
+        bridge::janet_lib_fiber(env);
+        bridge::janet_lib_os(env);
+        bridge::janet_lib_parse(env);
+        bridge::janet_lib_compile(env);
+        bridge::janet_lib_debug(env);
+        bridge::janet_lib_string(env);
+        bridge::janet_lib_marsh(env);
+        bridge::janet_lib_ev(env);
+        bridge::janet_lib_net(env);
+    }
+
     // Register CAD functions
     unsafe {
         cad_register_functions(env);
     }
+
+    // Start viewer thread unless --headless flag is present
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    let _viewer_handle = if !headless {
+        Some(viewer::spawn_viewer())
+    } else {
+        None
+    };
 
     // Embed and run boot.janet
     let boot_code = include_str!("../boot.janet");
