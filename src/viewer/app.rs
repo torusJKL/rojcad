@@ -42,9 +42,25 @@ pub struct CadMesh {
 
 impl CadMesh {
     pub fn new(device: &wgpu::Device, mesh: &MeshData, shape_id: ShapeId) -> Self {
+        debug_assert_eq!(
+            mesh.normals.len(),
+            mesh.vertices.len(),
+            "CadMesh::new: normals count ({}) must match vertices count ({})",
+            mesh.normals.len(),
+            mesh.vertices.len()
+        );
+        let interleaved: Vec<MeshVertex> = mesh
+            .vertices
+            .iter()
+            .zip(mesh.normals.iter())
+            .map(|(pos, norm)| MeshVertex {
+                position: *pos,
+                normal: *norm,
+            })
+            .collect();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("cad_mesh_{}_vertex", shape_id)),
-            contents: bytemuck::cast_slice(&mesh.vertices),
+            contents: bytemuck::cast_slice(&interleaved),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
