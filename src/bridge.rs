@@ -87,6 +87,8 @@ unsafe extern "C" {
     pub fn janet_tuple_length(t: *const Janet) -> usize;
 
     pub fn janet_buffer_push_cstring(buffer: *mut c_void, s: *const c_char);
+
+    pub fn janet_setdyn(name: *const c_char, value: Janet);
 }
 
 // ── Janet library registration functions ──────────────────────────────────────

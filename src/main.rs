@@ -2,7 +2,8 @@
 //!
 //! This binary embeds the Janet interpreter, registers CAD functions
 //! (make-box, make-sphere, cut, common, shape-type, hide, show, visible?,
-//! write-step, write-stl), and starts a TCP REPL server on port 9000.
+//! write-step, write-stl), and starts a TCP REPL server on port 9365
+//! (configurable via --port).
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 
@@ -290,9 +291,43 @@ unsafe extern "C" {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+fn parse_port_arg() -> Option<u16> {
+    let mut args = std::env::args().peekable();
+    while let Some(arg) = args.next() {
+        if let Some(port_str) = arg.strip_prefix("--port=") {
+            let p: u16 = port_str.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid port '{}'", port_str);
+                std::process::exit(1);
+            });
+            if !(1..=65535).contains(&p) {
+                eprintln!("rojcad: port must be between 1 and 65535, got {}", p);
+                std::process::exit(1);
+            }
+            return Some(p);
+        }
+        if arg == "--port" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --port requires a value");
+                std::process::exit(1);
+            });
+            let p: u16 = next.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid port '{}'", next);
+                std::process::exit(1);
+            });
+            if !(1..=65535).contains(&p) {
+                eprintln!("rojcad: port must be between 1 and 65535, got {}", p);
+                std::process::exit(1);
+            }
+            return Some(p);
+        }
+    }
+    None
+}
+
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
+    let port: u16 = parse_port_arg().unwrap_or(9365);
 
     // Initialize edge style defaults
     init_edge_color_defaults();
@@ -332,6 +367,16 @@ fn main() {
     // Register CAD functions
     unsafe {
         cad_register_functions(env);
+    }
+
+    // Set the netrepl port as a Janet dynamic variable so boot.janet
+    // can read it via (dyn '*netrepl-port*') instead of hardcoding.
+    // Only set when explicitly provided; boot.janet falls back to 9365.
+    if 9365 != port {
+        unsafe {
+            let port_name = CString::new("*netrepl-port*").unwrap();
+            bridge::janet_setdyn(port_name.as_ptr(), bridge::janet_wrap_number(port as f64));
+        }
     }
 
     // Start viewer thread unless --headless flag is present

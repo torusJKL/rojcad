@@ -11,7 +11,7 @@ fn main() {
     for entry in std::fs::read_dir("vendor/core").unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "c") {
+        if path.extension().is_some_and(|e| e == "c") {
             janet_build.file(&path);
         }
     }
