@@ -2,6 +2,8 @@
 //!
 //! Implements: box, sphere, cut, common, shape type, export.
 
+use std::f64::consts::TAU;
+
 use glam::DVec3;
 use opencascade::primitives::{Shape, ShapeType};
 
@@ -47,10 +49,64 @@ pub fn extract_edge_polylines(shape: &Shape) -> Vec<Vec<[f64; 3]>> {
     polylines
 }
 
+/// Generate a minimal synthetic wireframe for curved shapes:
+/// an equator circle (horizontal) and a meridian circle (vertical),
+/// computed from the mesh bounding sphere.
+/// Uses a fixed 32-segment circle for smooth appearance.
+pub fn generate_synthetic_wireframe(mesh: &MeshData) -> Vec<Vec<[f64; 3]>> {
+    let mut min = [f64::MAX; 3];
+    let mut max = [f64::MIN; 3];
+    for v in &mesh.vertices {
+        for i in 0..3 {
+            min[i] = min[i].min(v[i] as f64);
+            max[i] = max[i].max(v[i] as f64);
+        }
+    }
+    let cx = (min[0] + max[0]) / 2.0;
+    let cy = (min[1] + max[1]) / 2.0;
+    let cz = (min[2] + max[2]) / 2.0;
+    let rx = (max[0] - min[0]) / 2.0;
+    let ry = (max[1] - min[1]) / 2.0;
+    let rz = (max[2] - min[2]) / 2.0;
+
+    let segments = 32;
+    let mut polylines = Vec::new();
+
+    // Horizontal circle (equator) — in XZ plane at center Y
+    let mut equator: Vec<[f64; 3]> = Vec::with_capacity(segments + 1);
+    for i in 0..=segments {
+        let theta = (i as f64 / segments as f64) * TAU;
+        equator.push([cx + rx * theta.cos(), cy, cz + rz * theta.sin()]);
+    }
+    polylines.push(equator);
+
+    // Vertical circle (meridian) — in XY plane at center Z
+    let mut meridian: Vec<[f64; 3]> = Vec::with_capacity(segments + 1);
+    for i in 0..=segments {
+        let theta = (i as f64 / segments as f64) * TAU;
+        meridian.push([cx + rx * theta.cos(), cy + ry * theta.sin(), cz]);
+    }
+    polylines.push(meridian);
+
+    polylines
+}
+
+/// Number of topological edges below which we add synthetic wireframe edges.
+/// Polyhedral shapes (box has 12 edges) keep only topological edges;
+/// curved shapes (sphere has 1 seam edge) get the synthetic fallback.
+const SYNTHETIC_WIREFRAME_THRESHOLD: usize = 8;
+
 /// Tessellate a shape and update its entry in the global registry.
+/// For shapes with few topological edges (curved shapes), adds a clean
+/// synthetic wireframe (equator + meridian circles) instead of dense mesh edges.
 pub fn tessellate_and_update(shape_id: u64, shape: &Shape) {
     let mesh = extract_mesh(shape);
-    let edge_polylines = extract_edge_polylines(shape);
+    let mut edge_polylines = extract_edge_polylines(shape);
+    if edge_polylines.len() < SYNTHETIC_WIREFRAME_THRESHOLD {
+        if let Some(ref m) = mesh {
+            edge_polylines.extend(generate_synthetic_wireframe(m));
+        }
+    }
     global_shape_registry().update(shape_id, mesh, edge_polylines);
 }
 

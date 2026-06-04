@@ -15,19 +15,35 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::types::{global_shape_registry, MeshData, ShapeId, REGISTRY_GENERATION, LAST_SELECTION};
+use crate::types::{
+    global_shape_registry, MeshData, ShapeId, REGISTRY_GENERATION, LAST_SELECTION,
+    SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES, EDGE_THICKNESS,
+    INACTIVE_EDGE_COLOR, ACTIVE_EDGE_COLOR, unpack_color,
+};
 
 use super::camera::OrbitCamera;
 use super::pick::pick_shape;
 use super::ReplToViewer;
 use super::ViewerToRepl;
 
-// ── Uniform buffer ────────────────────────────────────────────────────────
+// ── Uniform buffers ───────────────────────────────────────────────────────
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ViewUniforms {
     view_proj: [[f32; 4]; 4],
+}
+
+/// Edge drawer uniforms — view-proj matrix + runtime-tunable colors + thickness.
+/// Must match `Uniforms` struct in edge.wgsl.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct EdgeUniforms {
+    view_proj: [[f32; 4]; 4],
+    inactive_color: [f32; 4],
+    active_color: [f32; 4],
+    thickness: f32,
+    _pad: [f32; 3],
 }
 
 // ── CadMesh ───────────────────────────────────────────────────────────────
@@ -274,10 +290,15 @@ impl SurfaceDrawer {
 
 // ── EdgeDrawer ────────────────────────────────────────────────────────────
 
-/// Renders edges as instanced lines.
+/// Renders edges as screen-space quads (instanced line rendering).
 pub struct EdgeDrawer {
-    pub solid_pipeline: wgpu::RenderPipeline,
-    dashed_pipeline: wgpu::RenderPipeline,
+    /// Pipeline for grid/axes (plain LineList, vs_main + fs_inactive_solid)
+    pub grid_pipeline: wgpu::RenderPipeline,
+    /// Edge pipelines (TriangleStrip, vs_line + per-entry-point fragment)
+    pub inactive_solid_pipeline: wgpu::RenderPipeline,
+    inactive_dashed_pipeline: wgpu::RenderPipeline,
+    active_solid_pipeline: wgpu::RenderPipeline,
+    active_dashed_pipeline: wgpu::RenderPipeline,
     pub uniform_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
 }
@@ -290,7 +311,7 @@ impl EdgeDrawer {
     ) -> Self {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("edge_uniform_buffer"),
-            size: std::mem::size_of::<ViewUniforms>() as u64,
+            size: std::mem::size_of::<EdgeUniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -299,7 +320,7 @@ impl EdgeDrawer {
             label: Some("edge_bind_group_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -324,26 +345,110 @@ impl EdgeDrawer {
             push_constant_ranges: &[],
         });
 
-        let solid_pipeline = Self::build_pipeline(
+        // Grid pipeline: plain LineList, vs_main, plain positions, no depth bias
+        let grid_pipeline = Self::build_pipeline(
             device,
             &pipeline_layout,
             surface_format,
             depth_format,
-            "fs_solid",
+            "vs_main",
+            "fs_inactive_solid",
+            wgpu::PrimitiveTopology::LineList,
+            &[wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                }],
+            }],
             wgpu::CompareFunction::Less,
+            wgpu::DepthBiasState::default(),
         );
-        let dashed_pipeline = Self::build_pipeline(
+
+        // Shared instance vertex layout for edge pipelines (TriangleStrip)
+        fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+            const ATTRS: [wgpu::VertexAttribute; 2] = [
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: 12,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+            ];
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<SegmentInstance>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &ATTRS,
+            }
+        }
+
+        // Edge pipelines: TriangleStrip, vs_line, instance data, depth bias toward camera
+        let edge_depth_bias = wgpu::DepthBiasState {
+            constant: -4,
+            slope_scale: -2.0,
+            clamp: 0.0,
+        };
+        let inactive_solid_pipeline = Self::build_pipeline(
             device,
             &pipeline_layout,
             surface_format,
             depth_format,
-            "fs_dashed",
+            "vs_line",
+            "fs_inactive_solid",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
+            wgpu::CompareFunction::Less,
+            edge_depth_bias,
+        );
+        let inactive_dashed_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "vs_line",
+            "fs_inactive_dashed",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
             wgpu::CompareFunction::Greater,
+            edge_depth_bias,
+        );
+        let active_solid_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "vs_line",
+            "fs_active_solid",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
+            wgpu::CompareFunction::Less,
+            edge_depth_bias,
+        );
+        let active_dashed_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "vs_line",
+            "fs_active_dashed",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
+            wgpu::CompareFunction::Greater,
+            edge_depth_bias,
         );
 
         EdgeDrawer {
-            solid_pipeline,
-            dashed_pipeline,
+            grid_pipeline,
+            inactive_solid_pipeline,
+            inactive_dashed_pipeline,
+            active_solid_pipeline,
+            active_dashed_pipeline,
             uniform_bind_group,
             uniform_buffer,
         }
@@ -354,8 +459,12 @@ impl EdgeDrawer {
         layout: &wgpu::PipelineLayout,
         surface_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
+        vertex_entry: &str,
         fragment_entry: &str,
+        topology: wgpu::PrimitiveTopology,
+        vertex_buffers: &[wgpu::VertexBufferLayout<'_>],
         depth_compare: wgpu::CompareFunction,
+        depth_bias: wgpu::DepthBiasState,
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("edge shader"),
@@ -369,16 +478,8 @@ impl EdgeDrawer {
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
-                }],
+                entry_point: Some(vertex_entry),
+                buffers: vertex_buffers,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -392,7 +493,7 @@ impl EdgeDrawer {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
+                topology,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
@@ -405,7 +506,7 @@ impl EdgeDrawer {
                 depth_write_enabled: false,
                 depth_compare,
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
+                bias: depth_bias,
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
@@ -417,29 +518,55 @@ impl EdgeDrawer {
         })
     }
 
-    pub fn update_uniforms(&mut self, queue: &wgpu::Queue, uniforms: &ViewUniforms) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(uniforms));
+    pub fn update_uniforms(&mut self, queue: &wgpu::Queue, view_proj: &ViewUniforms) {
+        let inactive = unpack_color(INACTIVE_EDGE_COLOR.load(std::sync::atomic::Ordering::Relaxed));
+        let active = unpack_color(ACTIVE_EDGE_COLOR.load(std::sync::atomic::Ordering::Relaxed));
+        let thickness = f64::from_bits(EDGE_THICKNESS.load(std::sync::atomic::Ordering::Relaxed)) as f32;
+        let edge_uniforms = EdgeUniforms {
+            view_proj: view_proj.view_proj,
+            inactive_color: [inactive[0] as f32, inactive[1] as f32, inactive[2] as f32, 1.0],
+            active_color: [active[0] as f32, active[1] as f32, active[2] as f32, 1.0],
+            thickness,
+            _pad: [0.0; 3],
+        };
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&edge_uniforms));
     }
 
     pub fn render(
         &self,
         pass: &mut wgpu::RenderPass,
-        edge_buffer: &wgpu::Buffer,
-        num_vertices: u32,
+        inactive_buffer: &wgpu::Buffer,
+        inactive_num_instances: u32,
+        active_buffer: &wgpu::Buffer,
+        active_num_instances: u32,
         show_dashed: bool,
     ) {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-        pass.set_vertex_buffer(0, edge_buffer.slice(..));
 
-        // Pass 1: dashed back-edges (depth Greater)
-        if show_dashed {
-            pass.set_pipeline(&self.dashed_pipeline);
-            pass.draw(0..num_vertices, 0..1);
+        let show_inactive = SHOW_INACTIVE_EDGES.load(std::sync::atomic::Ordering::Relaxed);
+        let show_active = SHOW_ACTIVE_EDGES.load(std::sync::atomic::Ordering::Relaxed);
+
+        // Inactive edges (light grey) — 4 verts per instance (TriangleStrip quad)
+        if show_inactive && inactive_num_instances > 0 {
+            pass.set_vertex_buffer(0, inactive_buffer.slice(..));
+            if show_dashed {
+                pass.set_pipeline(&self.inactive_dashed_pipeline);
+                pass.draw(0..4, 0..inactive_num_instances);
+            }
+            pass.set_pipeline(&self.inactive_solid_pipeline);
+            pass.draw(0..4, 0..inactive_num_instances);
         }
 
-        // Pass 2: solid front-edges (depth Less)
-        pass.set_pipeline(&self.solid_pipeline);
-        pass.draw(0..num_vertices, 0..1);
+        // Active edges (light blue, rendered on top)
+        if show_active && active_num_instances > 0 {
+            pass.set_vertex_buffer(0, active_buffer.slice(..));
+            if show_dashed {
+                pass.set_pipeline(&self.active_dashed_pipeline);
+                pass.draw(0..4, 0..active_num_instances);
+            }
+            pass.set_pipeline(&self.active_solid_pipeline);
+            pass.draw(0..4, 0..active_num_instances);
+        }
     }
 }
 
@@ -754,8 +881,10 @@ pub struct ViewerState {
     depth_format: wgpu::TextureFormat,
     surface_drawer: SurfaceDrawer,
     edge_drawer: EdgeDrawer,
-    edge_vertex_buffer: wgpu::Buffer,
-    edge_num_vertices: u32,
+    inactive_instance_buffer: wgpu::Buffer,
+    inactive_num_instances: u32,
+    active_instance_buffer: wgpu::Buffer,
+    active_num_instances: u32,
     grid_renderer: GridRenderer,
     axis_renderer: AxisRenderer,
     cone_pipeline: Option<wgpu::RenderPipeline>,
@@ -887,14 +1016,21 @@ impl ApplicationHandler for ViewerApp {
         let grid_renderer = GridRenderer::new(&device);
         let axis_renderer = AxisRenderer::new(&device);
 
-        // Initial empty edge buffer (populated from ShapeRegistry each frame)
-        let edge_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("edge_lines"),
+        // Initial empty instance buffers (populated from ShapeRegistry each frame)
+        let inactive_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("inactive_edge_instances"),
             size: 1,
             usage: wgpu::BufferUsages::VERTEX,
             mapped_at_creation: false,
         });
-        let edge_num_vertices = 0u32;
+        let inactive_num_instances = 0u32;
+        let active_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("active_edge_instances"),
+            size: 1,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        let active_num_instances = 0u32;
 
         let (axis_cone_buffer, axis_cone_index_buffer, axis_cone_num_indices) =
             build_axis_cones(&device);
@@ -915,8 +1051,10 @@ impl ApplicationHandler for ViewerApp {
             depth_format,
             surface_drawer,
             edge_drawer,
-            edge_vertex_buffer,
-            edge_num_vertices,
+            inactive_instance_buffer,
+            inactive_num_instances,
+            active_instance_buffer,
+            active_num_instances,
             grid_renderer,
             axis_renderer,
             cone_pipeline,
@@ -1106,30 +1244,54 @@ impl ViewerApp {
                 .collect();
             state.surface_drawer.set_meshes(meshes);
 
-            // Rebuild edge vertex buffer from shape edge polylines
-            let mut edge_segments: Vec<[[f32; 3]; 2]> = Vec::new();
+            // Build SegmentInstance arrays for instanced line rendering
+            let selected_id = state.selected_id;
+            let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
+            let mut active_instances: Vec<SegmentInstance> = Vec::new();
+
             for entry in &visible {
+                let is_active = selected_id.is_some_and(|id| id == entry.shape_id);
+                let target = if is_active {
+                    &mut active_instances
+                } else {
+                    &mut inactive_instances
+                };
                 for polyline in &entry.edge_polylines {
                     for pair in polyline.windows(2) {
-                        edge_segments.push([
-                            [pair[0][0] as f32, pair[0][1] as f32, pair[0][2] as f32],
-                            [pair[1][0] as f32, pair[1][1] as f32, pair[1][2] as f32],
-                        ]);
+                        target.push(SegmentInstance {
+                            a: [pair[0][0] as f32, pair[0][1] as f32, pair[0][2] as f32],
+                            b: [pair[1][0] as f32, pair[1][1] as f32, pair[1][2] as f32],
+                            cum_length: 0.0,
+                        });
                     }
                 }
             }
-            let edge_verts = segments_to_vertices(&edge_segments);
-            if !edge_verts.is_empty() {
-                state.edge_vertex_buffer =
+
+            // Build inactive instance buffer
+            if !inactive_instances.is_empty() {
+                state.inactive_instance_buffer =
                     state
                         .device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("edge_lines"),
-                            contents: bytemuck::cast_slice(&edge_verts),
+                            label: Some("inactive_edge_instances"),
+                            contents: bytemuck::cast_slice(&inactive_instances),
                             usage: wgpu::BufferUsages::VERTEX,
                         });
             }
-            state.edge_num_vertices = edge_verts.len() as u32;
+            state.inactive_num_instances = inactive_instances.len() as u32;
+
+            // Build active instance buffer
+            if !active_instances.is_empty() {
+                state.active_instance_buffer =
+                    state
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("active_edge_instances"),
+                            contents: bytemuck::cast_slice(&active_instances),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+            }
+            state.active_num_instances = active_instances.len() as u32;
         }
 
         let frame = match state.surface.get_current_texture() {
@@ -1176,7 +1338,7 @@ impl ViewerApp {
 
             // Grid and axes (no depth test, overlay style)
             pass.set_bind_group(0, &state.edge_drawer.uniform_bind_group, &[]);
-            pass.set_pipeline(&state.edge_drawer.solid_pipeline);
+            pass.set_pipeline(&state.edge_drawer.grid_pipeline);
             state.grid_renderer.render(&mut pass);
             state.axis_renderer.render(&mut pass);
 
@@ -1194,15 +1356,21 @@ impl ViewerApp {
                 }
             }
 
-            // Shape edges (with depth testing, two-pass for back edges)
-            if state.edge_num_vertices > 0 {
-                state
-                    .edge_drawer
-                    .render(&mut pass, &state.edge_vertex_buffer, state.edge_num_vertices, state.show_back_edges);
-            }
-
-            // Mesh surfaces
+            // Mesh surfaces (depth test: Less, writes depth)
             state.surface_drawer.render(&mut pass, state.selected_id);
+
+            // Shape edges (depth test: Less with negative bias toward camera,
+            // rendered AFTER meshes so edges overlay mesh surfaces)
+            state
+                .edge_drawer
+                .render(
+                    &mut pass,
+                    &state.inactive_instance_buffer,
+                    state.inactive_num_instances,
+                    &state.active_instance_buffer,
+                    state.active_num_instances,
+                    state.show_back_edges,
+                );
         }
 
         state.queue.submit(Some(encoder.finish()));

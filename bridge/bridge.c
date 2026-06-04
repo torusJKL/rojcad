@@ -47,6 +47,18 @@ extern int rust_shape_get_visible(void *data);
 /* Selection */
 extern uint64_t rust_poll_selection(void);
 
+/* Edge visibility toggles */
+extern int rust_edge_toggle_inactive(void);
+extern int rust_edge_toggle_active(void);
+extern int rust_edge_inactive_showing(void);
+extern int rust_edge_active_showing(void);
+
+/* Edge style (thickness / color) */
+extern double rust_edge_get_thickness(void);
+extern void rust_edge_set_thickness(double value);
+extern void rust_edge_set_color_inactive(double r, double g, double b);
+extern void rust_edge_set_color_active(double r, double g, double b);
+
 /* ── Abstract type definition ───────────────────────────────────────────── */
 
 /* The abstract type descriptor for rojcad/shape.
@@ -329,6 +341,126 @@ JANET_FN(cad_poll_selection,
     return event;
 }
 
+JANET_FN(cad_edge_toggle_inactive,
+         "(edge-toggle-inactive)",
+         "Toggle visibility of edges on non-selected shapes. "
+         "Returns true if inactive edges are now visible, false if hidden.\n\n"
+         "Example: (edge-toggle-inactive)")
+{
+    janet_arity(argc, 0, 0);
+    int result = rust_edge_toggle_inactive();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_toggle_active,
+         "(edge-toggle-active)",
+         "Toggle visibility of edges on the selected shape. "
+         "Returns true if active edges are now visible, false if hidden.\n\n"
+         "Example: (edge-toggle-active)")
+{
+    janet_arity(argc, 0, 0);
+    int result = rust_edge_toggle_active();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_inactive_showing,
+         "(edge-inactive-show?)",
+         "Return true if edges on non-selected shapes are currently visible, "
+         "false if hidden.")
+{
+    janet_arity(argc, 0, 0);
+    int result = rust_edge_inactive_showing();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_active_showing,
+         "(edge-active-show?)",
+         "Return true if edges on the selected shape are currently visible, "
+         "false if hidden.")
+{
+    janet_arity(argc, 0, 0);
+    int result = rust_edge_active_showing();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_thickness,
+         "(edge-thickness &opt value)",
+         "Get or set the edge line thickness in NDC units.\n\n"
+         "Called with no arguments, returns the current thickness.\n"
+         "Called with one numeric argument, sets the thickness and returns it.\n\n"
+         "Example: (edge-thickness 0.008) — thicker lines\n"
+         "         (edge-thickness)      — query")
+{
+    janet_arity(argc, 0, 1);
+    double result;
+    if (argc == 0) {
+        result = rust_edge_get_thickness();
+    } else {
+        if (!janet_checktype(argv[0], JANET_NUMBER)) {
+            janet_panic("edge-thickness: expected a number");
+        }
+        double val = janet_unwrap_number(argv[0]);
+        rust_edge_set_thickness(val);
+        result = val;
+    }
+    return janet_wrap_number(result);
+}
+
+JANET_FN(cad_edge_color_inactive,
+         "(edge-color-inactive &opt r g b)",
+         "Get or set the inactive edge color as RGB values in [0, 1].\n\n"
+         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
+         "Called with three numeric arguments (r g b), sets the color.\n\n"
+         "Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey\n"
+         "         (edge-color-inactive)               — query")
+{
+    janet_arity(argc, 0, 3);
+    if (argc == 0) {
+        /* Query not supported via simple C API; return a neutral value */
+        return janet_wrap_nil();
+    }
+    if (argc != 3) {
+        janet_panic("edge-color-inactive expects 0 or 3 arguments");
+    }
+    if (!janet_checktype(argv[0], JANET_NUMBER) ||
+        !janet_checktype(argv[1], JANET_NUMBER) ||
+        !janet_checktype(argv[2], JANET_NUMBER)) {
+        janet_panic("edge-color-inactive: r, g, b must be numbers");
+    }
+    double r = janet_unwrap_number(argv[0]);
+    double g = janet_unwrap_number(argv[1]);
+    double b = janet_unwrap_number(argv[2]);
+    rust_edge_set_color_inactive(r, g, b);
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_edge_color_active,
+         "(edge-color-active &opt r g b)",
+         "Get or set the active (selected) edge color as RGB values in [0, 1].\n\n"
+         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
+         "Called with three numeric arguments (r g b), sets the color.\n\n"
+         "Example: (edge-color-active 0.3 0.5 1.0)  — light blue\n"
+         "         (edge-color-active)               — query")
+{
+    janet_arity(argc, 0, 3);
+    if (argc == 0) {
+        return janet_wrap_nil();
+    }
+    if (argc != 3) {
+        janet_panic("edge-color-active expects 0 or 3 arguments");
+    }
+    if (!janet_checktype(argv[0], JANET_NUMBER) ||
+        !janet_checktype(argv[1], JANET_NUMBER) ||
+        !janet_checktype(argv[2], JANET_NUMBER)) {
+        janet_panic("edge-color-active: r, g, b must be numbers");
+    }
+    double r = janet_unwrap_number(argv[0]);
+    double g = janet_unwrap_number(argv[1]);
+    double b = janet_unwrap_number(argv[2]);
+    rust_edge_set_color_active(r, g, b);
+    return janet_wrap_nil();
+}
+
 JANET_FN(cad_write_step,
          "(write-step shape path)",
          "Export a shape to a STEP file at the given path. "
@@ -390,8 +522,15 @@ void cad_register_functions(JanetTable *env) {
         {"visible?",         cad_visible_q,        cad_visible_q_docstring_},
         {"write-step",       cad_write_step,       cad_write_step_docstring_},
         {"write-stl",        cad_write_stl,        cad_write_stl_docstring_},
-        {"on-select",        cad_on_select,        cad_on_select_docstring_},
-        {"poll-selection",   cad_poll_selection,   cad_poll_selection_docstring_},
+        {"on-select",                   cad_on_select,                   cad_on_select_docstring_},
+        {"poll-selection",              cad_poll_selection,              cad_poll_selection_docstring_},
+        {"edge-toggle-inactive",        cad_edge_toggle_inactive,        cad_edge_toggle_inactive_docstring_},
+        {"edge-toggle-active",          cad_edge_toggle_active,          cad_edge_toggle_active_docstring_},
+        {"edge-inactive-show?",         cad_edge_inactive_showing,       cad_edge_inactive_showing_docstring_},
+        {"edge-active-show?",           cad_edge_active_showing,         cad_edge_active_showing_docstring_},
+        {"edge-thickness",              cad_edge_thickness,              cad_edge_thickness_docstring_},
+        {"edge-color-inactive",         cad_edge_color_inactive,         cad_edge_color_inactive_docstring_},
+        {"edge-color-active",           cad_edge_color_active,           cad_edge_color_active_docstring_},
         {NULL, NULL, NULL}
     };
 

@@ -5,7 +5,7 @@
 //! state between the REPL thread and the viewer thread.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 /// Global generation counter for change tracking.
@@ -18,6 +18,39 @@ use opencascade::primitives::Shape;
 /// Last selected shape ID, used to propagate selection events to Janet.
 /// 0 = no event pending, u64::MAX = deselected, other = selected shape ID.
 pub static LAST_SELECTION: AtomicU64 = AtomicU64::new(0);
+
+/// Edge visibility toggles, controlled from the Janet REPL.
+pub static SHOW_INACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
+pub static SHOW_ACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
+
+/// Edge thickness in NDC units (controlled from Janet).
+pub static EDGE_THICKNESS: AtomicU64 = AtomicU64::new(f64::to_bits(0.001));
+
+/// Pack 3 f64 RGB values into a single u64 for atomic storage.
+pub fn pack_color(r: f64, g: f64, b: f64) -> u64 {
+    let ri = (r.clamp(0.0, 1.0) * 65535.0) as u64;
+    let gi = (g.clamp(0.0, 1.0) * 65535.0) as u64;
+    let bi = (b.clamp(0.0, 1.0) * 65535.0) as u64;
+    (ri << 32) | (gi << 16) | bi
+}
+/// Unpack a u64 into [r, g, b] f64 values in [0, 1].
+pub fn unpack_color(packed: u64) -> [f64; 3] {
+    let r = ((packed >> 32) & 0xFFFF) as f64 / 65535.0;
+    let g = ((packed >> 16) & 0xFFFF) as f64 / 65535.0;
+    let b = (packed & 0xFFFF) as f64 / 65535.0;
+    [r, g, b]
+}
+
+/// Inactive edge color: light grey (0.7, 0.7, 0.7) packed as u64.
+pub static INACTIVE_EDGE_COLOR: AtomicU64 = AtomicU64::new(0);
+/// Active (selected) edge color: light blue (0.4, 0.6, 1.0) packed as u64.
+pub static ACTIVE_EDGE_COLOR: AtomicU64 = AtomicU64::new(0);
+
+/// Set edge color defaults (called at startup, after statics are initialized).
+pub fn init_edge_color_defaults() {
+    INACTIVE_EDGE_COLOR.store(pack_color(0.7, 0.7, 0.7), Ordering::SeqCst);
+    ACTIVE_EDGE_COLOR.store(pack_color(0.4, 0.6, 1.0), Ordering::SeqCst);
+}
 
 /// Monotonically increasing shape ID counter.
 fn next_shape_id() -> ShapeId {

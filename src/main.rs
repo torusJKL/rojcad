@@ -16,7 +16,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::sync::atomic::Ordering;
 
-use types::{global_shape_registry, ShapeData, LAST_SELECTION};
+use types::{
+    global_shape_registry, init_edge_color_defaults, pack_color, ShapeData, ACTIVE_EDGE_COLOR,
+    EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES,
+};
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
 
@@ -225,6 +228,60 @@ pub unsafe extern "C" fn rust_poll_selection() -> u64 {
     LAST_SELECTION.swap(0, Ordering::SeqCst)
 }
 
+// ── Edge visibility toggles ────────────────────────────────────────────────────
+
+/// Toggle inactive edge visibility. Returns new state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_toggle_inactive() -> c_int {
+    let old = SHOW_INACTIVE_EDGES.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Toggle active edge visibility. Returns new state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_toggle_active() -> c_int {
+    let old = SHOW_ACTIVE_EDGES.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query inactive edge visibility state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_inactive_showing() -> c_int {
+    c_int::from(SHOW_INACTIVE_EDGES.load(Ordering::SeqCst))
+}
+
+/// Query active edge visibility state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_active_showing() -> c_int {
+    c_int::from(SHOW_ACTIVE_EDGES.load(Ordering::SeqCst))
+}
+
+// ── Edge style (thickness / color) ─────────────────────────────────────────────
+
+/// Set edge thickness in NDC units.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_set_thickness(value: c_double) {
+    EDGE_THICKNESS.store(value.to_bits(), Ordering::SeqCst);
+}
+
+/// Query edge thickness in NDC units.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_get_thickness() -> c_double {
+    f64::from_bits(EDGE_THICKNESS.load(Ordering::SeqCst))
+}
+
+/// Set inactive edge color (r, g, b as doubles in [0, 1]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_set_color_inactive(r: c_double, g: c_double, b: c_double) {
+    INACTIVE_EDGE_COLOR.store(pack_color(r, g, b), Ordering::SeqCst);
+}
+
+/// Set active (selected) edge color (r, g, b as doubles in [0, 1]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_set_color_active(r: c_double, g: c_double, b: c_double) {
+    ACTIVE_EDGE_COLOR.store(pack_color(r, g, b), Ordering::SeqCst);
+}
+
 // ── C bridge registration forward declaration ────────────────────────────────
 
 unsafe extern "C" {
@@ -236,6 +293,9 @@ unsafe extern "C" {
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
+
+    // Initialize edge style defaults
+    init_edge_color_defaults();
 
     // Initialize Janet
     unsafe {
