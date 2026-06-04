@@ -804,7 +804,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kicad-parser"
 version = "0.1.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git#7e8d78a55121c067d7c3283c13b9185197065c74"
+source = "git+https://github.com/torusJKL/opencascade-rs.git?branch=translate-copy#f20b1d0f0757d18f637e08f1af76a4fa4694daa0"
 dependencies = [
  "sexp",
  "thiserror 1.0.69",
@@ -876,9 +876,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
+checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "malloc_buf"
@@ -1241,7 +1241,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "opencascade"
 version = "0.2.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git#7e8d78a55121c067d7c3283c13b9185197065c74"
+source = "git+https://github.com/torusJKL/opencascade-rs.git?branch=translate-copy#f20b1d0f0757d18f637e08f1af76a4fa4694daa0"
 dependencies = [
  "cxx",
  "glam",
@@ -1253,7 +1253,7 @@ dependencies = [
 [[package]]
 name = "opencascade-sys"
 version = "0.2.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git#7e8d78a55121c067d7c3283c13b9185197065c74"
+source = "git+https://github.com/torusJKL/opencascade-rs.git?branch=translate-copy#f20b1d0f0757d18f637e08f1af76a4fa4694daa0"
 dependencies = [
  "cmake",
  "cxx",

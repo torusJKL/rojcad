@@ -362,11 +362,59 @@ pub fn common(a: &ShapeData, b: &ShapeData) -> ShapeData {
     sd
 }
 
+/// Union shape `a` with shape `b`.
+///
+/// OCCT boolean operations may return the result as a `COMPOUND`.
+/// Returns a `ShapeData` wrapping the resulting shape.
+/// Panics if the result is a null/empty shape (`ShapeType::Shape`).
+pub fn fuse(a: &ShapeData, b: &ShapeData) -> ShapeData {
+    let result = a.shape.union(&b.shape);
+    let shape = result.shape;
+    if shape.shape_type() == ShapeType::Shape {
+        panic!("fuse: shapes produced an empty result");
+    }
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
 // ── Shape Translation ─────────────────────────────────────────────────────────
 
 /// Translate a shape by the given offset.
 pub fn translate_shape(shape: &mut Shape, dx: f64, dy: f64, dz: f64) {
     shape.set_global_translation(DVec3::new(dx, dy, dz));
+}
+
+/// Create a translated copy of a shape.
+pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64) -> ShapeData {
+    let new_shape = data.shape.translated(DVec3::new(dx, dy, dz));
+    let sd = ShapeData::new(new_shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a rotated copy of a shape about an axis through the origin.
+pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64) -> ShapeData {
+    let new_shape = data.shape.rotated(axis, angle);
+    let sd = ShapeData::new(new_shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a scaled copy of a shape about a point.
+pub fn scale(data: &ShapeData, factor: f64, center: DVec3) -> ShapeData {
+    let new_shape = data.shape.scaled(center, factor);
+    let sd = ShapeData::new(new_shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a mirrored copy of a shape about an axis.
+pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3) -> ShapeData {
+    let new_shape = data.shape.mirrored(origin, dir);
+    let sd = ShapeData::new(new_shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -655,5 +703,117 @@ mod tests {
     #[should_panic(expected = "tube_radius must be positive")]
     fn test_make_torus_invalid_tube_radius() {
         make_torus(20.0, 0.0, None, None, None, None, None);
+    }
+
+    // ── Fuse Tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_fuse() {
+        let a = make_box(10.0, 10.0, 10.0, None);
+        let b = make_box(10.0, 10.0, 10.0, Some((5.0, 5.0, 5.0)));
+        let result = fuse(&a, &b);
+        assert!(
+            result.type_string() == "SOLID" || result.type_string() == "COMPOUND",
+            "expected SOLID or COMPOUND, got {}",
+            result.type_string()
+        );
+        assert!(a.visible);
+        assert_eq!(a.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_fuse_non_overlapping() {
+        let a = make_box(10.0, 10.0, 10.0, None);
+        let b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)));
+        let result = fuse(&a, &b);
+        assert_ne!(result.type_string(), "SHAPE", "fuse of non-overlapping shapes should not produce a null shape");
+    }
+
+    // ── Translate Tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_translate() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let moved = translate(&original, 5.0, 0.0, 0.0);
+        assert!(original.visible);
+        assert_eq!(original.type_string(), "SOLID");
+        assert_eq!(moved.type_string(), "SOLID");
+    }
+
+    // ── Rotate Tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_rotate() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2);
+        assert!(original.visible);
+        assert_eq!(rotated.type_string(), "SOLID");
+    }
+
+    // ── Scale Tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_scale() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let scaled = scale(&original, 2.0, DVec3::ZERO);
+        assert!(original.visible);
+        assert_eq!(scaled.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_scale_with_center() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let scaled = scale(&original, 2.0, DVec3::new(5.0, 5.0, 5.0));
+        assert!(original.visible);
+        assert_eq!(scaled.type_string(), "SOLID");
+    }
+
+    // ── Mirror Tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_mirror() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let mirrored = mirror(&original, DVec3::ZERO, DVec3::X);
+        assert!(original.visible);
+        assert_eq!(mirrored.type_string(), "SOLID");
+    }
+
+    // ── Immutability Tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_immutability_translate() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let original_id = original.shape_id;
+        let _moved = translate(&original, 5.0, 0.0, 0.0);
+        assert!(original.visible);
+        assert_eq!(original.shape_id, original_id);
+        assert_eq!(original.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_immutability_rotate() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let original_id = original.shape_id;
+        let _rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2);
+        assert!(original.visible);
+        assert_eq!(original.shape_id, original_id);
+    }
+
+    #[test]
+    fn test_immutability_scale() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let original_id = original.shape_id;
+        let _scaled = scale(&original, 2.0, DVec3::ZERO);
+        assert!(original.visible);
+        assert_eq!(original.shape_id, original_id);
+    }
+
+    #[test]
+    fn test_immutability_mirror() {
+        let original = make_box(10.0, 10.0, 10.0, None);
+        let original_id = original.shape_id;
+        let _mirrored = mirror(&original, DVec3::ZERO, DVec3::X);
+        assert!(original.visible);
+        assert_eq!(original.shape_id, original_id);
     }
 }

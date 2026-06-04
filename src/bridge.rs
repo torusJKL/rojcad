@@ -204,6 +204,40 @@ unsafe extern "C" {
 
     pub fn rust_init_cut(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
     pub fn rust_init_common(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
+    pub fn rust_init_fuse(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
+    pub fn rust_init_translate(
+        dest: *mut c_void,
+        data: *mut c_void,
+        dx: c_double,
+        dy: c_double,
+        dz: c_double,
+    );
+    pub fn rust_init_rotate(
+        dest: *mut c_void,
+        data: *mut c_void,
+        ax: c_double,
+        ay: c_double,
+        az: c_double,
+        angle: c_double,
+    );
+    pub fn rust_init_scale(
+        dest: *mut c_void,
+        data: *mut c_void,
+        factor: c_double,
+        cx: *const c_double,
+        cy: *const c_double,
+        cz: *const c_double,
+    );
+    pub fn rust_init_mirror(
+        dest: *mut c_void,
+        data: *mut c_void,
+        ox: c_double,
+        oy: c_double,
+        oz: c_double,
+        dx: c_double,
+        dy: c_double,
+        dz: c_double,
+    );
 
     pub fn rust_shape_type(data: *mut c_void) -> *const c_char;
 

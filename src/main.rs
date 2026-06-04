@@ -5,7 +5,12 @@
 //! visible?, write-step, write-stl), and starts a TCP REPL server on port 9365
 //! (configurable via --port).
 
-#![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
+#![allow(
+    non_upper_case_globals,
+    non_camel_case_types,
+    non_snake_case,
+    clippy::missing_safety_doc,
+)]
 
 mod bridge;
 mod cad;
@@ -16,6 +21,8 @@ use std::ffi::{c_char, c_double, c_int, c_void, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::sync::atomic::Ordering;
+
+use glam::DVec3;
 
 use types::{
     global_shape_registry, init_edge_color_defaults, pack_color, ShapeData, ACTIVE_EDGE_COLOR,
@@ -375,6 +382,131 @@ pub unsafe extern "C" fn rust_init_common(
         }
         Err(_) => {
             panic!("rust_init_common failed");
+        }
+    }
+}
+
+/// Union shape a with shape b, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_fuse(
+    dest: *mut c_void,
+    a: *mut c_void,
+    b: *mut c_void,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shape_a = unsafe { &*(a as *const ShapeData) };
+        let shape_b = unsafe { &*(b as *const ShapeData) };
+        cad::fuse(shape_a, shape_b)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_fuse failed");
+        }
+    }
+}
+
+/// Translate a shape, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_translate(
+    dest: *mut c_void,
+    data: *mut c_void,
+    dx: c_double,
+    dy: c_double,
+    dz: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shape = unsafe { &*(data as *const ShapeData) };
+        cad::translate(shape, dx, dy, dz)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_translate failed");
+        }
+    }
+}
+
+/// Rotate a shape, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_rotate(
+    dest: *mut c_void,
+    data: *mut c_void,
+    ax: c_double,
+    ay: c_double,
+    az: c_double,
+    angle: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shape = unsafe { &*(data as *const ShapeData) };
+        cad::rotate(shape, DVec3::new(ax, ay, az), angle)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_rotate failed");
+        }
+    }
+}
+
+/// Scale a shape, storing the result at dest.
+/// Center pointer may be NULL (defaults to origin).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_scale(
+    dest: *mut c_void,
+    data: *mut c_void,
+    factor: c_double,
+    cx: *const c_double,
+    cy: *const c_double,
+    cz: *const c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shape = unsafe { &*(data as *const ShapeData) };
+        let center = if cx.is_null() || cy.is_null() || cz.is_null() {
+            DVec3::ZERO
+        } else {
+            unsafe { DVec3::new(*cx, *cy, *cz) }
+        };
+        cad::scale(shape, factor, center)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_scale failed");
+        }
+    }
+}
+
+/// Mirror a shape, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_mirror(
+    dest: *mut c_void,
+    data: *mut c_void,
+    ox: c_double,
+    oy: c_double,
+    oz: c_double,
+    dx: c_double,
+    dy: c_double,
+    dz: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shape = unsafe { &*(data as *const ShapeData) };
+        cad::mirror(shape, DVec3::new(ox, oy, oz), DVec3::new(dx, dy, dz))
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_mirror failed");
         }
     }
 }

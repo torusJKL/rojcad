@@ -61,6 +61,13 @@ extern void rust_init_torus(void *dest,
 /* Boolean operations — allocate new shape via janet_abstract internally */
 extern void rust_init_cut(void *dest, void *a, void *b);
 extern void rust_init_common(void *dest, void *a, void *b);
+extern void rust_init_fuse(void *dest, void *a, void *b);
+
+/* Transformation operations */
+extern void rust_init_translate(void *dest, void *data, double dx, double dy, double dz);
+extern void rust_init_rotate(void *dest, void *data, double ax, double ay, double az, double angle);
+extern void rust_init_scale(void *dest, void *data, double factor, const double *cx, const double *cy, const double *cz);
+extern void rust_init_mirror(void *dest, void *data, double ox, double oy, double oz, double dx, double dy, double dz);
 
 /* Inspection */
 extern const char *rust_shape_type(void *data);
@@ -271,14 +278,15 @@ JANET_FN(cad_box,
 }
 
 JANET_FN(cad_sphere,
-         "(sphere radius &keys :r :c :a)",
+         "(sphere radius &keys :r :c :a :ar)",
          "Create a sphere.\n\n"
          "Positional: (sphere radius)\n"
-         "Keywords: :r (radius), :c (center [x y z]), :a (angle in radians).\n\n"
+         "Keywords: :r (radius), :c (center [x y z]),\n"
+         "         :a (angle in degrees), :ar (angle in radians).\n\n"
          "Examples:\n"
          "  (sphere 10)               — full sphere at origin\n"
          "  (sphere 10 :c [1 2 3])    — repositioned\n"
-         "  (sphere 10 :a 3.14159)    — hemisphere\n"
+         "  (sphere 10 :a 180)        — hemisphere\n"
          "  (sphere :r 10)            — keyword style\n\n"
          "Returns a rojcad/shape abstract value.")
 {
@@ -287,6 +295,11 @@ JANET_FN(cad_sphere,
 
     has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     has_a = kw_double(argv, argc, "a", &angle);
+    if (has_a) {
+        angle *= (M_PI / 180.0);
+    } else {
+        has_a = kw_double(argv, argc, "ar", &angle);
+    }
 
     /* Try keyword :r first, then positional */
     if (!kw_double(argv, argc, "r", &radius)) {
@@ -365,21 +378,27 @@ JANET_FN(cad_cylinder,
 }
 
 JANET_FN(cad_cone,
-         "(cone bottom-radius height &keys :br :tr :h :c :a)",
+         "(cone bottom-radius height &keys :br :tr :h :c :a :ar)",
          "Create a cone or truncated cone.\n\n"
          "Positional: (cone br h) for full cone, (cone br tr h) for truncated.\n"
          "Keywords: :br (bottom radius), :tr (top radius), :h (height),\n"
-         "         :c (center [x y z]), :a (angle in radians, partial cone).\n\n"
+         "         :c (center [x y z]),\n"
+         "         :a (angle in degrees), :ar (angle in radians, partial cone).\n\n"
          "Examples:\n"
          "  (cone 5 10)                — full cone, br=5, h=10\n"
          "  (cone 5 3 10)              — truncated cone\n"
-         "  (cone 5 10 :a 3.14159)     — half cone\n"
+         "  (cone 5 10 :a 180)         — half cone\n"
          "  (cone :br 5 :h 10)         — keyword style\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, angle;
     int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     int has_a = kw_double(argv, argc, "a", &angle);
+    if (has_a) {
+        angle *= (M_PI / 180.0);
+    } else {
+        has_a = kw_double(argv, argc, "ar", &angle);
+    }
 
     double br = 0, tr = 0, h = 0;
     int has_br, has_tr, has_h;
@@ -427,18 +446,20 @@ create:
 }
 
 JANET_FN(cad_torus,
-         "(torus ring-radius tube-radius &keys :rr :tr :c :a :as :ae :dir)",
+         "(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir)",
          "Create a torus.\n\n"
          "Positional: (torus rr tr)\n"
          "Keywords: :rr (ring radius), :tr (tube radius),\n"
-         "         :c (center [x y z]), :a (angle in radians, partial),\n"
-         "         :as (angle start), :ae (angle end),\n"
+         "         :c (center [x y z]),\n"
+         "         :a (angle in degrees), :ar (angle in radians, partial),\n"
+         "         :as (start angle degrees), :asr (start angle radians),\n"
+         "         :ae (end angle degrees), :aer (end angle radians),\n"
          "         :dir (axis direction [dx dy dz]).\n\n"
          "Examples:\n"
          "  (torus 20 10)                    — full torus\n"
          "  (torus 20 10 :c [0 0 5])         — repositioned\n"
-         "  (torus 20 10 :a 3.14159)         — half torus\n"
-         "  (torus :rr 20 :tr 10 :as 0 :ae 3.14) — angled range\n"
+         "  (torus 20 10 :a 180)             — half torus\n"
+         "  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n"
          "  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n\n"
          "Returns a rojcad/shape abstract value.")
 {
@@ -446,8 +467,23 @@ JANET_FN(cad_torus,
     int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     int has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
     int has_a = kw_double(argv, argc, "a", &angle);
+    if (has_a) {
+        angle *= (M_PI / 180.0);
+    } else {
+        has_a = kw_double(argv, argc, "ar", &angle);
+    }
     int has_as = kw_double(argv, argc, "as", &a_start);
+    if (has_as) {
+        a_start *= (M_PI / 180.0);
+    } else {
+        has_as = kw_double(argv, argc, "asr", &a_start);
+    }
     int has_ae = kw_double(argv, argc, "ae", &a_end);
+    if (has_ae) {
+        a_end *= (M_PI / 180.0);
+    } else {
+        has_ae = kw_double(argv, argc, "aer", &a_end);
+    }
 
     double rr = 0, tr = 0;
     int has_rr, has_tr;
@@ -520,6 +556,162 @@ JANET_FN(cad_common,
     rust_init_common(result, a, b);
 
     return janet_wrap_abstract(result);
+}
+
+JANET_FN(cad_fuse,
+         "(fuse shape-a shape-b)",
+         "Combine shape-a and shape-b into a single solid. Returns a new rojcad/shape "
+         "representing the union of both shapes.\n\n"
+         "Signals an error if the operation produces an empty result.")
+{
+    janet_arity(argc, 2, 2);
+    void *a = unwrap_shape_or_panic(argv[0], 0);
+    void *b = unwrap_shape_or_panic(argv[1], 1);
+
+    void *result = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
+    if (!result) {
+        janet_panic("failed to allocate shape");
+    }
+    rust_init_fuse(result, a, b);
+
+    return janet_wrap_abstract(result);
+}
+
+JANET_FN(cad_translate,
+         "(translate shape dx dy dz)",
+         "Create a translated copy of shape.\n\n"
+         "Positional: (translate shape dx dy dz)\n"
+         "Keywords: :t [dx dy dz]\n\n"
+         "Examples:\n"
+         "  (translate box 5 0 0)       — move 5 units in X\n"
+         "  (translate box :t [1 2 3])  — keyword style\n\n"
+         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+{
+    double dx, dy, dz;
+    void *data;
+
+    if (kw_array_3(argv, argc, "t", &dx, &dy, &dz)) {
+        /* Keyword style: find the shape as the first non-keyword arg */
+        if (argc < 1) janet_panic("translate: shape is required");
+        data = unwrap_shape_or_panic(argv[0], 0);
+    } else {
+        janet_arity(argc, 4, 4);
+        data = unwrap_shape_or_panic(argv[0], 0);
+        if (!janet_checktype(argv[1], JANET_NUMBER) ||
+            !janet_checktype(argv[2], JANET_NUMBER) ||
+            !janet_checktype(argv[3], JANET_NUMBER)) {
+            janet_panic("translate: dx, dy, dz must be numbers");
+        }
+        dx = janet_unwrap_number(argv[1]);
+        dy = janet_unwrap_number(argv[2]);
+        dz = janet_unwrap_number(argv[3]);
+    }
+
+    void *shape = alloc_shape();
+    rust_init_translate(shape, data, dx, dy, dz);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_rotate,
+         "(rotate shape &keys :a :ar :x :y :z :r)",
+         "Create a rotated copy of shape.\n\n"
+         "Angle is specified via :a (degrees) or :ar (radians).\n"
+         "Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).\n\n"
+         "Examples:\n"
+         "  (rotate box :a 45 :z)           — 45 degrees about Z\n"
+         "  (rotate box :ar 1.5708 :x)      — pi/2 radians about X\n"
+         "  (rotate box :a 90 :r [1 1 0])   — 90 degrees about custom axis\n\n"
+         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+{
+    if (argc < 2) janet_panic("rotate: shape and angle are required");
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+
+    double angle;
+
+    if (kw_double(argv, argc, "ar", &angle)) {
+        /* radians — pass through as-is */
+    } else if (kw_double(argv, argc, "a", &angle)) {
+        angle *= (M_PI / 180.0);
+    } else {
+        janet_panic("rotate: specify angle via :a (degrees) or :ar (radians)");
+    }
+
+    double ax, ay, az;
+    if (find_keyword(argv, argc, "x") >= 0) {
+        ax = 1.0; ay = 0.0; az = 0.0;
+    } else if (find_keyword(argv, argc, "y") >= 0) {
+        ax = 0.0; ay = 1.0; az = 0.0;
+    } else if (find_keyword(argv, argc, "z") >= 0) {
+        ax = 0.0; ay = 0.0; az = 1.0;
+    } else if (kw_array_3(argv, argc, "r", &ax, &ay, &az)) {
+        /* custom axis */
+    } else {
+        janet_panic("rotate: specify axis via :x, :y, :z, or :r [dx dy dz]");
+    }
+
+    void *shape = alloc_shape();
+    rust_init_rotate(shape, data, ax, ay, az, angle);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_scale,
+         "(scale shape factor &keys :o)",
+         "Create a uniformly scaled copy of shape.\n\n"
+         "Positional: (scale shape factor)\n"
+         "Keywords: :o [x y z] (center point, defaults to origin)\n\n"
+         "Examples:\n"
+         "  (scale box 2.0)                — 2x about origin\n"
+         "  (scale box 2.0 :o [5 5 5])     — 2x about custom point\n\n"
+         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+{
+    if (argc < 2) janet_panic("scale: shape and factor are required");
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    if (!janet_checktype(argv[1], JANET_NUMBER)) {
+        janet_panic("scale: factor must be a number");
+    }
+    double factor = janet_unwrap_number(argv[1]);
+
+    double cx, cy, cz;
+    int has_o = kw_array_3(argv, argc, "o", &cx, &cy, &cz);
+
+    void *shape = alloc_shape();
+    rust_init_scale(shape, data, factor,
+                    has_o ? &cx : NULL,
+                    has_o ? &cy : NULL,
+                    has_o ? &cz : NULL);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_mirror,
+         "(mirror shape ox oy oz dx dy dz)",
+         "Create a mirrored copy of shape about an axis.\n\n"
+         "Positional: (mirror shape ox oy oz dx dy dz)\n"
+         "Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.\n\n"
+         "Examples:\n"
+         "  (mirror box 0 0 0 1 0 0)    — mirror across X axis through origin\n"
+         "  (mirror box 5 0 0 0 1 0)    — mirror across Y axis through (5,0,0)\n\n"
+         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+{
+    janet_arity(argc, 7, 7);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    if (!janet_checktype(argv[1], JANET_NUMBER) ||
+        !janet_checktype(argv[2], JANET_NUMBER) ||
+        !janet_checktype(argv[3], JANET_NUMBER) ||
+        !janet_checktype(argv[4], JANET_NUMBER) ||
+        !janet_checktype(argv[5], JANET_NUMBER) ||
+        !janet_checktype(argv[6], JANET_NUMBER)) {
+        janet_panic("mirror: all coordinates must be numbers");
+    }
+    double ox = janet_unwrap_number(argv[1]);
+    double oy = janet_unwrap_number(argv[2]);
+    double oz = janet_unwrap_number(argv[3]);
+    double dx = janet_unwrap_number(argv[4]);
+    double dy = janet_unwrap_number(argv[5]);
+    double dz = janet_unwrap_number(argv[6]);
+
+    void *shape = alloc_shape();
+    rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz);
+    return janet_wrap_abstract(shape);
 }
 
 JANET_FN(cad_shape_type,
@@ -793,6 +985,11 @@ void cad_register_functions(JanetTable *env) {
         {"torus",                  cad_torus,                  cad_torus_docstring_},
         {"cut",                    cad_cut,                    cad_cut_docstring_},
         {"common",                 cad_common,                 cad_common_docstring_},
+        {"fuse",                   cad_fuse,                   cad_fuse_docstring_},
+        {"translate",              cad_translate,              cad_translate_docstring_},
+        {"rotate",                 cad_rotate,                 cad_rotate_docstring_},
+        {"scale",                  cad_scale,                  cad_scale_docstring_},
+        {"mirror",                 cad_mirror,                 cad_mirror_docstring_},
         {"shape-type",             cad_shape_type,             cad_shape_type_docstring_},
         {"hide",                   cad_hide,                   cad_hide_docstring_},
         {"show",                   cad_show,                   cad_show_docstring_},
