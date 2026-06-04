@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
-use glam::DVec4;
 use wgpu::{self, util::DeviceExt};
 #[cfg(target_os = "linux")]
 use winit::platform::x11::EventLoopBuilderExtX11;
@@ -11,7 +10,7 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, ModifiersState, NamedKey},
     window::{Window, WindowId},
 };
 
@@ -22,9 +21,12 @@ use crate::types::{
 };
 
 use super::camera::OrbitCamera;
+use super::gizmo::GizmoRenderer;
 use super::pick::pick_shape;
 use super::ReplToViewer;
 use super::ViewerToRepl;
+
+const GIZMO_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 // ── Uniform buffers ───────────────────────────────────────────────────────
 
@@ -44,6 +46,66 @@ pub(crate) struct EdgeUniforms {
     active_color: [f32; 4],
     thickness: f32,
     _pad: [f32; 3],
+}
+
+// ── CameraAnimation ─────────────────────────────────────────────────────────
+
+const ANIMATION_DURATION: f64 = 0.5;
+
+struct CameraAnimation {
+    active: bool,
+    start_yaw: f64,
+    start_pitch: f64,
+    target_yaw: f64,
+    target_pitch: f64,
+    elapsed: f64,
+}
+
+fn ease_in_out(t: f64) -> f64 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+impl CameraAnimation {
+    fn new() -> Self {
+        Self {
+            active: false,
+            start_yaw: 0.0,
+            start_pitch: 0.0,
+            target_yaw: 0.0,
+            target_pitch: 0.0,
+            elapsed: 0.0,
+        }
+    }
+
+    fn start(&mut self, camera: &OrbitCamera, target_yaw: f64, target_pitch: f64) {
+        self.active = true;
+        self.start_yaw = camera.yaw;
+        self.start_pitch = camera.pitch;
+        self.target_yaw = target_yaw;
+        self.target_pitch = target_pitch;
+        self.elapsed = 0.0;
+    }
+
+    fn update(&mut self, camera: &mut OrbitCamera, dt: f64) {
+        if !self.active {
+            return;
+        }
+        self.elapsed += dt;
+        let t = (self.elapsed / ANIMATION_DURATION).clamp(0.0, 1.0);
+        let e = ease_in_out(t);
+        camera.yaw = self.start_yaw + (self.target_yaw - self.start_yaw) * e;
+        camera.pitch = self.start_pitch + (self.target_pitch - self.start_pitch) * e;
+        if t >= 1.0 {
+            camera.yaw = self.target_yaw;
+            camera.pitch = self.target_pitch;
+            self.active = false;
+            camera.perspective = false;
+        }
+    }
+
+    fn stop(&mut self) {
+        self.active = false;
+    }
 }
 
 // ── CadMesh ───────────────────────────────────────────────────────────────
@@ -570,190 +632,6 @@ impl EdgeDrawer {
     }
 }
 
-// ── Cone tip helpers ─────────────────────────────────────────────────────
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct ConeVertex {
-    position: [f32; 3],
-}
-
-fn cone_vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<ConeVertex>() as wgpu::BufferAddress,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &[wgpu::VertexAttribute {
-            offset: 0,
-            shader_location: 0,
-            format: wgpu::VertexFormat::Float32x3,
-        }],
-    }
-}
-
-/// Build cone tip meshes (8 triangles each) for the three axis endpoints.
-/// Returns (vertex_buffer, index_buffer, num_indices).
-fn build_axis_cones(
-    device: &wgpu::Device,
-) -> (Option<wgpu::Buffer>, Option<wgpu::Buffer>, u32) {
-    let segments = 8;
-    let height = 1.5;
-    let radius = 0.5;
-
-    // Each cone: base ring (segments) + tip (1), triangles = segments
-    // Three axes: X(red), Y(green), Z(blue)
-    let axis_dirs: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let axis_len = 15.0f32;
-
-    let mut vertices: Vec<ConeVertex> = Vec::new();
-    let mut indices: Vec<u32> = Vec::new();
-
-    for dir in &axis_dirs {
-        let tip = [dir[0] * axis_len, dir[1] * axis_len, dir[2] * axis_len];
-        let base_center = [
-            dir[0] * (axis_len - height),
-            dir[1] * (axis_len - height),
-            dir[2] * (axis_len - height),
-        ];
-
-        // Compute perpendicular vectors for the base ring
-        let abs_x = dir[0].abs();
-        let up = if abs_x < 0.9 {
-            [1.0f32, 0.0, 0.0]
-        } else {
-            [0.0, 1.0, 0.0]
-        };
-        let u = [
-            up[1] * dir[2] - up[2] * dir[1],
-            up[2] * dir[0] - up[0] * dir[2],
-            up[0] * dir[1] - up[1] * dir[0],
-        ];
-        let ulen = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
-        let u = [u[0] / ulen, u[1] / ulen, u[2] / ulen];
-        let v = [
-            dir[1] * u[2] - dir[2] * u[1],
-            dir[2] * u[0] - dir[0] * u[2],
-            dir[0] * u[1] - dir[1] * u[0],
-        ];
-
-        let base_start = vertices.len() as u32;
-
-        // Base ring vertices
-        for i in 0..segments {
-            let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
-            let cx = angle.cos();
-            let sx = angle.sin();
-            vertices.push(ConeVertex {
-                position: [
-                    base_center[0] + (u[0] * cx + v[0] * sx) * radius,
-                    base_center[1] + (u[1] * cx + v[1] * sx) * radius,
-                    base_center[2] + (u[2] * cx + v[2] * sx) * radius,
-                ],
-            });
-        }
-
-        let tip_index = vertices.len() as u32;
-        vertices.push(ConeVertex { position: tip });
-
-        // Triangles from base to tip
-        for i in 0..segments {
-            let i0 = base_start + i as u32;
-            let i1 = base_start + ((i + 1) % segments) as u32;
-            indices.push(i0);
-            indices.push(i1);
-            indices.push(tip_index);
-        }
-    }
-
-    if vertices.is_empty() || indices.is_empty() {
-        return (None, None, 0);
-    }
-
-    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("axis_cone_vertices"),
-        contents: bytemuck::cast_slice(&vertices),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("axis_cone_indices"),
-        contents: bytemuck::cast_slice(&indices),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-
-    (Some(vertex_buffer), Some(index_buffer), indices.len() as u32)
-}
-
-fn build_cone_pipeline(
-    device: &wgpu::Device,
-    surface_format: wgpu::TextureFormat,
-) -> Option<wgpu::RenderPipeline> {
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("cone shader"),
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
-            "struct VertexInput { @location(0) position: vec3<f32>, };\
-             struct VertexOutput { @builtin(position) clip_position: vec4<f32>, };\
-             @vertex fn vs_main(input: VertexInput) -> VertexOutput {\
-               var out: VertexOutput;\
-               out.clip_position = vec4f(input.position, 1.0);\
-               return out;\
-             }\
-             @fragment fn fs_main() -> @location(0) vec4<f32> {\
-               return vec4f(0.8, 0.8, 0.8, 1.0);\
-             }",
-        )),
-    });
-
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("cone_pipeline_layout"),
-        bind_group_layouts: &[],
-        push_constant_ranges: &[],
-    });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("cone_pipeline"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"),
-            buffers: &[cone_vertex_buffer_layout()],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: surface_format,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        multiview: None,
-        cache: None,
-    });
-
-    Some(pipeline)
-}
-
 // ── Line vertex buffer helpers ────────────────────────────────────────────
 
 /// Flatten a slice of segment endpoint pairs into a vertex buffer.
@@ -764,16 +642,6 @@ fn segments_to_vertices(segments: &[[[f32; 3]; 2]]) -> Vec<[f32; 3]> {
         verts.push(seg[1]);
     }
     verts
-}
-
-/// Build a GPU vertex buffer from segment endpoint pairs.
-fn create_line_buffer(device: &wgpu::Device, label: &str, segments: &[[[f32; 3]; 2]]) -> wgpu::Buffer {
-    let verts = segments_to_vertices(segments);
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(label),
-        contents: bytemuck::cast_slice(&verts),
-        usage: wgpu::BufferUsages::VERTEX,
-    })
 }
 
 // ── GridRenderer ──────────────────────────────────────────────────────────
@@ -829,42 +697,6 @@ fn generate_grid_segments() -> Vec<[[f32; 3]; 2]> {
     segments
 }
 
-// ── AxisRenderer ──────────────────────────────────────────────────────────
-
-/// Axis indicator (RGB = XYZ).
-pub struct AxisRenderer {
-    vertex_buffer: wgpu::Buffer,
-    num_vertices: u32,
-}
-
-impl AxisRenderer {
-    pub fn new(device: &wgpu::Device) -> Self {
-        let segments: Vec<[[f32; 3]; 2]> = vec![
-            // X axis (red)
-            [[0.0, 0.0, 0.0], [15.0, 0.0, 0.0]],
-            // Y axis (green)
-            [[0.0, 0.0, 0.0], [0.0, 15.0, 0.0]],
-            // Z axis (blue)
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 15.0]],
-        ];
-        let verts = segments_to_vertices(&segments);
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("axis_lines"),
-            contents: bytemuck::cast_slice(&verts),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        AxisRenderer {
-            vertex_buffer,
-            num_vertices: verts.len() as u32,
-        }
-    }
-
-    pub fn render(&self, pass: &mut wgpu::RenderPass) {
-        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        pass.draw(0..self.num_vertices, 0..1);
-    }
-}
-
 // ── ViewerState ───────────────────────────────────────────────────────────
 
 pub struct ViewerState {
@@ -886,16 +718,20 @@ pub struct ViewerState {
     active_instance_buffer: wgpu::Buffer,
     active_num_instances: u32,
     grid_renderer: GridRenderer,
-    axis_renderer: AxisRenderer,
-    cone_pipeline: Option<wgpu::RenderPipeline>,
-    axis_cone_buffer: Option<wgpu::Buffer>,
-    axis_cone_index_buffer: Option<wgpu::Buffer>,
-    axis_cone_num_indices: u32,
+    gizmo_renderer: GizmoRenderer,
+    gizmo_depth: wgpu::Texture,
+    gizmo_depth_view: wgpu::TextureView,
+    gizmo_viewport_size: u32,
+    gizmo_margin: u32,
     selected_id: Option<ShapeId>,
     show_back_edges: bool,
     mouse_pressed: [bool; 3],
     mouse_pos: PhysicalPosition<f64>,
     last_generation: u64,
+    animation: CameraAnimation,
+    last_time: std::time::Instant,
+    keyboard_view: Option<usize>,
+    modifiers: ModifiersState,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -1014,7 +850,7 @@ impl ApplicationHandler for ViewerApp {
         let surface_drawer = SurfaceDrawer::new(&device, surface_format, depth_format);
         let edge_drawer = EdgeDrawer::new(&device, surface_format, depth_format);
         let grid_renderer = GridRenderer::new(&device);
-        let axis_renderer = AxisRenderer::new(&device);
+        let mut gizmo_renderer = GizmoRenderer::new(&device, surface_format);
 
         // Initial empty instance buffers (populated from ShapeRegistry each frame)
         let inactive_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1032,10 +868,22 @@ impl ApplicationHandler for ViewerApp {
         });
         let active_num_instances = 0u32;
 
-        let (axis_cone_buffer, axis_cone_index_buffer, axis_cone_num_indices) =
-            build_axis_cones(&device);
+        let sf = window.scale_factor();
+        let gizmo_viewport_size = (200.0 * sf) as u32;
+        let gizmo_margin = (14.0 * sf) as u32;
+        gizmo_renderer.set_viewport_size(&device, gizmo_viewport_size);
 
-        let cone_pipeline = build_cone_pipeline(&device, surface_format);
+        let gizmo_depth = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gizmo_depth"),
+            size: wgpu::Extent3d { width: size.width.max(1), height: size.height.max(1), depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: GIZMO_DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let gizmo_depth_view = gizmo_depth.create_view(&wgpu::TextureViewDescriptor::default());
 
         self.state = Some(ViewerState {
             device,
@@ -1056,16 +904,20 @@ impl ApplicationHandler for ViewerApp {
             active_instance_buffer,
             active_num_instances,
             grid_renderer,
-            axis_renderer,
-            cone_pipeline,
-            axis_cone_buffer,
-            axis_cone_index_buffer,
-            axis_cone_num_indices,
+            gizmo_renderer,
+            gizmo_depth,
+            gizmo_depth_view,
+            gizmo_viewport_size,
+            gizmo_margin,
             selected_id: None,
             show_back_edges: true,
             mouse_pressed: [false; 3],
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             last_generation: 0,
+            animation: CameraAnimation::new(),
+            last_time: std::time::Instant::now(),
+            keyboard_view: None,
+            modifiers: ModifiersState::default(),
         });
     }
 
@@ -1094,6 +946,21 @@ impl ApplicationHandler for ViewerApp {
                 let (tex, view) = create_depth_texture(&state.device, new_size);
                 state.depth_texture = tex;
                 state.depth_texture_view = view;
+                let gizmo_depth = state.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("gizmo_depth"),
+                    size: wgpu::Extent3d { width: new_size.width.max(1), height: new_size.height.max(1), depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: GIZMO_DEPTH_FORMAT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                });
+                state.gizmo_depth = gizmo_depth;
+                state.gizmo_depth_view = state.gizmo_depth.create_view(&wgpu::TextureViewDescriptor::default());
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                state.modifiers = m.state();
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -1114,6 +981,24 @@ impl ApplicationHandler for ViewerApp {
                 }
                 Key::Character(c) if c == "x" || c == "X" => {
                     state.show_back_edges = !state.show_back_edges;
+                }
+                Key::Character(c) if state.modifiers.control_key() && c == "1" => {
+                    let idx = state.keyboard_view.map_or(4, |v| if v == 4 { 5 } else { 4 });
+                    let (yaw, pitch) = VIEW_TARGETS[idx];
+                    state.animation.start(&state.camera, yaw, pitch);
+                    state.keyboard_view = Some(idx);
+                }
+                Key::Character(c) if state.modifiers.control_key() && c == "7" => {
+                    let idx = state.keyboard_view.map_or(2, |v| if v == 2 { 3 } else { 2 });
+                    let (yaw, pitch) = VIEW_TARGETS[idx];
+                    state.animation.start(&state.camera, yaw, pitch);
+                    state.keyboard_view = Some(idx);
+                }
+                Key::Character(c) if state.modifiers.control_key() && c == "3" => {
+                    let idx = state.keyboard_view.map_or(1, |v| if v == 1 { 0 } else { 1 });
+                    let (yaw, pitch) = VIEW_TARGETS[idx];
+                    state.animation.start(&state.camera, yaw, pitch);
+                    state.keyboard_view = Some(idx);
                 }
                 _ => {}
             },
@@ -1142,13 +1027,18 @@ impl ApplicationHandler for ViewerApp {
 
                 if state.mouse_pressed[0] {
                     state.camera.rotate(dx, dy);
+                    state.animation.stop();
                 }
                 if state.mouse_pressed[1] {
                     state.camera.pan(dx, dy);
+                    state.animation.stop();
                 }
                 if state.mouse_pressed[2] {
                     state.camera.zoom(dy * 0.005);
+                    state.animation.stop();
                 }
+
+                state.gizmo_renderer.set_hovered(&state.device, None);
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let zoom_factor = match delta {
@@ -1171,10 +1061,22 @@ impl ApplicationHandler for ViewerApp {
     }
 }
 
+// ── Gizmo helpers ─────────────────────────────────────────────────────────
+
+const VIEW_TARGETS: [(f64, f64); 6] = [
+    (0.0, 0.0),       // 0: +X (YZ plane from +X)
+    (std::f64::consts::PI, 0.0), // 1: -X (YZ plane from -X)
+    (0.0, std::f64::consts::FRAC_PI_2), // 2: +Y (XZ plane from above)
+    (0.0, -std::f64::consts::FRAC_PI_2), // 3: -Y (XZ plane from below)
+    (std::f64::consts::FRAC_PI_2, 0.0), // 4: +Z (XY plane from +Z)
+    (-std::f64::consts::FRAC_PI_2, 0.0), // 5: -Z (XY plane from -Z)
+];
+
 // ── Click handling ────────────────────────────────────────────────────────
 
 impl ViewerApp {
     fn handle_click(state: &mut ViewerState, viewer_tx: &Sender<ViewerToRepl>) {
+        // Shape picking from mouse click
         let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
         let view_proj = state.camera.matrix(aspect);
         let inv_view_proj = view_proj.inverse();
@@ -1183,14 +1085,13 @@ impl ViewerApp {
         let ndc_x = (state.mouse_pos.x / state.size.width as f64) * 2.0 - 1.0;
         let ndc_y = 1.0 - (state.mouse_pos.y / state.size.height as f64) * 2.0;
 
-        let near_h = inv_view_proj * DVec4::new(ndc_x, ndc_y, -1.0, 1.0);
-        let far_h = inv_view_proj * DVec4::new(ndc_x, ndc_y, 1.0, 1.0);
+        let near_h = inv_view_proj * glam::DVec4::new(ndc_x, ndc_y, -1.0, 1.0);
+        let far_h = inv_view_proj * glam::DVec4::new(ndc_x, ndc_y, 1.0, 1.0);
         let near = near_h.truncate() / near_h.w;
         let far = far_h.truncate() / far_h.w;
 
         let origin = near;
         let dir = (far - near).normalize();
-
 
         // Collect visible mesh data for picking
         let registry = global_shape_registry();
@@ -1215,6 +1116,12 @@ impl ViewerApp {
     }
 
     fn render(state: &mut ViewerState) {
+        // Update camera animation
+        let now = std::time::Instant::now();
+        let dt = (now - state.last_time).as_secs_f64();
+        state.last_time = now;
+        state.animation.update(&mut state.camera, dt);
+
         // Update camera uniforms
         let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
         let view_proj = state.camera.matrix(aspect);
@@ -1223,6 +1130,7 @@ impl ViewerApp {
         };
         state.surface_drawer.update_uniforms(&state.queue, &uniforms);
         state.edge_drawer.update_uniforms(&state.queue, &uniforms);
+        state.gizmo_renderer.update_uniforms(&state.queue, &state.device, &state.camera);
 
         // Rebuild GPU data only if registry has changed (dirty tracking)
         let current_gen = REGISTRY_GENERATION.load(std::sync::atomic::Ordering::Relaxed);
@@ -1308,6 +1216,7 @@ impl ViewerApp {
                 label: Some("render encoder"),
             });
 
+        // Main scene render pass
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main pass"),
@@ -1336,25 +1245,10 @@ impl ViewerApp {
                 occlusion_query_set: None,
             });
 
-            // Grid and axes (no depth test, overlay style)
+            // Grid (no depth test, overlay style)
             pass.set_bind_group(0, &state.edge_drawer.uniform_bind_group, &[]);
             pass.set_pipeline(&state.edge_drawer.grid_pipeline);
             state.grid_renderer.render(&mut pass);
-            state.axis_renderer.render(&mut pass);
-
-            // Axis cone tips (solid meshes)
-            if let (Some(cone_pipeline), Some(cone_vb), Some(cone_ib)) = (
-                &state.cone_pipeline,
-                &state.axis_cone_buffer,
-                &state.axis_cone_index_buffer,
-            ) {
-                if state.axis_cone_num_indices > 0 {
-                    pass.set_pipeline(cone_pipeline);
-                    pass.set_vertex_buffer(0, cone_vb.slice(..));
-                    pass.set_index_buffer(cone_ib.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..state.axis_cone_num_indices, 0, 0..1);
-                }
-            }
 
             // Mesh surfaces (depth test: Less, writes depth)
             state.surface_drawer.render(&mut pass, state.selected_id);
@@ -1371,6 +1265,47 @@ impl ViewerApp {
                     state.active_num_instances,
                     state.show_back_edges,
                 );
+        }
+
+        // Gizmo overlay pass (no depth, alpha blending, top-right viewport)
+        {
+            let gs = state.gizmo_viewport_size;
+            let gm = state.gizmo_margin;
+            let gx = state.size.width.saturating_sub(gs + gm);
+            let gy = gm;
+
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("gizmo pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &state.gizmo_depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            pass.set_viewport(
+                gx as f32,
+                gy as f32,
+                gs as f32,
+                gs as f32,
+                0.0,
+                1.0,
+            );
+            pass.set_scissor_rect(gx, gy, gs, gs);
+            state.gizmo_renderer.render(&mut pass);
         }
 
         state.queue.submit(Some(encoder.finish()));

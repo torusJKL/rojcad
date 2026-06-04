@@ -79,9 +79,13 @@ impl OrbitCamera {
     }
 
     pub fn up(&self) -> DVec3 {
-        let forward = (self.target - self.position()).normalize();
+        let forward = self.forward();
         let right = forward.cross(DVec3::Y).normalize();
         right.cross(forward).normalize()
+    }
+
+    pub fn forward(&self) -> DVec3 {
+        (self.target - self.position()).normalize()
     }
 }
 

@@ -7,6 +7,7 @@ use crate::types::{MeshData, ShapeId};
 
 pub mod app;
 pub mod camera;
+pub mod gizmo;
 pub mod pick;
 
 /// Messages from the viewer thread back to the REPL thread.
