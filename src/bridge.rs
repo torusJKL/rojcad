@@ -135,6 +135,71 @@ unsafe extern "C" {
         cx: *const c_double,
         cy: *const c_double,
         cz: *const c_double,
+        angle: *const c_double,
+    );
+
+    pub fn rust_init_cube(
+        dest: *mut c_void,
+        size: c_double,
+        cx: *const c_double,
+        cy: *const c_double,
+        cz: *const c_double,
+    );
+
+    pub fn rust_init_box_from_corners(
+        dest: *mut c_void,
+        c1x: c_double, c1y: c_double, c1z: c_double,
+        c2x: c_double, c2y: c_double, c2z: c_double,
+    );
+
+    pub fn rust_init_cylinder(
+        dest: *mut c_void,
+        radius: c_double,
+        height: c_double,
+        cx: *const c_double,
+        cy: *const c_double,
+        cz: *const c_double,
+    );
+
+    pub fn rust_init_cylinder_from_points(
+        dest: *mut c_void,
+        p1x: c_double, p1y: c_double, p1z: c_double,
+        p2x: c_double, p2y: c_double, p2z: c_double,
+        radius: c_double,
+    );
+
+    pub fn rust_init_cylinder_point_dir(
+        dest: *mut c_void,
+        px: c_double, py: c_double, pz: c_double,
+        radius: c_double,
+        dx: c_double, dy: c_double, dz: c_double,
+        height: c_double,
+    );
+
+    pub fn rust_init_cone(
+        dest: *mut c_void,
+        bottom_radius: c_double,
+        top_radius: c_double,
+        height: c_double,
+        cx: *const c_double,
+        cy: *const c_double,
+        cz: *const c_double,
+        angle: *const c_double,
+    );
+
+    pub fn rust_init_torus(
+        dest: *mut c_void,
+        ring_radius: c_double,
+        tube_radius: c_double,
+        cx: *const c_double,
+        cy: *const c_double,
+        cz: *const c_double,
+        zx: *const c_double,
+        zy: *const c_double,
+        zz: *const c_double,
+        angle: *const c_double,
+        angle_start: *const c_double,
+        angle_end: *const c_double,
     );
 
     pub fn rust_init_cut(dest: *mut c_void, a: *mut c_void, b: *mut c_void);

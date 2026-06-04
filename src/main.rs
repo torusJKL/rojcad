@@ -1,8 +1,8 @@
 //! rojcad — Headless parametric CAD system with embedded Janet DSL.
 //!
 //! This binary embeds the Janet interpreter, registers CAD functions
-//! (make-box, make-sphere, cut, common, shape-type, hide, show, visible?,
-//! write-step, write-stl), and starts a TCP REPL server on port 9365
+//! (box, sphere, cylinder, cone, torus, cut, common, shape-type, hide, show,
+//! visible?, write-step, write-stl), and starts a TCP REPL server on port 9365
 //! (configurable via --port).
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
@@ -101,6 +101,7 @@ pub unsafe extern "C" fn rust_init_sphere(
     cx: *const c_double,
     cy: *const c_double,
     cz: *const c_double,
+    angle: *const c_double,
 ) {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
@@ -108,7 +109,12 @@ pub unsafe extern "C" fn rust_init_sphere(
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
-        cad::make_sphere(radius, center)
+        let angle_val = if angle.is_null() {
+            None
+        } else {
+            unsafe { Some(*angle) }
+        };
+        cad::make_sphere(radius, center, angle_val)
     }));
     match result {
         Ok(shape_data) => {
@@ -116,6 +122,213 @@ pub unsafe extern "C" fn rust_init_sphere(
         }
         Err(_) => {
             panic!("rust_init_sphere failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a cube at the given destination.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_cube(
+    dest: *mut c_void,
+    size: c_double,
+    cx: *const c_double,
+    cy: *const c_double,
+    cz: *const c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let center = if cx.is_null() || cy.is_null() || cz.is_null() {
+            None
+        } else {
+            unsafe { Some((*cx, *cy, *cz)) }
+        };
+        cad::make_cube(size, center)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_cube failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a box from two opposite corners.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_box_from_corners(
+    dest: *mut c_void,
+    c1x: c_double, c1y: c_double, c1z: c_double,
+    c2x: c_double, c2y: c_double, c2z: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::make_box_from_corners((c1x, c1y, c1z), (c2x, c2y, c2z))
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_box_from_corners failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a cylinder at the given destination.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_cylinder(
+    dest: *mut c_void,
+    radius: c_double,
+    height: c_double,
+    cx: *const c_double,
+    cy: *const c_double,
+    cz: *const c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let center = if cx.is_null() || cy.is_null() || cz.is_null() {
+            None
+        } else {
+            unsafe { Some((*cx, *cy, *cz)) }
+        };
+        cad::make_cylinder(radius, height, center)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_cylinder failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a cylinder between two points.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_cylinder_from_points(
+    dest: *mut c_void,
+    p1x: c_double, p1y: c_double, p1z: c_double,
+    p2x: c_double, p2y: c_double, p2z: c_double,
+    radius: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::make_cylinder_from_points((p1x, p1y, p1z), (p2x, p2y, p2z), radius)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_cylinder_from_points failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a cylinder at a point extending in a direction.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_cylinder_point_dir(
+    dest: *mut c_void,
+    px: c_double, py: c_double, pz: c_double,
+    radius: c_double,
+    dx: c_double, dy: c_double, dz: c_double,
+    height: c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::make_cylinder_point_dir((px, py, pz), radius, (dx, dy, dz), height)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_cylinder_point_dir failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a cone at the given destination.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_cone(
+    dest: *mut c_void,
+    bottom_radius: c_double,
+    top_radius: c_double,
+    height: c_double,
+    cx: *const c_double,
+    cy: *const c_double,
+    cz: *const c_double,
+    angle: *const c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let center = if cx.is_null() || cy.is_null() || cz.is_null() {
+            None
+        } else {
+            unsafe { Some((*cx, *cy, *cz)) }
+        };
+        let angle_val = if angle.is_null() {
+            None
+        } else {
+            unsafe { Some(*angle) }
+        };
+        cad::make_cone(bottom_radius, top_radius, height, center, angle_val)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_cone failed");
+        }
+    }
+}
+
+/// Initialize a ShapeData as a torus at the given destination.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_torus(
+    dest: *mut c_void,
+    ring_radius: c_double,
+    tube_radius: c_double,
+    cx: *const c_double,
+    cy: *const c_double,
+    cz: *const c_double,
+    zx: *const c_double,
+    zy: *const c_double,
+    zz: *const c_double,
+    angle: *const c_double,
+    angle_start: *const c_double,
+    angle_end: *const c_double,
+) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let center = if cx.is_null() || cy.is_null() || cz.is_null() {
+            None
+        } else {
+            unsafe { Some((*cx, *cy, *cz)) }
+        };
+        let z_axis = if zx.is_null() || zy.is_null() || zz.is_null() {
+            None
+        } else {
+            unsafe { Some((*zx, *zy, *zz)) }
+        };
+        let angle_val = if angle.is_null() {
+            None
+        } else {
+            unsafe { Some(*angle) }
+        };
+        let a_start = if angle_start.is_null() {
+            None
+        } else {
+            unsafe { Some(*angle_start) }
+        };
+        let a_end = if angle_end.is_null() {
+            None
+        } else {
+            unsafe { Some(*angle_end) }
+        };
+        cad::make_torus(ring_radius, tube_radius, center, z_axis, angle_val, a_start, a_end)
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_torus failed");
         }
     }
 }

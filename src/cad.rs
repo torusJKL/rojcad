@@ -1,6 +1,6 @@
 //! CAD operations — Rust wrappers around opencascade-rs.
 //!
-//! Implements: box, sphere, cut, common, shape type, export.
+//! Implements: box, sphere, cylinder, cone, torus, cut, common, shape type, export.
 
 use std::f64::consts::TAU;
 
@@ -102,10 +102,10 @@ const SYNTHETIC_WIREFRAME_THRESHOLD: usize = 8;
 pub fn tessellate_and_update(shape_id: u64, shape: &Shape) {
     let mesh = extract_mesh(shape);
     let mut edge_polylines = extract_edge_polylines(shape);
-    if edge_polylines.len() < SYNTHETIC_WIREFRAME_THRESHOLD {
-        if let Some(ref m) = mesh {
-            edge_polylines.extend(generate_synthetic_wireframe(m));
-        }
+    if edge_polylines.len() < SYNTHETIC_WIREFRAME_THRESHOLD
+        && let Some(ref m) = mesh
+    {
+        edge_polylines.extend(generate_synthetic_wireframe(m));
     }
     global_shape_registry().update(shape_id, mesh, edge_polylines);
 }
@@ -143,14 +143,183 @@ pub fn make_box(
     sd
 }
 
+/// Create a cube with the given side length.
+///
+/// One corner at (0,0,0) by default.
+/// If `center` is provided, the cube is centered at that point.
+pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>) -> ShapeData {
+    assert_valid_dimension(size, "size");
+    let mut shape = Shape::cube(size);
+    if let Some((cx, cy, cz)) = center {
+        translate_shape(&mut shape, cx, cy, cz);
+    }
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a box from two opposite corners.
+pub fn make_box_from_corners(
+    corner1: (f64, f64, f64),
+    corner2: (f64, f64, f64),
+) -> ShapeData {
+    let c1 = DVec3::new(corner1.0, corner1.1, corner1.2);
+    let c2 = DVec3::new(corner2.0, corner2.1, corner2.2);
+    let shape = Shape::box_from_corners(c1, c2);
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
 /// Create a sphere with the given radius.
 ///
 /// The sphere is centered at (0,0,0) by default.
 /// If `center` is provided, the sphere is centered at that point.
-pub fn make_sphere(radius: f64, center: Option<(f64, f64, f64)>) -> ShapeData {
+/// If `angle` is provided, creates a partial sphere (e.g., hemisphere).
+pub fn make_sphere(
+    radius: f64,
+    center: Option<(f64, f64, f64)>,
+    angle: Option<f64>,
+) -> ShapeData {
     assert_valid_dimension(radius, "radius");
 
-    let mut shape = Shape::sphere(radius).build();
+    let mut builder = Shape::sphere(radius);
+    if let Some(a) = angle {
+        builder = builder.z_angle(a);
+    }
+    let mut shape = builder.build();
+    if let Some((cx, cy, cz)) = center {
+        translate_shape(&mut shape, cx, cy, cz);
+    }
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a cylinder with the given radius and height along the Z axis.
+///
+/// The base is at Z=0 by default.
+/// If `center` is provided, the cylinder is centered at that point.
+pub fn make_cylinder(
+    radius: f64,
+    height: f64,
+    center: Option<(f64, f64, f64)>,
+) -> ShapeData {
+    assert_valid_dimension(radius, "radius");
+    assert_valid_dimension(height, "height");
+
+    let shape = if let Some((cx, cy, cz)) = center {
+        Shape::cylinder_centered(DVec3::new(cx, cy, cz), radius, DVec3::Z, height)
+    } else {
+        Shape::cylinder_radius_height(radius, height)
+    };
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a cylinder between two points with the given radius.
+pub fn make_cylinder_from_points(
+    p1: (f64, f64, f64),
+    p2: (f64, f64, f64),
+    radius: f64,
+) -> ShapeData {
+    assert_valid_dimension(radius, "radius");
+    let shape = Shape::cylinder_from_points(
+        DVec3::new(p1.0, p1.1, p1.2),
+        DVec3::new(p2.0, p2.1, p2.2),
+        radius,
+    );
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a cylinder at a given point, extending in the given direction.
+pub fn make_cylinder_point_dir(
+    point: (f64, f64, f64),
+    radius: f64,
+    dir: (f64, f64, f64),
+    height: f64,
+) -> ShapeData {
+    assert_valid_dimension(radius, "radius");
+    assert_valid_dimension(height, "height");
+    let shape = Shape::cylinder(
+        DVec3::new(point.0, point.1, point.2),
+        radius,
+        DVec3::new(dir.0, dir.1, dir.2),
+        height,
+    );
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a cone with the given bottom radius, top radius, and height.
+///
+/// A full cone has top_radius = 0. A truncated cone has top_radius > 0.
+/// If `center` is provided, the cone is centered at that point.
+/// If `angle` is provided, creates a partial cone.
+pub fn make_cone(
+    bottom_radius: f64,
+    top_radius: f64,
+    height: f64,
+    center: Option<(f64, f64, f64)>,
+    angle: Option<f64>,
+) -> ShapeData {
+    assert_valid_dimension(bottom_radius, "bottom_radius");
+    assert_valid_dimension(height, "height");
+
+    let mut builder = Shape::cone()
+        .bottom_radius(bottom_radius)
+        .top_radius(top_radius)
+        .height(height);
+    if let Some(a) = angle {
+        builder = builder.z_angle(a);
+    }
+    let mut shape = builder.build();
+    if let Some((cx, cy, cz)) = center {
+        translate_shape(&mut shape, cx, cy, cz);
+    }
+    let sd = ShapeData::new(shape);
+    tessellate_and_update(sd.shape_id, &sd.shape);
+    sd
+}
+
+/// Create a torus with the given ring radius and tube radius.
+///
+/// If `center` is provided, the torus is centered at that point.
+/// If `z_axis` is provided, sets the torus orientation.
+/// If `angle` is provided, creates a partial torus (rotation sweep).
+/// If `angle_start` / `angle_end` are provided, limits the torus arc.
+pub fn make_torus(
+    ring_radius: f64,
+    tube_radius: f64,
+    center: Option<(f64, f64, f64)>,
+    z_axis: Option<(f64, f64, f64)>,
+    angle: Option<f64>,
+    angle_start: Option<f64>,
+    angle_end: Option<f64>,
+) -> ShapeData {
+    assert_valid_dimension(ring_radius, "ring_radius");
+    assert_valid_dimension(tube_radius, "tube_radius");
+
+    let mut builder = Shape::torus()
+        .radius_1(ring_radius)
+        .radius_2(tube_radius);
+    if let Some((x, y, z)) = z_axis {
+        builder = builder.z_axis(DVec3::new(x, y, z));
+    }
+    if let Some(a) = angle_start {
+        builder = builder.angle_1(a);
+    }
+    if let Some(a) = angle_end {
+        builder = builder.angle_2(a);
+    }
+    if let Some(a) = angle {
+        builder = builder.z_angle(a);
+    }
+    let mut shape = builder.build();
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
@@ -224,6 +393,7 @@ fn assert_valid_dimension(value: f64, name: &str) {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,15 +417,21 @@ mod tests {
     #[test]
     fn test_make_sphere_default() {
         // 10.2: Test sphere creation via raw Rust API
-        let sd = make_sphere(10.0, None);
+        let sd = make_sphere(10.0, None, None);
         assert_eq!(sd.type_string(), "SOLID");
         assert!(sd.visible);
     }
 
     #[test]
     fn test_make_sphere_centered() {
-        let sd = make_sphere(5.0, Some((1.0, 2.0, 3.0)));
+        let sd = make_sphere(5.0, Some((1.0, 2.0, 3.0)), None);
         assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    #[should_panic(expected = "radius must be positive")]
+    fn test_make_sphere_invalid_radius() {
+        make_sphere(-1.0, None, None);
     }
 
     #[test]
@@ -266,16 +442,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "radius must be positive")]
-    fn test_make_sphere_invalid_radius() {
-        make_sphere(-1.0, None);
-    }
-
-    #[test]
     fn test_cut() {
         // 10.3: Test cut via raw Rust API
         let box_a = make_box(20.0, 20.0, 20.0, None);
-        let sphere_b = make_sphere(10.0, Some((10.0, 10.0, 10.0)));
+        let sphere_b = make_sphere(10.0, Some((10.0, 10.0, 10.0)), None);
         let result = cut(&box_a, &sphere_b);
         // OCCT may return a COMPOUND or SOLID for boolean results
         assert!(
@@ -291,7 +461,7 @@ mod tests {
     #[test]
     fn test_common() {
         // 10.4: Test common via raw Rust API
-        let sphere_a = make_sphere(10.0, None);
+        let sphere_a = make_sphere(10.0, None, None);
         let box_b = make_box(10.0, 10.0, 10.0, None);
         let result = common(&sphere_a, &box_b);
         // Overlapping shapes should produce a valid result
@@ -331,7 +501,7 @@ mod tests {
     #[test]
     fn test_write_stl() {
         // 10.7: Test STL export
-        let sd = make_sphere(10.0, None);
+        let sd = make_sphere(10.0, None, None);
         let path = "/tmp/test_rojcad_sphere.stl";
         assert!(write_stl(&sd, path).is_ok());
         assert!(std::path::Path::new(path).exists());
@@ -355,6 +525,135 @@ mod tests {
     #[test]
     fn test_shape_type() {
         assert_eq!(make_box(10.0, 10.0, 10.0, None).type_string(), "SOLID");
-        assert_eq!(make_sphere(10.0, None).type_string(), "SOLID");
+        assert_eq!(make_sphere(10.0, None, None).type_string(), "SOLID");
+    }
+
+    // ── New Primitive Tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_make_cube_default() {
+        let sd = make_cube(5.0, None);
+        assert_eq!(sd.type_string(), "SOLID");
+        assert!(sd.visible);
+    }
+
+    #[test]
+    fn test_make_cube_centered() {
+        let sd = make_cube(5.0, Some((1.0, 2.0, 3.0)));
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_box_from_corners() {
+        let sd = make_box_from_corners((0.0, 0.0, 0.0), (10.0, 20.0, 30.0));
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_sphere_with_angle() {
+        let sd = make_sphere(10.0, None, Some(std::f64::consts::PI));
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cylinder_default() {
+        let sd = make_cylinder(5.0, 10.0, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cylinder_centered() {
+        let sd = make_cylinder(5.0, 10.0, Some((0.0, 0.0, 5.0)));
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cylinder_from_points() {
+        let sd = make_cylinder_from_points((0.0, 0.0, 0.0), (0.0, 0.0, 10.0), 5.0);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cylinder_point_dir() {
+        let sd = make_cylinder_point_dir((0.0, 0.0, 0.0), 5.0, (0.0, 0.0, 1.0), 10.0);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cone_full() {
+        let sd = make_cone(5.0, 0.0, 10.0, None, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cone_truncated() {
+        let sd = make_cone(5.0, 3.0, 10.0, None, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_cone_with_angle() {
+        let sd = make_cone(5.0, 0.0, 10.0, None, Some(std::f64::consts::PI));
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_torus_default() {
+        let sd = make_torus(20.0, 10.0, None, None, None, None, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_torus_centered() {
+        let sd = make_torus(20.0, 10.0, Some((0.0, 0.0, 5.0)), None, None, None, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_make_torus_partial() {
+        let sd = make_torus(20.0, 10.0, None, None, Some(std::f64::consts::PI), None, None);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    #[should_panic(expected = "size must be positive")]
+    fn test_make_cube_invalid_size() {
+        make_cube(0.0, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "radius must be positive")]
+    fn test_make_cylinder_invalid_radius() {
+        make_cylinder(0.0, 10.0, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "height must be positive")]
+    fn test_make_cylinder_invalid_height() {
+        make_cylinder(5.0, 0.0, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "bottom_radius must be positive")]
+    fn test_make_cone_invalid_bottom_radius() {
+        make_cone(0.0, 0.0, 10.0, None, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "height must be positive")]
+    fn test_make_cone_invalid_height() {
+        make_cone(5.0, 0.0, 0.0, None, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ring_radius must be positive")]
+    fn test_make_torus_invalid_ring_radius() {
+        make_torus(0.0, 10.0, None, None, None, None, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "tube_radius must be positive")]
+    fn test_make_torus_invalid_tube_radius() {
+        make_torus(20.0, 0.0, None, None, None, None, None);
     }
 }

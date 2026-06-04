@@ -19,7 +19,7 @@
   (if (= (type compiled) :function)
     (resume (fiber/new compiled))
     (string "compile error: " (get compiled :error) " line:" (get compiled :line)))))
-(def port (or (dyn '*netrepl-port*') 9365))
+(def port (if (dyn '*netrepl-port*) (dyn '*netrepl-port*) 9365))
 (def addr "127.0.0.1")
 
 (def connect-handler (fn [stream]
