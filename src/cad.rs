@@ -411,6 +411,19 @@ pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3, eager: bool) -> Shape
     sd
 }
 
+// ── Import ────────────────────────────────────────────────────────────────────
+
+/// Read a shape from a STEP file.
+pub fn read_step(path: &str, eager: bool) -> Result<ShapeData, String> {
+    let shape = Shape::read_step(path)
+        .map_err(|e| format!("STEP import failed: {}", e))?;
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 /// Write a shape to a STEP file.
@@ -538,6 +551,24 @@ mod tests {
         assert!(std::path::Path::new(path).exists());
         // Clean up
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_read_step_roundtrip() {
+        // Read back a STEP file written by write_step
+        let sd = make_box(10.0, 20.0, 30.0, None, false);
+        let path = "/tmp/test_rojcad_roundtrip.step";
+        assert!(write_step(&sd, path).is_ok());
+        let imported = read_step(path, false).expect("should read back STEP file");
+        assert!(imported.shape_id > 0);
+        assert!(imported.visible);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_read_step_file_not_found() {
+        let result = read_step("/tmp/nonexistent_rojcad_file.step", false);
+        assert!(result.is_err());
     }
 
     #[test]

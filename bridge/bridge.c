@@ -81,6 +81,9 @@ extern void rust_init_mirror(void *dest, void *data, double ox, double oy, doubl
 /* Inspection */
 extern const char *rust_shape_type(void *data);
 
+/* Import */
+extern void rust_init_read_step(void *dest, const char *path, int eager);
+
 /* Export */
 extern int rust_write_step(void *data, const char *path);
 extern int rust_write_stl(void *data, const char *path);
@@ -1087,6 +1090,27 @@ JANET_FN(cad_write_stl,
     return janet_wrap_nil();
 }
 
+JANET_FN(cad_read_step,
+         "(read-step path &keys :eager :hide)",
+         "Read a STEP file from disk and return a shape.\n\n"
+         "Example:\n"
+         "  (read-step \"/tmp/model.step\")       — load from file\n"
+         "  (read-step \"/tmp/model.step\" :eager) — load and tessellate\n\n"
+         "Returns a rojcad/shape abstract value. Signals an error on failure.")
+{
+    janet_arity(argc, 1, 1);
+    if (!janet_checktype(argv[0], JANET_STRING)) {
+        janet_panic("read-step: path must be a string");
+    }
+    const uint8_t *path_bytes = janet_unwrap_string(argv[0]);
+    const char *path = (const char *)path_bytes;
+    int eager = has_eager(argv, argc);
+    void *shape = alloc_shape();
+    rust_init_read_step(shape, path, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
 /* ── Registration ───────────────────────────────────────────────────────── */
 
 void cad_register_functions(JanetTable *env) {
@@ -1119,6 +1143,7 @@ void cad_register_functions(JanetTable *env) {
         {"visible?",               cad_visible_q,              cad_visible_q_docstring_},
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
+        {"read-step",              cad_read_step,              cad_read_step_docstring_},
         {"on-select",              cad_on_select,              cad_on_select_docstring_},
         {"poll-selection",         cad_poll_selection,         cad_poll_selection_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},

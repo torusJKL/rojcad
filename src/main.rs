@@ -584,6 +584,31 @@ pub unsafe extern "C" fn rust_shape_get_visible(data: *mut c_void) -> c_int {
     shape_data.visible as c_int
 }
 
+// ── Import ───────────────────────────────────────────────────────────────────
+
+/// Read a shape from a STEP file, initializing at the given destination.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_read_step(
+    dest: *mut c_void,
+    path: *const c_char,
+    eager: c_int,
+) {
+    let eager = eager != 0;
+    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::read_step(&path_str, eager)
+            .unwrap_or_else(|e| panic!("rust_init_read_step failed: {}", e))
+    }));
+    match result {
+        Ok(shape_data) => {
+            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+        }
+        Err(_) => {
+            panic!("rust_init_read_step failed");
+        }
+    }
+}
+
 // ── Export ──────────────────────────────────────────────────────────────────
 
 /// Write a shape to a STEP file. Returns 0 on success, 1 on failure.
