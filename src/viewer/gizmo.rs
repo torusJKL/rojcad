@@ -39,24 +39,38 @@ fn to_array(v: Vec3) -> [f32; 3] {
     [v.x, v.y, v.z]
 }
 
-fn generate_line_quad(a: Vec3, b: Vec3, color: [f32; 4]) -> Vec<GizmoVertex> {
-    let dir = (b - a).normalize();
-    let up_axis = if dir.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
-    let perp = dir.cross(up_axis).normalize() * (LINE_WIDTH * 0.5);
+fn generate_cylinder(center: Vec3, tip: Vec3, color: [f32; 4], radius: f32, segments: u32) -> Vec<GizmoVertex> {
+    let dir = (tip - center).normalize();
+    let up = if dir.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
+    let right = dir.cross(up).normalize();
+    let forward = right.cross(dir);
 
-    let a0 = a - perp;
-    let a1 = a + perp;
-    let b0 = b - perp;
-    let b1 = b + perp;
+    let mut verts = Vec::with_capacity((segments * 6) as usize);
 
-    vec![
-        GizmoVertex { position: to_array(a0), color },
-        GizmoVertex { position: to_array(b0), color },
-        GizmoVertex { position: to_array(a1), color },
-        GizmoVertex { position: to_array(b0), color },
-        GizmoVertex { position: to_array(b1), color },
-        GizmoVertex { position: to_array(a1), color },
-    ]
+    for i in 0..segments {
+        let angle0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let angle1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+
+        let (sin0, cos0) = angle0.sin_cos();
+        let (sin1, cos1) = angle1.sin_cos();
+
+        let r0 = right * cos0 + forward * sin0;
+        let r1 = right * cos1 + forward * sin1;
+
+        let c0 = center + r0 * radius;
+        let c1 = center + r1 * radius;
+        let t0 = tip + r0 * radius;
+        let t1 = tip + r1 * radius;
+
+        verts.push(GizmoVertex { position: to_array(c0), color });
+        verts.push(GizmoVertex { position: to_array(t0), color });
+        verts.push(GizmoVertex { position: to_array(c1), color });
+        verts.push(GizmoVertex { position: to_array(t0), color });
+        verts.push(GizmoVertex { position: to_array(t1), color });
+        verts.push(GizmoVertex { position: to_array(c1), color });
+    }
+
+    verts
 }
 
 fn generate_sphere(center: Vec3, color: [f32; 4], radius: f32) -> Vec<GizmoVertex> {
@@ -312,11 +326,13 @@ impl GizmoRenderer {
             let tip = dir * AXIS_LEN;
             let color = axis_color(i);
 
-            verts.extend(generate_line_quad(Vec3::ZERO, tip, color));
+            verts.extend(generate_cylinder(Vec3::ZERO, tip, color, LINE_WIDTH * 0.5, SPHERE_LON));
 
             let r = if hovered == Some(i) { CIRCLE_RADIUS * HOVER_SCALE } else { CIRCLE_RADIUS };
             verts.extend(generate_sphere(tip, color, r));
         }
+
+        verts.extend(generate_sphere(Vec3::ZERO, [0.4, 0.4, 0.4, 1.0], LINE_WIDTH));
 
         verts
     }
