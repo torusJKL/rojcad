@@ -738,10 +738,29 @@ fn parse_port_arg() -> Option<u16> {
     None
 }
 
+fn parse_eval_args() -> Vec<String> {
+    let mut exprs = Vec::new();
+    let mut args = std::env::args().peekable();
+    while let Some(arg) = args.next() {
+        if let Some(e) = arg.strip_prefix("--eval=") {
+            exprs.push(e.to_string());
+        }
+        if arg == "--eval" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --eval requires an argument");
+                std::process::exit(1);
+            });
+            exprs.push(next);
+        }
+    }
+    exprs
+}
+
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
     let port: u16 = parse_port_arg().unwrap_or(9365);
+    let eval_exprs: Vec<String> = parse_eval_args();
 
     // Initialize edge style defaults
     init_edge_color_defaults();
@@ -803,7 +822,13 @@ fn main() {
     };
 
     // Embed and run boot.janet
-    let boot_code = include_str!("../boot.janet");
+    let boot_base = include_str!("../boot.janet");
+    let boot_code = if false == eval_exprs.is_empty() {
+        // Append --eval expression(s) as raw Janet code at end of boot.janet.
+        format!("{}\n\n{}\n", boot_base, eval_exprs.join("\n"))
+    } else {
+        boot_base.to_string()
+    };
     let boot_c = CString::new(boot_code).unwrap_or_else(|_| CString::new("").unwrap());
     let name_c = CString::new("boot.janet").unwrap();
 

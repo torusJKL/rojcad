@@ -32,7 +32,8 @@ default:
     @echo "  run-release    Start the server (release build)"
     @echo "  lint           Run clippy"
     @echo "  fmt            Format code with rustfmt"
-    @echo "  doc            Build documentation"
+    @echo "  doc            Build Rust documentation"
+    @echo "  doc-janet      Generate Janet API reference (Markdown + HTML)"
     @echo "  deps           Show dependency tree"
     @echo "  clean          Remove build artifacts"
     @echo "  clean-all      Remove all artifacts + local cargo cache"
@@ -108,6 +109,10 @@ doc:
 # Open docs in browser
 doc-open:
     {{_env}} cargo doc --no-deps --open
+
+# Generate Janet API reference (Markdown + HTML)
+doc-janet:
+    {{_env}} cargo run -- --headless --eval '(do (dump-docs "doc") (os/exit 0))'
 
 # ── Clean ──────────────────────────────────────────────────────────────────────
 
