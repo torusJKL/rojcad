@@ -1,7 +1,7 @@
 # boot.janet — TCP REPL server for rojcad
 
 (def try-catch (fn [body err-handler]
-  (def f (fiber/new body))
+  (def f (fiber/new body :e))
   (def result (resume f))
   (if (= (fiber/status f) :error)
     (err-handler result)
@@ -45,7 +45,7 @@
     (def parsed (my-parse line))
     (if (not= parsed nil)
       (do
-        (def eval-result (my-eval parsed env))
+        (def eval-result (try-catch (fn [] (my-eval parsed env)) (fn [e] e)))
         (def result-str (string eval-result))
         (:write stream result-str)
         (:write stream "\n"))
@@ -77,6 +77,6 @@
 (def accept-loop (fn []
   (while true
     (def conn (net/accept listen))
-    (ev/go (fiber/new (fn [] (connect-handler conn)))))))
+    (ev/go (fn [] (connect-handler conn))))))
 
 (ev/go (fiber/new accept-loop))
