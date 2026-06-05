@@ -244,7 +244,9 @@ unsafe extern "C" {
     pub fn rust_write_step(data: *mut c_void, path: *const c_char) -> c_int;
     pub fn rust_write_stl(data: *mut c_void, path: *const c_char) -> c_int;
 
-    pub fn rust_shape_set_visible(data: *mut c_void, visible: c_int);
+    pub fn rust_shape_show(data: *mut c_void);
+    pub fn rust_shape_hide(data: *mut c_void);
+    pub fn rust_shape_remove_from_registry(data: *mut c_void);
     pub fn rust_shape_get_visible(data: *mut c_void) -> c_int;
 }
 

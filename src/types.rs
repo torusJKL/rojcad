@@ -188,33 +188,94 @@ impl Default for ShapeRegistry {
 ///
 /// This is the core data type wrapped as a Janet abstract value.
 /// It carries the OCCT `Shape` plus metadata used by the viewer (visible, color).
+///
+/// Shapes are NOT automatically registered in the viewer registry on creation.
+/// Registration happens only when `show` is explicitly called.
 pub struct ShapeData {
     pub shape_id: ShapeId,
     pub shape: Shape,
     pub visible: bool,
-    #[allow(dead_code)]
     pub color: Option<[f64; 3]>,
+    pub mesh: Option<MeshData>,
+    pub edge_polylines: Vec<Vec<[f64; 3]>>,
+    pub registered: bool,
+    pub purged: bool,
 }
 
 impl ShapeData {
-    /// Create a new shape at the origin with default visibility.
-    /// Automatically assigns a unique ID and registers in the global registry.
+    /// Create a new shape with a unique ID.
+    ///
+    /// The shape is NOT registered in the viewer registry and NOT tessellated.
+    /// Call `show` to register and optionally `:eager` at creation to tessellate early.
     pub fn new(shape: Shape) -> Self {
         let shape_id = next_shape_id();
-        let entry = ShapeEntry {
-            shape_id,
-            mesh: None,
-            edge_polylines: Vec::new(),
-            visible: true,
-            color: None,
-        };
-        global_shape_registry().register(entry);
         Self {
             shape_id,
             shape,
             visible: true,
             color: None,
+            mesh: None,
+            edge_polylines: Vec::new(),
+            registered: false,
+            purged: false,
         }
+    }
+
+    /// Tessellate the shape if not already tessellated.
+    /// Extracts mesh and edge polylines from the OCCT shape.
+    pub fn tessellate_if_needed(&mut self) {
+        if self.mesh.is_some() {
+            return;
+        }
+        let mesh = crate::cad::extract_mesh(&self.shape);
+        let mut edge_polylines = crate::cad::extract_edge_polylines(&self.shape);
+        if edge_polylines.len() < crate::cad::SYNTHETIC_WIREFRAME_THRESHOLD
+            && let Some(ref m) = mesh
+        {
+            edge_polylines.extend(crate::cad::generate_synthetic_wireframe(m));
+        }
+        self.mesh = mesh;
+        self.edge_polylines = edge_polylines;
+    }
+
+    /// Register this shape in the viewer registry, making it visible.
+    /// Tessellates first if needed.
+    pub fn show(&mut self) {
+        if self.purged {
+            panic!("shape has been purged");
+        }
+        self.tessellate_if_needed();
+        if !self.registered {
+            let entry = ShapeEntry {
+                shape_id: self.shape_id,
+                mesh: self.mesh.clone(),
+                edge_polylines: self.edge_polylines.clone(),
+                visible: true,
+                color: self.color,
+            };
+            global_shape_registry().register(entry);
+            self.registered = true;
+        } else {
+            global_shape_registry().set_visible(self.shape_id, true);
+        }
+        self.visible = true;
+    }
+
+    /// Hide the shape in the viewer. Stays registered.
+    pub fn hide(&mut self) {
+        if self.registered {
+            global_shape_registry().set_visible(self.shape_id, false);
+        }
+        self.visible = false;
+    }
+
+    /// Remove the shape from the viewer registry immediately and mark as purged.
+    pub fn remove_from_registry(&mut self) {
+        if self.registered {
+            global_shape_registry().remove(self.shape_id);
+            self.registered = false;
+        }
+        self.purged = true;
     }
 
     /// Get the shape type as a human-readable uppercase string.
@@ -230,6 +291,14 @@ impl ShapeData {
             ShapeType::Compound => "COMPOUND",
             ShapeType::CompoundSolid => "COMPOUND_SOLID",
             ShapeType::Shape => "SHAPE",
+        }
+    }
+}
+
+impl Drop for ShapeData {
+    fn drop(&mut self) {
+        if self.registered {
+            global_shape_registry().remove(self.shape_id);
         }
     }
 }

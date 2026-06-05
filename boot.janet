@@ -24,7 +24,8 @@
 
 (def connect-handler (fn [stream]
   (eprint "● client connected")
-  (def env (fiber/getenv (fiber/current)))
+  (fiber/setenv (fiber/current) core-env)
+  (def env core-env)
   (while true
     (def line-raw (try-catch (fn [] (net/read stream 4096)) (fn [e] nil)))
     (if (= line-raw nil) (break))

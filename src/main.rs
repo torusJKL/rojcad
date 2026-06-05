@@ -74,14 +74,16 @@ pub unsafe extern "C" fn rust_init_box(
     cx: *const c_double,
     cy: *const c_double,
     cz: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
-        cad::make_box(width, depth, height, center)
+        cad::make_box(width, depth, height, center, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -109,7 +111,9 @@ pub unsafe extern "C" fn rust_init_sphere(
     cy: *const c_double,
     cz: *const c_double,
     angle: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
@@ -121,7 +125,7 @@ pub unsafe extern "C" fn rust_init_sphere(
         } else {
             unsafe { Some(*angle) }
         };
-        cad::make_sphere(radius, center, angle_val)
+        cad::make_sphere(radius, center, angle_val, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -141,14 +145,16 @@ pub unsafe extern "C" fn rust_init_cube(
     cx: *const c_double,
     cy: *const c_double,
     cz: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
-        cad::make_cube(size, center)
+        cad::make_cube(size, center, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -166,9 +172,11 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
     dest: *mut c_void,
     c1x: c_double, c1y: c_double, c1z: c_double,
     c2x: c_double, c2y: c_double, c2z: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
-        cad::make_box_from_corners((c1x, c1y, c1z), (c2x, c2y, c2z))
+        cad::make_box_from_corners((c1x, c1y, c1z), (c2x, c2y, c2z), eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -189,14 +197,16 @@ pub unsafe extern "C" fn rust_init_cylinder(
     cx: *const c_double,
     cy: *const c_double,
     cz: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
-        cad::make_cylinder(radius, height, center)
+        cad::make_cylinder(radius, height, center, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -215,9 +225,11 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
     p1x: c_double, p1y: c_double, p1z: c_double,
     p2x: c_double, p2y: c_double, p2z: c_double,
     radius: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
-        cad::make_cylinder_from_points((p1x, p1y, p1z), (p2x, p2y, p2z), radius)
+        cad::make_cylinder_from_points((p1x, p1y, p1z), (p2x, p2y, p2z), radius, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -237,9 +249,11 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     radius: c_double,
     dx: c_double, dy: c_double, dz: c_double,
     height: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
-        cad::make_cylinder_point_dir((px, py, pz), radius, (dx, dy, dz), height)
+        cad::make_cylinder_point_dir((px, py, pz), radius, (dx, dy, dz), height, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -262,7 +276,9 @@ pub unsafe extern "C" fn rust_init_cone(
     cy: *const c_double,
     cz: *const c_double,
     angle: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
@@ -274,7 +290,7 @@ pub unsafe extern "C" fn rust_init_cone(
         } else {
             unsafe { Some(*angle) }
         };
-        cad::make_cone(bottom_radius, top_radius, height, center, angle_val)
+        cad::make_cone(bottom_radius, top_radius, height, center, angle_val, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -301,7 +317,9 @@ pub unsafe extern "C" fn rust_init_torus(
     angle: *const c_double,
     angle_start: *const c_double,
     angle_end: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
@@ -328,7 +346,7 @@ pub unsafe extern "C" fn rust_init_torus(
         } else {
             unsafe { Some(*angle_end) }
         };
-        cad::make_torus(ring_radius, tube_radius, center, z_axis, angle_val, a_start, a_end)
+        cad::make_torus(ring_radius, tube_radius, center, z_axis, angle_val, a_start, a_end, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -348,11 +366,13 @@ pub unsafe extern "C" fn rust_init_cut(
     dest: *mut c_void,
     a: *mut c_void,
     b: *mut c_void,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
-        cad::cut(shape_a, shape_b)
+        cad::cut(shape_a, shape_b, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -370,11 +390,13 @@ pub unsafe extern "C" fn rust_init_common(
     dest: *mut c_void,
     a: *mut c_void,
     b: *mut c_void,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
-        cad::common(shape_a, shape_b)
+        cad::common(shape_a, shape_b, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -392,11 +414,13 @@ pub unsafe extern "C" fn rust_init_fuse(
     dest: *mut c_void,
     a: *mut c_void,
     b: *mut c_void,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
-        cad::fuse(shape_a, shape_b)
+        cad::fuse(shape_a, shape_b, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -416,10 +440,12 @@ pub unsafe extern "C" fn rust_init_translate(
     dx: c_double,
     dy: c_double,
     dz: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape = unsafe { &*(data as *const ShapeData) };
-        cad::translate(shape, dx, dy, dz)
+        cad::translate(shape, dx, dy, dz, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -440,10 +466,12 @@ pub unsafe extern "C" fn rust_init_rotate(
     ay: c_double,
     az: c_double,
     angle: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape = unsafe { &*(data as *const ShapeData) };
-        cad::rotate(shape, DVec3::new(ax, ay, az), angle)
+        cad::rotate(shape, DVec3::new(ax, ay, az), angle, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -465,7 +493,9 @@ pub unsafe extern "C" fn rust_init_scale(
     cx: *const c_double,
     cy: *const c_double,
     cz: *const c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape = unsafe { &*(data as *const ShapeData) };
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
@@ -473,7 +503,7 @@ pub unsafe extern "C" fn rust_init_scale(
         } else {
             unsafe { DVec3::new(*cx, *cy, *cz) }
         };
-        cad::scale(shape, factor, center)
+        cad::scale(shape, factor, center, eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -496,10 +526,12 @@ pub unsafe extern "C" fn rust_init_mirror(
     dx: c_double,
     dy: c_double,
     dz: c_double,
+    eager: c_int,
 ) {
+    let eager = eager != 0;
     let result = catch_unwind(AssertUnwindSafe(|| {
         let shape = unsafe { &*(data as *const ShapeData) };
-        cad::mirror(shape, DVec3::new(ox, oy, oz), DVec3::new(dx, dy, dz))
+        cad::mirror(shape, DVec3::new(ox, oy, oz), DVec3::new(dx, dy, dz), eager)
     }));
     match result {
         Ok(shape_data) => {
@@ -524,13 +556,25 @@ pub unsafe extern "C" fn rust_shape_type(data: *mut c_void) -> *const c_char {
 
 // ── Visibility ──────────────────────────────────────────────────────────────
 
-/// Set the visible flag on a shape.
+/// Show a shape: tessellate if needed, register if not, set visible.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_shape_set_visible(data: *mut c_void, visible: c_int) {
+pub unsafe extern "C" fn rust_shape_show(data: *mut c_void) {
     let shape_data = unsafe { &mut *(data as *mut ShapeData) };
-    let is_visible = visible != 0;
-    shape_data.visible = is_visible;
-    global_shape_registry().set_visible(shape_data.shape_id, is_visible);
+    shape_data.show();
+}
+
+/// Hide a shape: set visible flag to false.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_shape_hide(data: *mut c_void) {
+    let shape_data = unsafe { &mut *(data as *mut ShapeData) };
+    shape_data.hide();
+}
+
+/// Remove a shape from the registry and mark it purged.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_shape_remove_from_registry(data: *mut c_void) {
+    let shape_data = unsafe { &mut *(data as *mut ShapeData) };
+    shape_data.remove_from_registry();
 }
 
 /// Get the visible flag from a shape.

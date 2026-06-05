@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Sender;
 
 use wgpu::{self, util::DeviceExt};
 #[cfg(target_os = "linux")]
@@ -23,7 +23,7 @@ use crate::types::{
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
 use super::pick::pick_shape;
-use super::ReplToViewer;
+
 use super::ViewerToRepl;
 
 const GIZMO_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -737,7 +737,6 @@ pub struct ViewerState {
 // ── ViewerApp ─────────────────────────────────────────────────────────────
 
 struct ViewerApp {
-    repl_rx: Receiver<ReplToViewer>,
     viewer_tx: Sender<ViewerToRepl>,
     running: Arc<AtomicBool>,
     state: Option<ViewerState>,
@@ -745,7 +744,6 @@ struct ViewerApp {
 
 /// Main entry point for the viewer thread.
 pub fn run_viewer(
-    repl_rx: Receiver<ReplToViewer>,
     viewer_tx: Sender<ViewerToRepl>,
     running: Arc<AtomicBool>,
 ) {
@@ -755,7 +753,6 @@ pub fn run_viewer(
     let event_loop = builder.build().expect("failed to create winit event loop");
 
     let mut app = ViewerApp {
-        repl_rx,
         viewer_tx,
         running,
         state: None,

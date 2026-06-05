@@ -7,7 +7,7 @@ use std::f64::consts::TAU;
 use glam::DVec3;
 use opencascade::primitives::{Shape, ShapeType};
 
-use crate::types::{MeshData, ShapeData, global_shape_registry};
+use crate::types::{MeshData, ShapeData};
 
 /// Extract tessellated mesh data from an OCCT shape.
 pub fn extract_mesh(shape: &Shape) -> Option<MeshData> {
@@ -94,21 +94,9 @@ pub fn generate_synthetic_wireframe(mesh: &MeshData) -> Vec<Vec<[f64; 3]>> {
 /// Number of topological edges below which we add synthetic wireframe edges.
 /// Polyhedral shapes (box has 12 edges) keep only topological edges;
 /// curved shapes (sphere has 1 seam edge) get the synthetic fallback.
-const SYNTHETIC_WIREFRAME_THRESHOLD: usize = 8;
+pub const SYNTHETIC_WIREFRAME_THRESHOLD: usize = 8;
 
-/// Tessellate a shape and update its entry in the global registry.
-/// For shapes with few topological edges (curved shapes), adds a clean
-/// synthetic wireframe (equator + meridian circles) instead of dense mesh edges.
-pub fn tessellate_and_update(shape_id: u64, shape: &Shape) {
-    let mesh = extract_mesh(shape);
-    let mut edge_polylines = extract_edge_polylines(shape);
-    if edge_polylines.len() < SYNTHETIC_WIREFRAME_THRESHOLD
-        && let Some(ref m) = mesh
-    {
-        edge_polylines.extend(generate_synthetic_wireframe(m));
-    }
-    global_shape_registry().update(shape_id, mesh, edge_polylines);
-}
+
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
@@ -122,6 +110,7 @@ pub fn make_box(
     depth: f64,
     height: f64,
     center: Option<(f64, f64, f64)>,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(width, "width");
     assert_valid_dimension(depth, "depth");
@@ -129,8 +118,6 @@ pub fn make_box(
 
     let mut shape = Shape::box_with_dimensions(width, depth, height);
     if let Some((cx, cy, cz)) = center {
-        // box_with_dimensions puts one corner at (0,0,0).
-        // To center at (cx, cy, cz), translate by (cx - w/2, cy - d/2, cz - h/2).
         translate_shape(
             &mut shape,
             cx - width / 2.0,
@@ -138,8 +125,8 @@ pub fn make_box(
             cz - height / 2.0,
         );
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -147,14 +134,14 @@ pub fn make_box(
 ///
 /// One corner at (0,0,0) by default.
 /// If `center` is provided, the cube is centered at that point.
-pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>) -> ShapeData {
+pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>, eager: bool) -> ShapeData {
     assert_valid_dimension(size, "size");
     let mut shape = Shape::cube(size);
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -162,12 +149,13 @@ pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>) -> ShapeData {
 pub fn make_box_from_corners(
     corner1: (f64, f64, f64),
     corner2: (f64, f64, f64),
+    eager: bool,
 ) -> ShapeData {
     let c1 = DVec3::new(corner1.0, corner1.1, corner1.2);
     let c2 = DVec3::new(corner2.0, corner2.1, corner2.2);
     let shape = Shape::box_from_corners(c1, c2);
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -180,6 +168,7 @@ pub fn make_sphere(
     radius: f64,
     center: Option<(f64, f64, f64)>,
     angle: Option<f64>,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(radius, "radius");
 
@@ -191,8 +180,8 @@ pub fn make_sphere(
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -204,6 +193,7 @@ pub fn make_cylinder(
     radius: f64,
     height: f64,
     center: Option<(f64, f64, f64)>,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(radius, "radius");
     assert_valid_dimension(height, "height");
@@ -213,8 +203,8 @@ pub fn make_cylinder(
     } else {
         Shape::cylinder_radius_height(radius, height)
     };
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -223,6 +213,7 @@ pub fn make_cylinder_from_points(
     p1: (f64, f64, f64),
     p2: (f64, f64, f64),
     radius: f64,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(radius, "radius");
     let shape = Shape::cylinder_from_points(
@@ -230,8 +221,8 @@ pub fn make_cylinder_from_points(
         DVec3::new(p2.0, p2.1, p2.2),
         radius,
     );
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -241,6 +232,7 @@ pub fn make_cylinder_point_dir(
     radius: f64,
     dir: (f64, f64, f64),
     height: f64,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(radius, "radius");
     assert_valid_dimension(height, "height");
@@ -250,8 +242,8 @@ pub fn make_cylinder_point_dir(
         DVec3::new(dir.0, dir.1, dir.2),
         height,
     );
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -266,6 +258,7 @@ pub fn make_cone(
     height: f64,
     center: Option<(f64, f64, f64)>,
     angle: Option<f64>,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(bottom_radius, "bottom_radius");
     assert_valid_dimension(height, "height");
@@ -281,8 +274,8 @@ pub fn make_cone(
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -300,6 +293,7 @@ pub fn make_torus(
     angle: Option<f64>,
     angle_start: Option<f64>,
     angle_end: Option<f64>,
+    eager: bool,
 ) -> ShapeData {
     assert_valid_dimension(ring_radius, "ring_radius");
     assert_valid_dimension(tube_radius, "tube_radius");
@@ -323,8 +317,8 @@ pub fn make_torus(
     if let Some((cx, cy, cz)) = center {
         translate_shape(&mut shape, cx, cy, cz);
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -335,14 +329,14 @@ pub fn make_torus(
 /// OCCT boolean operations may return the result as a `COMPOUND`.
 /// Returns a `ShapeData` wrapping the resulting shape.
 /// Panics if the result is a null/empty shape (`ShapeType::Shape`).
-pub fn cut(a: &ShapeData, b: &ShapeData) -> ShapeData {
+pub fn cut(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
     let result = a.shape.subtract(&b.shape);
     let shape = result.shape;
     if shape.shape_type() == ShapeType::Shape {
         panic!("cut: shapes do not intersect or produced an empty result");
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -351,14 +345,14 @@ pub fn cut(a: &ShapeData, b: &ShapeData) -> ShapeData {
 /// OCCT boolean operations may return the result as a `COMPOUND`.
 /// Returns a `ShapeData` wrapping the resulting shape.
 /// Panics if the result is a null/empty shape (`ShapeType::Shape`).
-pub fn common(a: &ShapeData, b: &ShapeData) -> ShapeData {
+pub fn common(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
     let result = a.shape.intersect(&b.shape);
     let shape = result.shape;
     if shape.shape_type() == ShapeType::Shape {
         panic!("common: shapes do not intersect or produced an empty result");
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -367,14 +361,14 @@ pub fn common(a: &ShapeData, b: &ShapeData) -> ShapeData {
 /// OCCT boolean operations may return the result as a `COMPOUND`.
 /// Returns a `ShapeData` wrapping the resulting shape.
 /// Panics if the result is a null/empty shape (`ShapeType::Shape`).
-pub fn fuse(a: &ShapeData, b: &ShapeData) -> ShapeData {
+pub fn fuse(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
     let result = a.shape.union(&b.shape);
     let shape = result.shape;
     if shape.shape_type() == ShapeType::Shape {
         panic!("fuse: shapes produced an empty result");
     }
-    let sd = ShapeData::new(shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -386,34 +380,34 @@ pub fn translate_shape(shape: &mut Shape, dx: f64, dy: f64, dz: f64) {
 }
 
 /// Create a translated copy of a shape.
-pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64) -> ShapeData {
+pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64, eager: bool) -> ShapeData {
     let new_shape = data.shape.translated(DVec3::new(dx, dy, dz));
-    let sd = ShapeData::new(new_shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(new_shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
 /// Create a rotated copy of a shape about an axis through the origin.
-pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64) -> ShapeData {
+pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64, eager: bool) -> ShapeData {
     let new_shape = data.shape.rotated(axis, angle);
-    let sd = ShapeData::new(new_shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(new_shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
 /// Create a scaled copy of a shape about a point.
-pub fn scale(data: &ShapeData, factor: f64, center: DVec3) -> ShapeData {
+pub fn scale(data: &ShapeData, factor: f64, center: DVec3, eager: bool) -> ShapeData {
     let new_shape = data.shape.scaled(center, factor);
-    let sd = ShapeData::new(new_shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(new_shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
 /// Create a mirrored copy of a shape about an axis.
-pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3) -> ShapeData {
+pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3, eager: bool) -> ShapeData {
     let new_shape = data.shape.mirrored(origin, dir);
-    let sd = ShapeData::new(new_shape);
-    tessellate_and_update(sd.shape_id, &sd.shape);
+    let mut sd = ShapeData::new(new_shape);
+    if eager { sd.tessellate_if_needed(); }
     sd
 }
 
@@ -449,7 +443,7 @@ mod tests {
     #[test]
     fn test_make_box_default() {
         // 10.1: Test box creation via raw Rust API
-        let sd = make_box(10.0, 20.0, 30.0, None);
+        let sd = make_box(10.0, 20.0, 30.0, None, false);
         assert_eq!(sd.type_string(), "SOLID");
         assert!(sd.visible);
         assert!(sd.color.is_none());
@@ -457,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_make_box_centered() {
-        let sd = make_box(10.0, 20.0, 30.0, Some((5.0, 10.0, 15.0)));
+        let sd = make_box(10.0, 20.0, 30.0, Some((5.0, 10.0, 15.0)), false);
         assert_eq!(sd.type_string(), "SOLID");
         assert!(sd.visible);
     }
@@ -465,36 +459,36 @@ mod tests {
     #[test]
     fn test_make_sphere_default() {
         // 10.2: Test sphere creation via raw Rust API
-        let sd = make_sphere(10.0, None, None);
+        let sd = make_sphere(10.0, None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
         assert!(sd.visible);
     }
 
     #[test]
     fn test_make_sphere_centered() {
-        let sd = make_sphere(5.0, Some((1.0, 2.0, 3.0)), None);
+        let sd = make_sphere(5.0, Some((1.0, 2.0, 3.0)), None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     #[should_panic(expected = "radius must be positive")]
     fn test_make_sphere_invalid_radius() {
-        make_sphere(-1.0, None, None);
+        make_sphere(-1.0, None, None, false);
     }
 
     #[test]
     #[should_panic(expected = "width must be positive")]
     fn test_make_box_invalid_width() {
         // 4.6: Validate inputs — reject zero/negative dimensions
-        make_box(0.0, 10.0, 10.0, None);
+        make_box(0.0, 10.0, 10.0, None, false);
     }
 
     #[test]
     fn test_cut() {
         // 10.3: Test cut via raw Rust API
-        let box_a = make_box(20.0, 20.0, 20.0, None);
-        let sphere_b = make_sphere(10.0, Some((10.0, 10.0, 10.0)), None);
-        let result = cut(&box_a, &sphere_b);
+        let box_a = make_box(20.0, 20.0, 20.0, None, false);
+        let sphere_b = make_sphere(10.0, Some((10.0, 10.0, 10.0)), None, false);
+        let result = cut(&box_a, &sphere_b, false);
         // OCCT may return a COMPOUND or SOLID for boolean results
         assert!(
             result.type_string() == "SOLID" || result.type_string() == "COMPOUND",
@@ -509,9 +503,9 @@ mod tests {
     #[test]
     fn test_common() {
         // 10.4: Test common via raw Rust API
-        let sphere_a = make_sphere(10.0, None, None);
-        let box_b = make_box(10.0, 10.0, 10.0, None);
-        let result = common(&sphere_a, &box_b);
+        let sphere_a = make_sphere(10.0, None, None, false);
+        let box_b = make_box(10.0, 10.0, 10.0, None, false);
+        let result = common(&sphere_a, &box_b, false);
         // Overlapping shapes should produce a valid result
         assert!(
             result.type_string() == "SOLID" || result.type_string() == "COMPOUND",
@@ -525,9 +519,9 @@ mod tests {
         // 10.5: Test cut with non-overlapping shapes
         // OCCT may return the original shape unchanged or a null shape.
         // Verify the result is not a null shape (ShapeType::Shape).
-        let box_a = make_box(10.0, 10.0, 10.0, None);
-        let box_b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)));
-        let result = cut(&box_a, &box_b);
+        let box_a = make_box(10.0, 10.0, 10.0, None, false);
+        let box_b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)), false);
+        let result = cut(&box_a, &box_b, false);
         assert_ne!(
             result.type_string(),
             "SHAPE",
@@ -538,7 +532,7 @@ mod tests {
     #[test]
     fn test_write_step_roundtrip() {
         // 10.6: Test STEP export round-trip
-        let sd = make_box(10.0, 20.0, 30.0, None);
+        let sd = make_box(10.0, 20.0, 30.0, None, false);
         let path = "/tmp/test_rojcad_box.step";
         assert!(write_step(&sd, path).is_ok());
         assert!(std::path::Path::new(path).exists());
@@ -549,7 +543,7 @@ mod tests {
     #[test]
     fn test_write_stl() {
         // 10.7: Test STL export
-        let sd = make_sphere(10.0, None, None);
+        let sd = make_sphere(10.0, None, None, false);
         let path = "/tmp/test_rojcad_sphere.stl";
         assert!(write_stl(&sd, path).is_ok());
         assert!(std::path::Path::new(path).exists());
@@ -562,7 +556,7 @@ mod tests {
     #[test]
     fn test_visibility() {
         // 10.8: Test visibility flag lifecycle
-        let mut sd = make_box(10.0, 10.0, 10.0, None);
+        let mut sd = make_box(10.0, 10.0, 10.0, None, false);
         assert!(sd.visible);
         sd.visible = false;
         assert!(!sd.visible);
@@ -572,146 +566,146 @@ mod tests {
 
     #[test]
     fn test_shape_type() {
-        assert_eq!(make_box(10.0, 10.0, 10.0, None).type_string(), "SOLID");
-        assert_eq!(make_sphere(10.0, None, None).type_string(), "SOLID");
+        assert_eq!(make_box(10.0, 10.0, 10.0, None, false).type_string(), "SOLID");
+        assert_eq!(make_sphere(10.0, None, None, false).type_string(), "SOLID");
     }
 
     // ── New Primitive Tests ─────────────────────────────────────────────────
 
     #[test]
     fn test_make_cube_default() {
-        let sd = make_cube(5.0, None);
+        let sd = make_cube(5.0, None, false);
         assert_eq!(sd.type_string(), "SOLID");
         assert!(sd.visible);
     }
 
     #[test]
     fn test_make_cube_centered() {
-        let sd = make_cube(5.0, Some((1.0, 2.0, 3.0)));
+        let sd = make_cube(5.0, Some((1.0, 2.0, 3.0)), false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_box_from_corners() {
-        let sd = make_box_from_corners((0.0, 0.0, 0.0), (10.0, 20.0, 30.0));
+        let sd = make_box_from_corners((0.0, 0.0, 0.0), (10.0, 20.0, 30.0), false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_sphere_with_angle() {
-        let sd = make_sphere(10.0, None, Some(std::f64::consts::PI));
+        let sd = make_sphere(10.0, None, Some(std::f64::consts::PI), false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cylinder_default() {
-        let sd = make_cylinder(5.0, 10.0, None);
+        let sd = make_cylinder(5.0, 10.0, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cylinder_centered() {
-        let sd = make_cylinder(5.0, 10.0, Some((0.0, 0.0, 5.0)));
+        let sd = make_cylinder(5.0, 10.0, Some((0.0, 0.0, 5.0)), false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cylinder_from_points() {
-        let sd = make_cylinder_from_points((0.0, 0.0, 0.0), (0.0, 0.0, 10.0), 5.0);
+        let sd = make_cylinder_from_points((0.0, 0.0, 0.0), (0.0, 0.0, 10.0), 5.0, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cylinder_point_dir() {
-        let sd = make_cylinder_point_dir((0.0, 0.0, 0.0), 5.0, (0.0, 0.0, 1.0), 10.0);
+        let sd = make_cylinder_point_dir((0.0, 0.0, 0.0), 5.0, (0.0, 0.0, 1.0), 10.0, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cone_full() {
-        let sd = make_cone(5.0, 0.0, 10.0, None, None);
+        let sd = make_cone(5.0, 0.0, 10.0, None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cone_truncated() {
-        let sd = make_cone(5.0, 3.0, 10.0, None, None);
+        let sd = make_cone(5.0, 3.0, 10.0, None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_cone_with_angle() {
-        let sd = make_cone(5.0, 0.0, 10.0, None, Some(std::f64::consts::PI));
+        let sd = make_cone(5.0, 0.0, 10.0, None, Some(std::f64::consts::PI), false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_torus_default() {
-        let sd = make_torus(20.0, 10.0, None, None, None, None, None);
+        let sd = make_torus(20.0, 10.0, None, None, None, None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_torus_centered() {
-        let sd = make_torus(20.0, 10.0, Some((0.0, 0.0, 5.0)), None, None, None, None);
+        let sd = make_torus(20.0, 10.0, Some((0.0, 0.0, 5.0)), None, None, None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_torus_partial() {
-        let sd = make_torus(20.0, 10.0, None, None, Some(std::f64::consts::PI), None, None);
+        let sd = make_torus(20.0, 10.0, None, None, Some(std::f64::consts::PI), None, None, false);
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     #[should_panic(expected = "size must be positive")]
     fn test_make_cube_invalid_size() {
-        make_cube(0.0, None);
+        make_cube(0.0, None, false);
     }
 
     #[test]
     #[should_panic(expected = "radius must be positive")]
     fn test_make_cylinder_invalid_radius() {
-        make_cylinder(0.0, 10.0, None);
+        make_cylinder(0.0, 10.0, None, false);
     }
 
     #[test]
     #[should_panic(expected = "height must be positive")]
     fn test_make_cylinder_invalid_height() {
-        make_cylinder(5.0, 0.0, None);
+        make_cylinder(5.0, 0.0, None, false);
     }
 
     #[test]
     #[should_panic(expected = "bottom_radius must be positive")]
     fn test_make_cone_invalid_bottom_radius() {
-        make_cone(0.0, 0.0, 10.0, None, None);
+        make_cone(0.0, 0.0, 10.0, None, None, false);
     }
 
     #[test]
     #[should_panic(expected = "height must be positive")]
     fn test_make_cone_invalid_height() {
-        make_cone(5.0, 0.0, 0.0, None, None);
+        make_cone(5.0, 0.0, 0.0, None, None, false);
     }
 
     #[test]
     #[should_panic(expected = "ring_radius must be positive")]
     fn test_make_torus_invalid_ring_radius() {
-        make_torus(0.0, 10.0, None, None, None, None, None);
+        make_torus(0.0, 10.0, None, None, None, None, None, false);
     }
 
     #[test]
     #[should_panic(expected = "tube_radius must be positive")]
     fn test_make_torus_invalid_tube_radius() {
-        make_torus(20.0, 0.0, None, None, None, None, None);
+        make_torus(20.0, 0.0, None, None, None, None, None, false);
     }
 
     // ── Fuse Tests ───────────────────────────────────────────────────────
 
     #[test]
     fn test_fuse() {
-        let a = make_box(10.0, 10.0, 10.0, None);
-        let b = make_box(10.0, 10.0, 10.0, Some((5.0, 5.0, 5.0)));
-        let result = fuse(&a, &b);
+        let a = make_box(10.0, 10.0, 10.0, None, false);
+        let b = make_box(10.0, 10.0, 10.0, Some((5.0, 5.0, 5.0)), false);
+        let result = fuse(&a, &b, false);
         assert!(
             result.type_string() == "SOLID" || result.type_string() == "COMPOUND",
             "expected SOLID or COMPOUND, got {}",
@@ -723,9 +717,9 @@ mod tests {
 
     #[test]
     fn test_fuse_non_overlapping() {
-        let a = make_box(10.0, 10.0, 10.0, None);
-        let b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)));
-        let result = fuse(&a, &b);
+        let a = make_box(10.0, 10.0, 10.0, None, false);
+        let b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)), false);
+        let result = fuse(&a, &b, false);
         assert_ne!(result.type_string(), "SHAPE", "fuse of non-overlapping shapes should not produce a null shape");
     }
 
@@ -733,8 +727,8 @@ mod tests {
 
     #[test]
     fn test_translate() {
-        let original = make_box(10.0, 10.0, 10.0, None);
-        let moved = translate(&original, 5.0, 0.0, 0.0);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
+        let moved = translate(&original, 5.0, 0.0, 0.0, false);
         assert!(original.visible);
         assert_eq!(original.type_string(), "SOLID");
         assert_eq!(moved.type_string(), "SOLID");
@@ -744,8 +738,8 @@ mod tests {
 
     #[test]
     fn test_rotate() {
-        let original = make_box(10.0, 10.0, 10.0, None);
-        let rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
+        let rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2, false);
         assert!(original.visible);
         assert_eq!(rotated.type_string(), "SOLID");
     }
@@ -754,16 +748,16 @@ mod tests {
 
     #[test]
     fn test_scale() {
-        let original = make_box(10.0, 10.0, 10.0, None);
-        let scaled = scale(&original, 2.0, DVec3::ZERO);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
+        let scaled = scale(&original, 2.0, DVec3::ZERO, false);
         assert!(original.visible);
         assert_eq!(scaled.type_string(), "SOLID");
     }
 
     #[test]
     fn test_scale_with_center() {
-        let original = make_box(10.0, 10.0, 10.0, None);
-        let scaled = scale(&original, 2.0, DVec3::new(5.0, 5.0, 5.0));
+        let original = make_box(10.0, 10.0, 10.0, None, false);
+        let scaled = scale(&original, 2.0, DVec3::new(5.0, 5.0, 5.0), false);
         assert!(original.visible);
         assert_eq!(scaled.type_string(), "SOLID");
     }
@@ -772,8 +766,8 @@ mod tests {
 
     #[test]
     fn test_mirror() {
-        let original = make_box(10.0, 10.0, 10.0, None);
-        let mirrored = mirror(&original, DVec3::ZERO, DVec3::X);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
+        let mirrored = mirror(&original, DVec3::ZERO, DVec3::X, false);
         assert!(original.visible);
         assert_eq!(mirrored.type_string(), "SOLID");
     }
@@ -782,9 +776,9 @@ mod tests {
 
     #[test]
     fn test_immutability_translate() {
-        let original = make_box(10.0, 10.0, 10.0, None);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
         let original_id = original.shape_id;
-        let _moved = translate(&original, 5.0, 0.0, 0.0);
+        let _moved = translate(&original, 5.0, 0.0, 0.0, false);
         assert!(original.visible);
         assert_eq!(original.shape_id, original_id);
         assert_eq!(original.type_string(), "SOLID");
@@ -792,27 +786,27 @@ mod tests {
 
     #[test]
     fn test_immutability_rotate() {
-        let original = make_box(10.0, 10.0, 10.0, None);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
         let original_id = original.shape_id;
-        let _rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2);
+        let _rotated = rotate(&original, DVec3::Z, std::f64::consts::FRAC_PI_2, false);
         assert!(original.visible);
         assert_eq!(original.shape_id, original_id);
     }
 
     #[test]
     fn test_immutability_scale() {
-        let original = make_box(10.0, 10.0, 10.0, None);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
         let original_id = original.shape_id;
-        let _scaled = scale(&original, 2.0, DVec3::ZERO);
+        let _scaled = scale(&original, 2.0, DVec3::ZERO, false);
         assert!(original.visible);
         assert_eq!(original.shape_id, original_id);
     }
 
     #[test]
     fn test_immutability_mirror() {
-        let original = make_box(10.0, 10.0, 10.0, None);
+        let original = make_box(10.0, 10.0, 10.0, None, false);
         let original_id = original.shape_id;
-        let _mirrored = mirror(&original, DVec3::ZERO, DVec3::X);
+        let _mirrored = mirror(&original, DVec3::ZERO, DVec3::X, false);
         assert!(original.visible);
         assert_eq!(original.shape_id, original_id);
     }

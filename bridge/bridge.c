@@ -21,53 +21,62 @@ extern size_t rust_shape_data_size(void);
 extern void rust_shape_drop(void *data, size_t len);
 extern const char *rust_shape_type_string(void *data);
 
-/* Shape constructors — initialize at destination pointer */
+/* Shape constructors — initialize at destination pointer, eager flag last */
 extern void rust_init_box(void *dest,
                            double width, double depth, double height,
-                           const double *cx, const double *cy, const double *cz);
+                           const double *cx, const double *cy, const double *cz,
+                           int eager);
 extern void rust_init_cube(void *dest,
-                            double size,
-                            const double *cx, const double *cy, const double *cz);
-extern void rust_init_box_from_corners(void *dest,
-                                        double c1x, double c1y, double c1z,
-                                        double c2x, double c2y, double c2z);
-extern void rust_init_sphere(void *dest,
-                              double radius,
-                              const double *cx, const double *cy, const double *cz,
-                              const double *angle);
-extern void rust_init_cylinder(void *dest,
-                                double radius, double height,
-                                const double *cx, const double *cy, const double *cz);
-extern void rust_init_cylinder_from_points(void *dest,
-                                            double p1x, double p1y, double p1z,
-                                            double p2x, double p2y, double p2z,
-                                            double radius);
-extern void rust_init_cylinder_point_dir(void *dest,
-                                          double px, double py, double pz,
-                                          double radius,
-                                          double dx, double dy, double dz,
-                                          double height);
-extern void rust_init_cone(void *dest,
-                            double bottom_radius, double top_radius, double height,
-                            const double *cx, const double *cy, const double *cz,
-                            const double *angle);
-extern void rust_init_torus(void *dest,
-                             double ring_radius, double tube_radius,
+                             double size,
                              const double *cx, const double *cy, const double *cz,
-                             const double *zx, const double *zy, const double *zz,
+                             int eager);
+extern void rust_init_box_from_corners(void *dest,
+                                         double c1x, double c1y, double c1z,
+                                         double c2x, double c2y, double c2z,
+                                         int eager);
+extern void rust_init_sphere(void *dest,
+                               double radius,
+                               const double *cx, const double *cy, const double *cz,
+                               const double *angle,
+                               int eager);
+extern void rust_init_cylinder(void *dest,
+                                 double radius, double height,
+                                 const double *cx, const double *cy, const double *cz,
+                                 int eager);
+extern void rust_init_cylinder_from_points(void *dest,
+                                             double p1x, double p1y, double p1z,
+                                             double p2x, double p2y, double p2z,
+                                             double radius,
+                                             int eager);
+extern void rust_init_cylinder_point_dir(void *dest,
+                                           double px, double py, double pz,
+                                           double radius,
+                                           double dx, double dy, double dz,
+                                           double height,
+                                           int eager);
+extern void rust_init_cone(void *dest,
+                             double bottom_radius, double top_radius, double height,
+                             const double *cx, const double *cy, const double *cz,
                              const double *angle,
-                             const double *angle_start, const double *angle_end);
+                             int eager);
+extern void rust_init_torus(void *dest,
+                              double ring_radius, double tube_radius,
+                              const double *cx, const double *cy, const double *cz,
+                              const double *zx, const double *zy, const double *zz,
+                              const double *angle,
+                              const double *angle_start, const double *angle_end,
+                              int eager);
 
 /* Boolean operations — allocate new shape via janet_abstract internally */
-extern void rust_init_cut(void *dest, void *a, void *b);
-extern void rust_init_common(void *dest, void *a, void *b);
-extern void rust_init_fuse(void *dest, void *a, void *b);
+extern void rust_init_cut(void *dest, void *a, void *b, int eager);
+extern void rust_init_common(void *dest, void *a, void *b, int eager);
+extern void rust_init_fuse(void *dest, void *a, void *b, int eager);
 
 /* Transformation operations */
-extern void rust_init_translate(void *dest, void *data, double dx, double dy, double dz);
-extern void rust_init_rotate(void *dest, void *data, double ax, double ay, double az, double angle);
-extern void rust_init_scale(void *dest, void *data, double factor, const double *cx, const double *cy, const double *cz);
-extern void rust_init_mirror(void *dest, void *data, double ox, double oy, double oz, double dx, double dy, double dz);
+extern void rust_init_translate(void *dest, void *data, double dx, double dy, double dz, int eager);
+extern void rust_init_rotate(void *dest, void *data, double ax, double ay, double az, double angle, int eager);
+extern void rust_init_scale(void *dest, void *data, double factor, const double *cx, const double *cy, const double *cz, int eager);
+extern void rust_init_mirror(void *dest, void *data, double ox, double oy, double oz, double dx, double dy, double dz, int eager);
 
 /* Inspection */
 extern const char *rust_shape_type(void *data);
@@ -77,7 +86,9 @@ extern int rust_write_step(void *data, const char *path);
 extern int rust_write_stl(void *data, const char *path);
 
 /* Visibility */
-extern void rust_shape_set_visible(void *data, int visible);
+extern void rust_shape_show(void *data);
+extern void rust_shape_hide(void *data);
+extern void rust_shape_remove_from_registry(void *data);
 extern int rust_shape_get_visible(void *data);
 
 /* Selection */
@@ -194,6 +205,11 @@ static int kw_array_3(const Janet *argv, int32_t argc, const char *kw,
     return 1;
 }
 
+/* Check if :eager keyword is present in argv. Returns 1 if found, 0 if not. */
+static int has_eager(const Janet *argv, int32_t argc) {
+    return find_keyword(argv, argc, "eager") >= 0 ? 1 : 0;
+}
+
 /* Allocate a new rojcad/shape abstract via Janet GC */
 static void *alloc_shape(void) {
     void *data = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
@@ -210,21 +226,24 @@ static void *alloc_shape(void) {
  * combining USAGE and DOCSTRING separated by "\n\n". */
 
 JANET_FN(cad_box,
-         "(box width depth height &keys :w :d :h :c :pl :ph)",
+         "(box width depth height &keys :w :d :h :c :pl :ph :eager)",
          "Create a box or cube.\n\n"
          "Positional: (box w d h) or (box size) for a cube.\n"
          "Keywords: :w :d :h (dimensions), :c (center [x y z]),\n"
-         "         :pl :ph (opposite corners [x y z]).\n\n"
+         "         :pl :ph (opposite corners [x y z]).\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (box 10 20 30)           — box at origin\n"
          "  (box 10 20 30 :c [5 5 5]) — centered box\n"
          "  (box 5)                  — 5x5x5 cube\n"
          "  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n"
-         "  (box :w 10 :d 20 :h 30) — keyword style\n\n"
+         "  (box :w 10 :d 20 :h 30) — keyword style\n"
+         "  (box 10 :eager)          — eager tessellation\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, pl[3], ph[3];
     int has_c, has_pl, has_ph;
+    int eager = has_eager(argv, argc);
 
     has_pl = kw_array_3(argv, argc, "pl", &pl[0], &pl[1], &pl[2]);
     has_ph = kw_array_3(argv, argc, "ph", &ph[0], &ph[1], &ph[2]);
@@ -234,7 +253,7 @@ JANET_FN(cad_box,
             janet_panic("box: :pl and :ph must both be provided");
         }
         void *shape = alloc_shape();
-        rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2]);
+        rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager);
         return janet_wrap_abstract(shape);
     }
 
@@ -248,7 +267,7 @@ JANET_FN(cad_box,
     if (has_w && has_d && has_h) {
         void *shape = alloc_shape();
         rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL);
+                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 
@@ -260,7 +279,7 @@ JANET_FN(cad_box,
         double size = janet_unwrap_number(argv[0]);
         void *shape = alloc_shape();
         rust_init_cube(shape, size,
-                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL);
+                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 
@@ -270,7 +289,7 @@ JANET_FN(cad_box,
         h = janet_unwrap_number(argv[2]);
         void *shape = alloc_shape();
         rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL);
+                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 
@@ -278,20 +297,23 @@ JANET_FN(cad_box,
 }
 
 JANET_FN(cad_sphere,
-         "(sphere radius &keys :r :c :a :ar)",
+         "(sphere radius &keys :r :c :a :ar :eager)",
          "Create a sphere.\n\n"
          "Positional: (sphere radius)\n"
          "Keywords: :r (radius), :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians).\n\n"
+         "         :a (angle in degrees), :ar (angle in radians),\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (sphere 10)               — full sphere at origin\n"
          "  (sphere 10 :c [1 2 3])    — repositioned\n"
          "  (sphere 10 :a 180)        — hemisphere\n"
-         "  (sphere :r 10)            — keyword style\n\n"
+         "  (sphere :r 10)            — keyword style\n"
+         "  (sphere 10 :eager)        — eager tessellation\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double radius, cx, cy, cz, angle;
     int has_c, has_a;
+    int eager = has_eager(argv, argc);
 
     has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     has_a = kw_double(argv, argc, "a", &angle);
@@ -310,26 +332,29 @@ JANET_FN(cad_sphere,
     void *shape = alloc_shape();
     rust_init_sphere(shape, radius,
                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                     has_a ? &angle : NULL);
+                     has_a ? &angle : NULL, eager);
     return janet_wrap_abstract(shape);
 }
 
 JANET_FN(cad_cylinder,
-         "(cylinder radius height &keys :r :h :c :dir :fp :tp)",
+         "(cylinder radius height &keys :r :h :c :dir :fp :tp :eager)",
          "Create a cylinder.\n\n"
          "Positional: (cylinder radius height) — along Z axis, base at Z=0\n"
          "Keywords: :r (radius), :h (height), :c (center [x y z]),\n"
          "         :dir (direction [dx dy dz]),\n"
-         "         :fp (from-point [x y z]), :tp (to-point [x y z]).\n\n"
+         "         :fp (from-point [x y z]), :tp (to-point [x y z]).\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (cylinder 5 10)                       — simple\n"
          "  (cylinder 5 10 :c [0 0 5])            — centered\n"
          "  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n"
-         "  (cylinder :r 5 :h 10)                 — keyword style\n\n"
+         "  (cylinder :r 5 :h 10)                 — keyword style\n"
+         "  (cylinder 5 10 :eager)                — eager tessellation\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, dir[3], fp[3], tp[3];
     int has_c, has_dir, has_fp, has_tp;
+    int eager = has_eager(argv, argc);
 
     has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
@@ -346,7 +371,7 @@ JANET_FN(cad_cylinder,
             janet_panic("cylinder: :r (radius) is required with :fp/:tp");
         }
         void *shape = alloc_shape();
-        rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r);
+        rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager);
         return janet_wrap_abstract(shape);
     }
 
@@ -365,33 +390,36 @@ JANET_FN(cad_cylinder,
     if (has_dir) {
         double ox = has_c ? cx : 0.0, oy = has_c ? cy : 0.0, oz = has_c ? cz : 0.0;
         void *shape = alloc_shape();
-        rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height);
+        rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager);
         return janet_wrap_abstract(shape);
     }
 
     {
         void *shape = alloc_shape();
         rust_init_cylinder(shape, radius, height,
-                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL);
+                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 }
 
 JANET_FN(cad_cone,
-         "(cone bottom-radius height &keys :br :tr :h :c :a :ar)",
+         "(cone bottom-radius height &keys :br :tr :h :c :a :ar :eager)",
          "Create a cone or truncated cone.\n\n"
          "Positional: (cone br h) for full cone, (cone br tr h) for truncated.\n"
          "Keywords: :br (bottom radius), :tr (top radius), :h (height),\n"
          "         :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians, partial cone).\n\n"
+         "         :a (angle in degrees), :ar (angle in radians, partial cone),\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (cone 5 10)                — full cone, br=5, h=10\n"
          "  (cone 5 3 10)              — truncated cone\n"
          "  (cone 5 10 :a 180)         — half cone\n"
-         "  (cone :br 5 :h 10)         — keyword style\n\n"
+         "  (cone :br 5 :h 10)         — keyword style\n"
+         "  (cone 5 10 :eager)         — eager tessellation\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, angle;
+    int eager = has_eager(argv, argc);
     int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     int has_a = kw_double(argv, argc, "a", &angle);
     if (has_a) {
@@ -440,13 +468,13 @@ create:
         void *shape = alloc_shape();
         rust_init_cone(shape, br, tr, h,
                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                       has_a ? &angle : NULL);
+                       has_a ? &angle : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 }
 
 JANET_FN(cad_torus,
-         "(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir)",
+         "(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager)",
          "Create a torus.\n\n"
          "Positional: (torus rr tr)\n"
          "Keywords: :rr (ring radius), :tr (tube radius),\n"
@@ -454,16 +482,19 @@ JANET_FN(cad_torus,
          "         :a (angle in degrees), :ar (angle in radians, partial),\n"
          "         :as (start angle degrees), :asr (start angle radians),\n"
          "         :ae (end angle degrees), :aer (end angle radians),\n"
-         "         :dir (axis direction [dx dy dz]).\n\n"
+         "         :dir (axis direction [dx dy dz]),\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (torus 20 10)                    — full torus\n"
          "  (torus 20 10 :c [0 0 5])         — repositioned\n"
          "  (torus 20 10 :a 180)             — half torus\n"
          "  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n"
-         "  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n\n"
+         "  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n"
+         "  (torus 20 10 :eager)             — eager tessellation\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, dir[3], angle, a_start, a_end;
+    int eager = has_eager(argv, argc);
     int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
     int has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
     int has_a = kw_double(argv, argc, "a", &angle);
@@ -513,19 +544,21 @@ create:
                         has_dir ? &dir[2] : NULL,
                         has_a ? &angle : NULL,
                         has_as ? &a_start : NULL,
-                        has_ae ? &a_end : NULL);
+                        has_ae ? &a_end : NULL, eager);
         return janet_wrap_abstract(shape);
     }
 }
 
 JANET_FN(cad_cut,
-         "(cut shape-a shape-b)",
+         "(cut shape-a shape-b &keys :eager)",
          "Subtract shape-b from shape-a. Returns a new rojcad/shape "
          "representing the resulting solid.\n\n"
          "Signals an error if the shapes do not intersect or produce "
-         "an empty result.")
+         "an empty result.\n"
+         "Keywords: :eager (tessellate immediately).")
 {
-    janet_arity(argc, 2, 2);
+    janet_arity(argc, 2, 3);
+    int eager = has_eager(argv, argc);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
 
@@ -533,19 +566,20 @@ JANET_FN(cad_cut,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    /* rust_init_cut will panic on failure via Rust-side panic */
-    rust_init_cut(result, a, b);
+    rust_init_cut(result, a, b, eager);
 
     return janet_wrap_abstract(result);
 }
 
 JANET_FN(cad_common,
-         "(common shape-a shape-b)",
+         "(common shape-a shape-b &keys :eager)",
          "Intersect shape-a with shape-b. Returns a new rojcad/shape "
          "representing the shared volume.\n\n"
-         "Signals an error if the shapes do not intersect.")
+         "Signals an error if the shapes do not intersect.\n"
+         "Keywords: :eager (tessellate immediately).")
 {
-    janet_arity(argc, 2, 2);
+    janet_arity(argc, 2, 3);
+    int eager = has_eager(argv, argc);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
 
@@ -553,18 +587,20 @@ JANET_FN(cad_common,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    rust_init_common(result, a, b);
+    rust_init_common(result, a, b, eager);
 
     return janet_wrap_abstract(result);
 }
 
 JANET_FN(cad_fuse,
-         "(fuse shape-a shape-b)",
+         "(fuse shape-a shape-b &keys :eager)",
          "Combine shape-a and shape-b into a single solid. Returns a new rojcad/shape "
          "representing the union of both shapes.\n\n"
-         "Signals an error if the operation produces an empty result.")
+         "Signals an error if the operation produces an empty result.\n"
+         "Keywords: :eager (tessellate immediately).")
 {
-    janet_arity(argc, 2, 2);
+    janet_arity(argc, 2, 3);
+    int eager = has_eager(argv, argc);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
 
@@ -572,23 +608,25 @@ JANET_FN(cad_fuse,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    rust_init_fuse(result, a, b);
+    rust_init_fuse(result, a, b, eager);
 
     return janet_wrap_abstract(result);
 }
 
 JANET_FN(cad_translate,
-         "(translate shape dx dy dz)",
+         "(translate shape dx dy dz &keys :t :eager)",
          "Create a translated copy of shape.\n\n"
          "Positional: (translate shape dx dy dz)\n"
-         "Keywords: :t [dx dy dz]\n\n"
+         "Keywords: :t [dx dy dz], :eager (tessellate immediately).\n\n"
          "Examples:\n"
-         "  (translate box 5 0 0)       — move 5 units in X\n"
-         "  (translate box :t [1 2 3])  — keyword style\n\n"
+         "  (translate box 5 0 0)               — move 5 units in X\n"
+         "  (translate box :t [1 2 3])          — keyword style\n"
+         "  (translate box 5 0 0 :eager)        — eager tessellation\n\n"
          "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
 {
     double dx, dy, dz;
     void *data;
+    int eager = has_eager(argv, argc);
 
     if (kw_array_3(argv, argc, "t", &dx, &dy, &dz)) {
         /* Keyword style: find the shape as the first non-keyword arg */
@@ -608,23 +646,26 @@ JANET_FN(cad_translate,
     }
 
     void *shape = alloc_shape();
-    rust_init_translate(shape, data, dx, dy, dz);
+    rust_init_translate(shape, data, dx, dy, dz, eager);
     return janet_wrap_abstract(shape);
 }
 
 JANET_FN(cad_rotate,
-         "(rotate shape &keys :a :ar :x :y :z :r)",
+         "(rotate shape &keys :a :ar :x :y :z :r :eager)",
          "Create a rotated copy of shape.\n\n"
          "Angle is specified via :a (degrees) or :ar (radians).\n"
-         "Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).\n\n"
+         "Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).\n"
+         ":eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (rotate box :a 45 :z)           — 45 degrees about Z\n"
          "  (rotate box :ar 1.5708 :x)      — pi/2 radians about X\n"
-         "  (rotate box :a 90 :r [1 1 0])   — 90 degrees about custom axis\n\n"
+         "  (rotate box :a 90 :r [1 1 0])   — 90 degrees about custom axis\n"
+         "  (rotate box :a 90 :z :eager)    — eager tessellation\n\n"
          "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
 {
     if (argc < 2) janet_panic("rotate: shape and angle are required");
     void *data = unwrap_shape_or_panic(argv[0], 0);
+    int eager = has_eager(argv, argc);
 
     double angle;
 
@@ -650,18 +691,20 @@ JANET_FN(cad_rotate,
     }
 
     void *shape = alloc_shape();
-    rust_init_rotate(shape, data, ax, ay, az, angle);
+    rust_init_rotate(shape, data, ax, ay, az, angle, eager);
     return janet_wrap_abstract(shape);
 }
 
 JANET_FN(cad_scale,
-         "(scale shape factor &keys :o)",
+         "(scale shape factor &keys :o :eager)",
          "Create a uniformly scaled copy of shape.\n\n"
          "Positional: (scale shape factor)\n"
-         "Keywords: :o [x y z] (center point, defaults to origin)\n\n"
+         "Keywords: :o [x y z] (center point, defaults to origin),\n"
+         "         :eager (tessellate immediately).\n\n"
          "Examples:\n"
          "  (scale box 2.0)                — 2x about origin\n"
-         "  (scale box 2.0 :o [5 5 5])     — 2x about custom point\n\n"
+         "  (scale box 2.0 :o [5 5 5])     — 2x about custom point\n"
+         "  (scale box 2.0 :eager)         — eager tessellation\n\n"
          "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
 {
     if (argc < 2) janet_panic("scale: shape and factor are required");
@@ -670,6 +713,7 @@ JANET_FN(cad_scale,
         janet_panic("scale: factor must be a number");
     }
     double factor = janet_unwrap_number(argv[1]);
+    int eager = has_eager(argv, argc);
 
     double cx, cy, cz;
     int has_o = kw_array_3(argv, argc, "o", &cx, &cy, &cz);
@@ -678,22 +722,25 @@ JANET_FN(cad_scale,
     rust_init_scale(shape, data, factor,
                     has_o ? &cx : NULL,
                     has_o ? &cy : NULL,
-                    has_o ? &cz : NULL);
+                    has_o ? &cz : NULL, eager);
     return janet_wrap_abstract(shape);
 }
 
 JANET_FN(cad_mirror,
-         "(mirror shape ox oy oz dx dy dz)",
+         "(mirror shape ox oy oz dx dy dz &keys :eager)",
          "Create a mirrored copy of shape about an axis.\n\n"
          "Positional: (mirror shape ox oy oz dx dy dz)\n"
-         "Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.\n\n"
+         "Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.\n"
+         "Keywords: :eager (tessellate immediately).\n\n"
          "Examples:\n"
-         "  (mirror box 0 0 0 1 0 0)    — mirror across X axis through origin\n"
-         "  (mirror box 5 0 0 0 1 0)    — mirror across Y axis through (5,0,0)\n\n"
+         "  (mirror box 0 0 0 1 0 0)       — mirror across X axis through origin\n"
+         "  (mirror box 5 0 0 0 1 0)       — mirror across Y axis through (5,0,0)\n"
+         "  (mirror box 0 0 0 1 0 0 :eager) — eager tessellation\n\n"
          "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
 {
-    janet_arity(argc, 7, 7);
+    if (argc < 7) janet_panic("mirror: shape and 6 coordinates are required");
     void *data = unwrap_shape_or_panic(argv[0], 0);
+    int eager = has_eager(argv, argc);
     if (!janet_checktype(argv[1], JANET_NUMBER) ||
         !janet_checktype(argv[2], JANET_NUMBER) ||
         !janet_checktype(argv[3], JANET_NUMBER) ||
@@ -710,8 +757,37 @@ JANET_FN(cad_mirror,
     double dz = janet_unwrap_number(argv[6]);
 
     void *shape = alloc_shape();
-    rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz);
+    rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz, eager);
     return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_display,
+         "(display shape)",
+         "Show a shape and return it. Equivalent to (show shape) followed by shape.\n\n"
+         "Examples:\n"
+         "  (def b (display (box 10)))  — create, show, and bind in one step\n\n"
+         "Returns the shape.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    rust_shape_show(data);
+    return argv[0];
+}
+
+JANET_FN(cad_purge,
+         "(purge shape)",
+         "Remove a shape from the viewer registry and mark it as purged.\n"
+         "The shape will no longer be rendered. To also unbind the Janet variable,\n"
+         "use (purge shape) followed by (def name nil).\n\n"
+         "Examples:\n"
+         "  (purge b)          — remove b from viewer\n"
+         "  (purge b) (def b nil) (gc)  — full cleanup\n\n"
+         "Returns nil.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    rust_shape_remove_from_registry(data);
+    return janet_wrap_nil();
 }
 
 JANET_FN(cad_shape_type,
@@ -726,23 +802,49 @@ JANET_FN(cad_shape_type,
     return janet_ckeywordv(type_str);
 }
 
-JANET_FN(cad_hide,
-         "(hide shape)",
-         "Set a shape's visible flag to false. Returns nil.")
+JANET_FN(cad_show,
+         "(show shape)",
+         "Register a shape in the viewer and make it visible.\n\n"
+         "If the shape has not been tessellated, tessellation happens automatically.\n"
+         "Calling show on an already-visible shape is a no-op.\n\n"
+         "Examples:\n"
+         "  (def b (box 10))\n"
+         "  (show b)         — tessellates if needed, registers, makes visible\n"
+         "  (show b)         — second call is a no-op (already visible)\n\n"
+         "Returns nil.")
 {
     janet_arity(argc, 1, 1);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    rust_shape_set_visible(data, 0);
+    rust_shape_show(data);
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_show,
-         "(show shape)",
-         "Set a shape's visible flag to true. Returns nil.")
+JANET_FN(cad_hide,
+         "(hide shape)",
+         "Set a shape's visible flag to false. The shape stays registered"
+         " in the viewer but is no longer rendered.\n\n"
+         "Examples:\n"
+         "  (hide b)         — shape disappears from viewer\n"
+         "  (show b)         — reappears without re-tessellating\n\n"
+         "Returns nil.")
 {
     janet_arity(argc, 1, 1);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    rust_shape_set_visible(data, 1);
+    rust_shape_hide(data);
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_registry_remove,
+         "(registry-remove shape)",
+         "Immediately remove a shape from the viewer registry and mark it as purged.\n"
+         "The shape will no longer be rendered. The underlying OCCT shape memory\n"
+         "is freed when Janet's GC collects the shape value.\n\n"
+         "This is used internally by the `purge` macro.\n\n"
+         "Returns nil.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    rust_shape_remove_from_registry(data);
     return janet_wrap_nil();
 }
 
@@ -991,8 +1093,11 @@ void cad_register_functions(JanetTable *env) {
         {"scale",                  cad_scale,                  cad_scale_docstring_},
         {"mirror",                 cad_mirror,                 cad_mirror_docstring_},
         {"shape-type",             cad_shape_type,             cad_shape_type_docstring_},
+        {"display",                cad_display,                cad_display_docstring_},
+        {"purge",                  cad_purge,                  cad_purge_docstring_},
         {"hide",                   cad_hide,                   cad_hide_docstring_},
         {"show",                   cad_show,                   cad_show_docstring_},
+        {"registry-remove",        cad_registry_remove,        cad_registry_remove_docstring_},
         {"visible?",               cad_visible_q,              cad_visible_q_docstring_},
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
