@@ -751,6 +751,7 @@ fn main() {
         bridge::janet_lib_marsh(env);
         bridge::janet_lib_ev(env);
         bridge::janet_lib_net(env);
+        bridge::janet_lib_asm(env);
     }
 
     // Register CAD functions

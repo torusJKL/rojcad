@@ -110,6 +110,7 @@ unsafe extern "C" {
     pub fn janet_lib_marsh(env: *mut JanetTable);
     pub fn janet_lib_net(env: *mut JanetTable);
     pub fn janet_lib_ev(env: *mut JanetTable);
+    pub fn janet_lib_asm(env: *mut JanetTable);
 }
 
 // ── Rust callback declarations (called from C) ───────────────────────────────

@@ -17,7 +17,18 @@
 (def my-eval (fn [form _env]
   (def compiled (compile form core-env))
   (if (= (type compiled) :function)
-    (resume (fiber/new compiled))
+    (do
+      (def result (resume (fiber/new compiled)))
+      (if (= (type form) :tuple)
+        (do
+          (def f0 (get form 0))
+          (def f2 (get form 2))
+          (if (= f0 'def)
+            (if (not= f2 nil)
+              (if (= (type result) :rojcad/shape)
+                (if (visible? result)
+                  (show result)))))))
+      result)
     (string "compile error: " (get compiled :error) " line:" (get compiled :line)))))
 (def port (if (dyn '*netrepl-port*) (dyn '*netrepl-port*) 9365))
 (def addr "127.0.0.1")

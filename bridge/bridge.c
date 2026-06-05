@@ -210,6 +210,14 @@ static int has_eager(const Janet *argv, int32_t argc) {
     return find_keyword(argv, argc, "eager") >= 0 ? 1 : 0;
 }
 
+/* If :hide keyword is present, mark shape as not visible.
+ * Safe to call on unregistered shapes — just sets visible=false. */
+static void maybe_hide(void *data, const Janet *argv, int32_t argc) {
+    if (find_keyword(argv, argc, "hide") >= 0) {
+        rust_shape_hide(data);
+    }
+}
+
 /* Allocate a new rojcad/shape abstract via Janet GC */
 static void *alloc_shape(void) {
     void *data = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
@@ -226,24 +234,33 @@ static void *alloc_shape(void) {
  * combining USAGE and DOCSTRING separated by "\n\n". */
 
 JANET_FN(cad_box,
-         "(box width depth height &keys :w :d :h :c :pl :ph :eager)",
+         "(box width depth height &keys :w :d :h :c :pl :ph :eager :hide)",
          "Create a box or cube.\n\n"
          "Positional: (box w d h) or (box size) for a cube.\n"
          "Keywords: :w :d :h (dimensions), :c (center [x y z]),\n"
          "         :pl :ph (opposite corners [x y z]).\n"
-         "         :eager (tessellate immediately).\n\n"
+         "         :eager (tessellate immediately).\n"
+         "         :hide (skip automatic show on def).\n\n"
          "Examples:\n"
          "  (box 10 20 30)           — box at origin\n"
          "  (box 10 20 30 :c [5 5 5]) — centered box\n"
          "  (box 5)                  — 5x5x5 cube\n"
          "  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n"
          "  (box :w 10 :d 20 :h 30) — keyword style\n"
-         "  (box 10 :eager)          — eager tessellation\n\n"
+         "  (box 10 :eager)          — eager tessellation\n"
+         "  (box 10 :hide)           — create without showing\n\n"
          "Returns a rojcad/shape abstract value.")
 {
     double cx, cy, cz, pl[3], ph[3];
     int has_c, has_pl, has_ph;
     int eager = has_eager(argv, argc);
+
+    /* Count positional args (stop at first keyword) */
+    int pos_count = 0;
+    for (int i = 0; i < argc; i++) {
+        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
+        pos_count++;
+    }
 
     has_pl = kw_array_3(argv, argc, "pl", &pl[0], &pl[1], &pl[2]);
     has_ph = kw_array_3(argv, argc, "ph", &ph[0], &ph[1], &ph[2]);
@@ -254,6 +271,7 @@ JANET_FN(cad_box,
         }
         void *shape = alloc_shape();
         rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
@@ -268,6 +286,7 @@ JANET_FN(cad_box,
         void *shape = alloc_shape();
         rust_init_box(shape, w, d, h,
                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
@@ -275,21 +294,23 @@ JANET_FN(cad_box,
         janet_panic("box: specify :w, :d, :h together, or use positional args");
     }
 
-    if (argc == 1) {
+    if (pos_count == 1) {
         double size = janet_unwrap_number(argv[0]);
         void *shape = alloc_shape();
         rust_init_cube(shape, size,
                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
-    if (argc >= 3) {
+    if (pos_count >= 3) {
         w = janet_unwrap_number(argv[0]);
         d = janet_unwrap_number(argv[1]);
         h = janet_unwrap_number(argv[2]);
         void *shape = alloc_shape();
         rust_init_box(shape, w, d, h,
                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
@@ -333,6 +354,7 @@ JANET_FN(cad_sphere,
     rust_init_sphere(shape, radius,
                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
                      has_a ? &angle : NULL, eager);
+    maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
 
@@ -372,6 +394,7 @@ JANET_FN(cad_cylinder,
         }
         void *shape = alloc_shape();
         rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
@@ -391,6 +414,7 @@ JANET_FN(cad_cylinder,
         double ox = has_c ? cx : 0.0, oy = has_c ? cy : 0.0, oz = has_c ? cz : 0.0;
         void *shape = alloc_shape();
         rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
@@ -398,6 +422,7 @@ JANET_FN(cad_cylinder,
         void *shape = alloc_shape();
         rust_init_cylinder(shape, radius, height,
                            has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 }
@@ -469,6 +494,7 @@ create:
         rust_init_cone(shape, br, tr, h,
                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
                        has_a ? &angle : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 }
@@ -545,6 +571,7 @@ create:
                         has_a ? &angle : NULL,
                         has_as ? &a_start : NULL,
                         has_ae ? &a_end : NULL, eager);
+        maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 }
@@ -567,7 +594,7 @@ JANET_FN(cad_cut,
         janet_panic("failed to allocate shape");
     }
     rust_init_cut(result, a, b, eager);
-
+    maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
 
@@ -588,7 +615,7 @@ JANET_FN(cad_common,
         janet_panic("failed to allocate shape");
     }
     rust_init_common(result, a, b, eager);
-
+    maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
 
@@ -609,7 +636,7 @@ JANET_FN(cad_fuse,
         janet_panic("failed to allocate shape");
     }
     rust_init_fuse(result, a, b, eager);
-
+    maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
 
@@ -647,6 +674,7 @@ JANET_FN(cad_translate,
 
     void *shape = alloc_shape();
     rust_init_translate(shape, data, dx, dy, dz, eager);
+    maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
 
@@ -692,6 +720,7 @@ JANET_FN(cad_rotate,
 
     void *shape = alloc_shape();
     rust_init_rotate(shape, data, ax, ay, az, angle, eager);
+    maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
 
@@ -723,6 +752,7 @@ JANET_FN(cad_scale,
                     has_o ? &cx : NULL,
                     has_o ? &cy : NULL,
                     has_o ? &cz : NULL, eager);
+    maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
 
@@ -758,20 +788,8 @@ JANET_FN(cad_mirror,
 
     void *shape = alloc_shape();
     rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz, eager);
+    maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
-}
-
-JANET_FN(cad_display,
-         "(display shape)",
-         "Show a shape and return it. Equivalent to (show shape) followed by shape.\n\n"
-         "Examples:\n"
-         "  (def b (display (box 10)))  — create, show, and bind in one step\n\n"
-         "Returns the shape.")
-{
-    janet_arity(argc, 1, 1);
-    void *data = unwrap_shape_or_panic(argv[0], 0);
-    rust_shape_show(data);
-    return argv[0];
 }
 
 JANET_FN(cad_purge,
@@ -1093,7 +1111,7 @@ void cad_register_functions(JanetTable *env) {
         {"scale",                  cad_scale,                  cad_scale_docstring_},
         {"mirror",                 cad_mirror,                 cad_mirror_docstring_},
         {"shape-type",             cad_shape_type,             cad_shape_type_docstring_},
-        {"display",                cad_display,                cad_display_docstring_},
+
         {"purge",                  cad_purge,                  cad_purge_docstring_},
         {"hide",                   cad_hide,                   cad_hide_docstring_},
         {"show",                   cad_show,                   cad_show_docstring_},
