@@ -1111,6 +1111,42 @@ JANET_FN(cad_read_step,
     return janet_wrap_abstract(shape);
 }
 
+/* ── CAD function metadata ────────────────────────────────────────────────── */
+
+static const char *cad_fn_categories[][2] = {
+    {"box", "primitives"},
+    {"sphere", "primitives"},
+    {"cylinder", "primitives"},
+    {"cone", "primitives"},
+    {"torus", "primitives"},
+    {"cut", "booleans"},
+    {"common", "booleans"},
+    {"fuse", "booleans"},
+    {"translate", "transforms"},
+    {"rotate", "transforms"},
+    {"scale", "transforms"},
+    {"mirror", "transforms"},
+    {"shape-type", "queries"},
+    {"visible?", "queries"},
+    {"purge", "registry"},
+    {"hide", "registry"},
+    {"show", "registry"},
+    {"registry-remove", "registry"},
+    {"write-step", "io"},
+    {"write-stl", "io"},
+    {"read-step", "io"},
+    {"on-select", "selection"},
+    {"poll-selection", "selection"},
+    {"edge-toggle-inactive", "edge-styling"},
+    {"edge-toggle-active", "edge-styling"},
+    {"edge-inactive-show?", "edge-styling"},
+    {"edge-active-show?", "edge-styling"},
+    {"edge-thickness", "edge-styling"},
+    {"edge-color-inactive", "edge-styling"},
+    {"edge-color-active", "edge-styling"},
+    {NULL, NULL}
+};
+
 /* ── Registration ───────────────────────────────────────────────────────── */
 
 void cad_register_functions(JanetTable *env) {
@@ -1157,4 +1193,16 @@ void cad_register_functions(JanetTable *env) {
     };
 
     janet_cfuns(env, NULL, cfuns);
+
+    /* Tag each CAD function with :source (for cad-fns filtering) and
+     * :category (for group display) metadata. */
+    for (int32_t i = 0; cad_fn_categories[i][0] != NULL; i++) {
+        Janet sym = janet_csymbolv(cad_fn_categories[i][0]);
+        Janet binding = janet_table_get(env, sym);
+        if (janet_checktype(binding, JANET_TABLE)) {
+            JanetTable *t = janet_unwrap_table(binding);
+            janet_table_put(t, janet_ckeywordv("source"), janet_cstringv("rojcad"));
+            janet_table_put(t, janet_ckeywordv("category"), janet_cstringv(cad_fn_categories[i][1]));
+        }
+    }
 }
