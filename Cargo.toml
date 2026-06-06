@@ -10,7 +10,7 @@ license = "GPL-3.0-only"
 authors = ["rojcad contributors"]
 
 [dependencies]
-opencascade = { git = "https://github.com/torusJKL/opencascade-rs.git", branch = "translate-copy", features = ["builtin"] }
+opencascade = { git = "https://github.com/bschwind/opencascade-rs.git", branch = "main", features = ["builtin"] }
 glam = "0.24"
 thiserror = "1"
 wgpu = "24"

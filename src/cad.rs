@@ -4,8 +4,10 @@
 
 use std::f64::consts::TAU;
 
-use glam::DVec3;
-use opencascade::primitives::{Shape, ShapeType};
+use glam::{DQuat, DVec3};
+use opencascade::angle::Angle;
+use opencascade::primitives::{Face, JoinType, Shape, ShapeType, Solid, Wire};
+use opencascade::workplane::Workplane;
 
 use crate::types::{MeshData, ShapeData};
 
@@ -96,8 +98,6 @@ pub fn generate_synthetic_wireframe(mesh: &MeshData) -> Vec<Vec<[f64; 3]>> {
 /// curved shapes (sphere has 1 seam edge) get the synthetic fallback.
 pub const SYNTHETIC_WIREFRAME_THRESHOLD: usize = 8;
 
-
-
 // ── Primitives ────────────────────────────────────────────────────────────────
 
 /// Create a box with the given dimensions.
@@ -126,7 +126,9 @@ pub fn make_box(
         );
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -141,7 +143,9 @@ pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>, eager: bool) -> Sha
         translate_shape(&mut shape, cx, cy, cz);
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -155,7 +159,9 @@ pub fn make_box_from_corners(
     let c2 = DVec3::new(corner2.0, corner2.1, corner2.2);
     let shape = Shape::box_from_corners(c1, c2);
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -181,7 +187,9 @@ pub fn make_sphere(
         translate_shape(&mut shape, cx, cy, cz);
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -204,7 +212,9 @@ pub fn make_cylinder(
         Shape::cylinder_radius_height(radius, height)
     };
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -222,7 +232,9 @@ pub fn make_cylinder_from_points(
         radius,
     );
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -243,7 +255,9 @@ pub fn make_cylinder_point_dir(
         height,
     );
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -275,7 +289,9 @@ pub fn make_cone(
         translate_shape(&mut shape, cx, cy, cz);
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -298,9 +314,7 @@ pub fn make_torus(
     assert_valid_dimension(ring_radius, "ring_radius");
     assert_valid_dimension(tube_radius, "tube_radius");
 
-    let mut builder = Shape::torus()
-        .radius_1(ring_radius)
-        .radius_2(tube_radius);
+    let mut builder = Shape::torus().radius_1(ring_radius).radius_2(tube_radius);
     if let Some((x, y, z)) = z_axis {
         builder = builder.z_axis(DVec3::new(x, y, z));
     }
@@ -318,7 +332,9 @@ pub fn make_torus(
         translate_shape(&mut shape, cx, cy, cz);
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -336,7 +352,9 @@ pub fn cut(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
         panic!("cut: shapes do not intersect or produced an empty result");
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -352,7 +370,9 @@ pub fn common(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
         panic!("common: shapes do not intersect or produced an empty result");
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -368,7 +388,9 @@ pub fn fuse(a: &ShapeData, b: &ShapeData, eager: bool) -> ShapeData {
         panic!("fuse: shapes produced an empty result");
     }
     let mut sd = ShapeData::new(shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -383,7 +405,9 @@ pub fn translate_shape(shape: &mut Shape, dx: f64, dy: f64, dz: f64) {
 pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64, eager: bool) -> ShapeData {
     let new_shape = data.shape.translated(DVec3::new(dx, dy, dz));
     let mut sd = ShapeData::new(new_shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -391,7 +415,9 @@ pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64, eager: bool) -> Sh
 pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64, eager: bool) -> ShapeData {
     let new_shape = data.shape.rotated(axis, angle);
     let mut sd = ShapeData::new(new_shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -399,7 +425,9 @@ pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64, eager: bool) -> ShapeDa
 pub fn scale(data: &ShapeData, factor: f64, center: DVec3, eager: bool) -> ShapeData {
     let new_shape = data.shape.scaled(center, factor);
     let mut sd = ShapeData::new(new_shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -407,7 +435,9 @@ pub fn scale(data: &ShapeData, factor: f64, center: DVec3, eager: bool) -> Shape
 pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3, eager: bool) -> ShapeData {
     let new_shape = data.shape.mirrored(origin, dir);
     let mut sd = ShapeData::new(new_shape);
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     sd
 }
 
@@ -415,8 +445,7 @@ pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3, eager: bool) -> Shape
 
 /// Read a shape from a STEP file.
 pub fn read_step(path: &str, eager: bool) -> Result<ShapeData, String> {
-    let shape = Shape::read_step(path)
-        .map_err(|e| format!("STEP import failed: {}", e))?;
+    let shape = Shape::read_step(path).map_err(|e| format!("STEP import failed: {}", e))?;
     let mut sd = ShapeData::new(shape);
     if eager {
         sd.tessellate_if_needed();
@@ -440,6 +469,289 @@ pub fn write_stl(data: &ShapeData, path: &str) -> Result<(), String> {
         .map_err(|e| format!("STL export failed: {}", e))
 }
 
+// ── 2D Primitives ────────────────────────────────────────────────────────────
+
+/// Convert a workplane keyword to a Workplane, with optional position offset.
+pub fn workplane_from_keyword(plane: &str, at: Option<(f64, f64, f64)>) -> Workplane {
+    let wp = match plane {
+        "xy" | "" => Workplane::xy(),
+        "xz" => Workplane::xz(),
+        "yz" => Workplane::yz(),
+        "zx" => Workplane::zx(),
+        "zy" => Workplane::zy(),
+        "yx" => Workplane::yx(),
+        _ => Workplane::xy(),
+    };
+    match at {
+        Some((x, y, z)) => wp.translated(DVec3::new(x, y, z)),
+        None => wp,
+    }
+}
+
+/// Create a rectangle.
+pub fn make_rect(
+    w: f64,
+    d: f64,
+    is_wire: bool,
+    plane: &str,
+    at: Option<(f64, f64, f64)>,
+    eager: bool,
+) -> ShapeData {
+    assert_valid_dimension(w, "width");
+    assert_valid_dimension(d, "depth");
+    let wp = workplane_from_keyword(plane, at);
+    let wire = wp.rect(w, d);
+    let shape = if is_wire {
+        Shape::from(wire)
+    } else {
+        Shape::from(Face::from_wire(&wire))
+    };
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Create a circle.
+pub fn make_circle(
+    r: f64,
+    is_wire: bool,
+    plane: &str,
+    at: Option<(f64, f64, f64)>,
+    eager: bool,
+) -> ShapeData {
+    assert_valid_dimension(r, "radius");
+    let wp = workplane_from_keyword(plane, at);
+    let wire = wp.circle(0.0, 0.0, r);
+    let shape = if is_wire {
+        Shape::from(wire)
+    } else {
+        Shape::from(Face::from_wire(&wire))
+    };
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Create a polygon from a list of 2D points (as flattened f64 array).
+pub fn make_polygon(
+    pts: &[f64],
+    is_wire: bool,
+    plane: &str,
+    at: Option<(f64, f64, f64)>,
+    eager: bool,
+) -> ShapeData {
+    let wp = workplane_from_keyword(plane, at);
+    let world_pts: Vec<DVec3> = pts
+        .chunks(2)
+        .map(|c| wp.to_world_pos(DVec3::new(c[0], c[1], 0.0)))
+        .collect();
+    let wire = Wire::from_ordered_points(world_pts).expect("polygon needs at least 2 points");
+    let shape = if is_wire {
+        Shape::from(wire)
+    } else {
+        Shape::from(Face::from_wire(&wire))
+    };
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+// ── Extrusion & Revolution ──────────────────────────────────────────────────
+
+/// Extrude a Face to a Solid.
+///
+/// If `dir` is zero, extrudes along the face's normal.
+pub fn extrude_shape(
+    data: &ShapeData,
+    height: f64,
+    dir: DVec3,
+    both: bool,
+    eager: bool,
+) -> ShapeData {
+    let face = data.shape.expect_face();
+    let extrusion_dir = if dir.length_squared() < 1e-10 {
+        face.normal_at_center()
+    } else {
+        dir.normalize()
+    };
+    let full_vec = extrusion_dir * height;
+    let solid = if both {
+        let half_vec = extrusion_dir * (height / 2.0);
+        let shifted = Shape::from(&face).translated(-half_vec);
+        shifted.expect_face().extrude(full_vec)
+    } else {
+        face.extrude(full_vec)
+    };
+    let mut sd = ShapeData::new(Shape::from(solid));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Revolve a Face to a Solid by lofting through rotated wire copies.
+///
+/// Falls back to `face.revolve()` (OCCT MakeRevol) when the wire is
+/// rotationally symmetric about the revolve axis (degenerate loft case).
+pub fn revolve_shape(data: &ShapeData, angle_rad: f64, origin: DVec3, axis: DVec3, eager: bool) -> ShapeData {
+    let face = data.shape.expect_face();
+    let wire = face.outer_wire();
+
+    // Check if revolve is degenerate: axis passes through face center.
+    // When this happens, all rotated wire copies are identical and loft fails.
+    // MakeRevol works for partial revolutions but fails for full 360° on
+    // rotationally-symmetric faces (e.g., circle revolved about its own axis).
+    let center = face.center_of_mass();
+    let offset = center - origin;
+    let dist_from_axis = offset.cross(axis).length();
+    let is_symmetric = dist_from_axis < 1e-6;
+    let is_full = (angle_rad - TAU).abs() < 1e-9;
+
+    // For symmetric faces: MakeRevol works when axis is roughly parallel
+    // to face normal (e.g., circle revolved about Z). When axis is in the
+    // face plane, MakeRevol fails (StdFail_NotDone) — use loft instead.
+    let face_normal = face.normal_at_center();
+    let rev_axis_is_normal = face_normal.cross(axis.normalize()).length() < 1e-6;
+
+    let solid = if is_symmetric && rev_axis_is_normal {
+        // OCCT MakeRevol works for symmetric faces revolved about their normal
+        // UNLESS the angle is exactly 2*PI (full circle) — use near-full instead
+        if is_full {
+            face.revolve(origin, axis, Some(Angle::Radians(6.265))) // 359 deg
+        } else {
+            face.revolve(origin, axis, Some(Angle::Radians(angle_rad)))
+        }
+    } else if !is_symmetric {
+        // Non-symmetric face — loft through rotated wire copies
+        let n = (angle_rad / TAU * 48.0).ceil().max(3.0) as u32;
+        let step = angle_rad / n as f64;
+        let count = if is_full { n } else { n + 1 };
+
+        let wires: Vec<Wire> = (0..count)
+            .map(|i| {
+                let a = step * i as f64;
+                let q = DQuat::from_axis_angle(axis, a);
+                let rot_origin = q * origin;
+                let tx = origin - rot_origin;
+                wire.transform(tx, axis, Angle::Radians(a))
+            })
+            .collect();
+
+        Solid::loft(wires.iter().map(|w| w))
+    } else {
+        // Symmetric face, revolve NOT about face normal.
+        // Loft through rotated wire copies (no degenerate issue since
+        // the wires are in different orientations/planes).
+        let n = (angle_rad / TAU * 48.0).ceil().max(3.0) as u32;
+        let step = angle_rad / n as f64;
+        let count = if is_full { n } else { n + 1 };
+
+        let wires: Vec<Wire> = (0..count)
+            .map(|i| {
+                let a = step * i as f64;
+                let q = DQuat::from_axis_angle(axis, a);
+                let rot_origin = q * origin;
+                let tx = origin - rot_origin;
+                wire.transform(tx, axis, Angle::Radians(a))
+            })
+            .collect();
+
+        Solid::loft(wires.iter().map(|w| w))
+    };
+
+    let mut sd = ShapeData::new(Shape::from(solid));
+    if eager { sd.tessellate_if_needed(); }
+    sd
+}
+
+/// One-shot polygon extrusion.
+pub fn extrude_polygon_raw(
+    pts: &[f64],
+    height: f64,
+    plane: &str,
+    at: Option<(f64, f64, f64)>,
+    eager: bool,
+) -> ShapeData {
+    let wp = workplane_from_keyword(plane, at);
+    let world_pts: Vec<DVec3> = pts
+        .chunks(2)
+        .map(|c| wp.to_world_pos(DVec3::new(c[0], c[1], 0.0)))
+        .collect();
+    let wire =
+        Wire::from_ordered_points(world_pts).expect("extrude-polygon needs at least 2 points");
+    let face = Face::from_wire(&wire);
+    let solid = face.extrude(DVec3::Z * height);
+    let mut sd = ShapeData::new(Shape::from(solid));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+// ── Wire Operations ─────────────────────────────────────────────────────────
+
+/// Convert a Wire to a Face.
+pub fn wire_to_face(data: &ShapeData, eager: bool) -> ShapeData {
+    let wire = data.shape.expect_wire();
+    let face = Face::from_wire(&wire);
+    let mut sd = ShapeData::new(Shape::from(face));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Fillet a Wire.
+pub fn wire_fillet(data: &ShapeData, radius: f64, eager: bool) -> ShapeData {
+    let wire = data.shape.expect_wire();
+    let result = wire.fillet(radius);
+    let mut sd = ShapeData::new(Shape::from(result));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Chamfer a Wire.
+pub fn wire_chamfer(data: &ShapeData, distance: f64, eager: bool) -> ShapeData {
+    let wire = data.shape.expect_wire();
+    let result = wire.chamfer(distance);
+    let mut sd = ShapeData::new(Shape::from(result));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+/// Offset a Wire.
+pub fn wire_offset(data: &ShapeData, distance: f64, eager: bool) -> ShapeData {
+    let wire = data.shape.expect_wire();
+    let result = wire.offset(distance, JoinType::Arc);
+    let mut sd = ShapeData::new(Shape::from(result));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    sd
+}
+
+// ── Helper Queries ──────────────────────────────────────────────────────────
+
+pub fn is_wire(data: &ShapeData) -> bool {
+    data.shape.shape_type() == ShapeType::Wire
+}
+pub fn is_face(data: &ShapeData) -> bool {
+    data.shape.shape_type() == ShapeType::Face
+}
+pub fn is_solid(data: &ShapeData) -> bool {
+    data.shape.shape_type() == ShapeType::Solid
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn assert_valid_dimension(value: f64, name: &str) {
@@ -447,7 +759,6 @@ fn assert_valid_dimension(value: f64, name: &str) {
         panic!("{} must be positive, got {}", name, value);
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -597,7 +908,10 @@ mod tests {
 
     #[test]
     fn test_shape_type() {
-        assert_eq!(make_box(10.0, 10.0, 10.0, None, false).type_string(), "SOLID");
+        assert_eq!(
+            make_box(10.0, 10.0, 10.0, None, false).type_string(),
+            "SOLID"
+        );
         assert_eq!(make_sphere(10.0, None, None, false).type_string(), "SOLID");
     }
 
@@ -678,13 +992,31 @@ mod tests {
 
     #[test]
     fn test_make_torus_centered() {
-        let sd = make_torus(20.0, 10.0, Some((0.0, 0.0, 5.0)), None, None, None, None, false);
+        let sd = make_torus(
+            20.0,
+            10.0,
+            Some((0.0, 0.0, 5.0)),
+            None,
+            None,
+            None,
+            None,
+            false,
+        );
         assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]
     fn test_make_torus_partial() {
-        let sd = make_torus(20.0, 10.0, None, None, Some(std::f64::consts::PI), None, None, false);
+        let sd = make_torus(
+            20.0,
+            10.0,
+            None,
+            None,
+            Some(std::f64::consts::PI),
+            None,
+            None,
+            false,
+        );
         assert_eq!(sd.type_string(), "SOLID");
     }
 
@@ -751,7 +1083,11 @@ mod tests {
         let a = make_box(10.0, 10.0, 10.0, None, false);
         let b = make_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)), false);
         let result = fuse(&a, &b, false);
-        assert_ne!(result.type_string(), "SHAPE", "fuse of non-overlapping shapes should not produce a null shape");
+        assert_ne!(
+            result.type_string(),
+            "SHAPE",
+            "fuse of non-overlapping shapes should not produce a null shape"
+        );
     }
 
     // ── Translate Tests ──────────────────────────────────────────────────
@@ -831,6 +1167,164 @@ mod tests {
         let _scaled = scale(&original, 2.0, DVec3::ZERO, false);
         assert!(original.visible);
         assert_eq!(original.shape_id, original_id);
+    }
+
+    #[test]
+    fn test_make_rect() {
+        let sd = make_rect(10.0, 20.0, false, "xy", None, false);
+        assert_eq!(sd.type_string(), "FACE");
+    }
+
+    #[test]
+    fn test_make_circle() {
+        let sd = make_circle(5.0, false, "xy", None, false);
+        assert_eq!(sd.type_string(), "FACE");
+    }
+
+    #[test]
+    fn test_make_polygon() {
+        let pts = [0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+        let sd = make_polygon(&pts, false, "xy", None, false);
+        assert_eq!(sd.type_string(), "FACE");
+    }
+
+    #[test]
+    fn test_extrude_face() {
+        let sd = make_rect(10.0, 20.0, false, "xy", None, false);
+        let result = extrude_shape(&sd, 5.0, DVec3::Z, false, false);
+        assert_eq!(result.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_revolve_face_z() {
+        let sd = make_rect(10.0, 20.0, false, "xy", None, false);
+        let result = revolve_shape(&sd, std::f64::consts::TAU, DVec3::ZERO, DVec3::Z, false);
+        assert_eq!(result.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_revolve_face_y() {
+        let sd = make_circle(5.0, false, "xy", None, false);
+        let result = revolve_shape(
+            &sd,
+            std::f64::consts::FRAC_PI_2,
+            DVec3::ZERO,
+            DVec3::Y,
+            false,
+        );
+        assert_eq!(result.type_string(), "SOLID");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_revolve_non_face() {
+        let sd = make_box(10.0, 10.0, 10.0, None, false);
+        let _ = revolve_shape(&sd, std::f64::consts::TAU, DVec3::ZERO, DVec3::Z, false);
+    }
+
+    #[test]
+    fn test_wire_to_face() {
+        let sd = make_rect(10.0, 20.0, true, "xy", None, false);
+        assert_eq!(sd.type_string(), "WIRE");
+        let face = wire_to_face(&sd, false);
+        assert_eq!(face.type_string(), "FACE");
+    }
+
+    #[test]
+    fn test_wire_queries() {
+        let wire = make_rect(10.0, 20.0, true, "xy", None, false);
+        assert!(is_wire(&wire));
+        assert!(!is_face(&wire));
+        assert!(!is_solid(&wire));
+
+        let face = make_rect(10.0, 20.0, false, "xy", None, false);
+        assert!(!is_wire(&face));
+        assert!(is_face(&face));
+        assert!(!is_solid(&face));
+
+        let solid = make_box(10.0, 10.0, 10.0, None, false);
+        assert!(!is_wire(&solid));
+        assert!(!is_face(&solid));
+        assert!(is_solid(&solid));
+    }
+
+    #[test]
+    fn test_rect_wire() {
+        let sd = make_rect(10.0, 20.0, true, "xy", None, false);
+        assert_eq!(sd.type_string(), "WIRE");
+    }
+
+    #[test]
+    fn test_circle_wire() {
+        let sd = make_circle(5.0, true, "xy", None, false);
+        assert_eq!(sd.type_string(), "WIRE");
+    }
+
+    #[test]
+    fn test_extrude_both() {
+        let face = make_rect(10.0, 20.0, false, "xy", None, false);
+        let solid = extrude_shape(&face, 5.0, DVec3::Z, true, false);
+        assert_eq!(solid.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_extrude_polygon() {
+        let pts = [0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+        let sd = extrude_polygon_raw(&pts, 5.0, "xy", None, false);
+        assert_eq!(sd.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_wire_fillet() {
+        let wire = make_rect(10.0, 20.0, true, "xy", None, false);
+        let result = wire_fillet(&wire, 2.0, false);
+        assert_eq!(result.type_string(), "WIRE");
+    }
+
+    #[test]
+    fn test_wire_chamfer() {
+        let wire = make_rect(10.0, 20.0, true, "xy", None, false);
+        let result = wire_chamfer(&wire, 1.0, false);
+        assert_eq!(result.type_string(), "WIRE");
+    }
+
+    #[test]
+    fn test_wire_offset() {
+        let wire = make_rect(10.0, 20.0, true, "xy", None, false);
+        let result = wire_offset(&wire, 2.0, false);
+        assert_eq!(result.type_string(), "WIRE");
+    }
+
+    #[test]
+    fn test_extrude_face_normal() {
+        let face = make_rect(10.0, 20.0, false, "xy", None, false);
+        let solid = extrude_shape(&face, 5.0, DVec3::ZERO, false, false);
+        assert_eq!(solid.type_string(), "SOLID");
+    }
+
+    #[test]
+    fn test_extrude_non_face() {
+        let solid = make_box(10.0, 10.0, 10.0, None, false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            extrude_shape(&solid, 5.0, DVec3::Z, false, false);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wire_to_face_non_wire() {
+        let solid = make_box(10.0, 10.0, 10.0, None, false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            wire_to_face(&solid, false);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extrude_polygon_xz_plane() {
+        let pts = [0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0];
+        let sd = extrude_polygon_raw(&pts, 5.0, "xz", None, false);
+        assert_eq!(sd.type_string(), "SOLID");
     }
 
     #[test]

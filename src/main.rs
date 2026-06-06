@@ -10,23 +10,26 @@
     non_camel_case_types,
     non_snake_case,
     clippy::missing_safety_doc,
+    clippy::too_many_arguments
 )]
 
 mod bridge;
 mod cad;
+mod sketch;
 mod types;
 mod viewer;
 
-use std::ffi::{c_char, c_double, c_int, c_void, CStr, CString};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::Ordering;
 
 use glam::DVec3;
+use opencascade::primitives::{Face, Shape};
 
 use types::{
-    global_shape_registry, init_edge_color_defaults, pack_color, ShapeData, ACTIVE_EDGE_COLOR,
-    EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES,
+    SHOW_INACTIVE_EDGES, ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -86,9 +89,9 @@ pub unsafe extern "C" fn rust_init_box(
         cad::make_box(width, depth, height, center, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(e) => {
             let msg = if let Some(s) = e.downcast_ref::<&str>() {
                 s.to_string()
@@ -128,9 +131,9 @@ pub unsafe extern "C" fn rust_init_sphere(
         cad::make_sphere(radius, center, angle_val, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_sphere failed");
         }
@@ -157,9 +160,9 @@ pub unsafe extern "C" fn rust_init_cube(
         cad::make_cube(size, center, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cube failed");
         }
@@ -170,8 +173,12 @@ pub unsafe extern "C" fn rust_init_cube(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_init_box_from_corners(
     dest: *mut c_void,
-    c1x: c_double, c1y: c_double, c1z: c_double,
-    c2x: c_double, c2y: c_double, c2z: c_double,
+    c1x: c_double,
+    c1y: c_double,
+    c1z: c_double,
+    c2x: c_double,
+    c2y: c_double,
+    c2z: c_double,
     eager: c_int,
 ) {
     let eager = eager != 0;
@@ -179,9 +186,9 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
         cad::make_box_from_corners((c1x, c1y, c1z), (c2x, c2y, c2z), eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_box_from_corners failed");
         }
@@ -209,9 +216,9 @@ pub unsafe extern "C" fn rust_init_cylinder(
         cad::make_cylinder(radius, height, center, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cylinder failed");
         }
@@ -222,8 +229,12 @@ pub unsafe extern "C" fn rust_init_cylinder(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_init_cylinder_from_points(
     dest: *mut c_void,
-    p1x: c_double, p1y: c_double, p1z: c_double,
-    p2x: c_double, p2y: c_double, p2z: c_double,
+    p1x: c_double,
+    p1y: c_double,
+    p1z: c_double,
+    p2x: c_double,
+    p2y: c_double,
+    p2z: c_double,
     radius: c_double,
     eager: c_int,
 ) {
@@ -232,9 +243,9 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
         cad::make_cylinder_from_points((p1x, p1y, p1z), (p2x, p2y, p2z), radius, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cylinder_from_points failed");
         }
@@ -245,9 +256,13 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     dest: *mut c_void,
-    px: c_double, py: c_double, pz: c_double,
+    px: c_double,
+    py: c_double,
+    pz: c_double,
     radius: c_double,
-    dx: c_double, dy: c_double, dz: c_double,
+    dx: c_double,
+    dy: c_double,
+    dz: c_double,
     height: c_double,
     eager: c_int,
 ) {
@@ -256,9 +271,9 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
         cad::make_cylinder_point_dir((px, py, pz), radius, (dx, dy, dz), height, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cylinder_point_dir failed");
         }
@@ -293,9 +308,9 @@ pub unsafe extern "C" fn rust_init_cone(
         cad::make_cone(bottom_radius, top_radius, height, center, angle_val, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cone failed");
         }
@@ -346,16 +361,375 @@ pub unsafe extern "C" fn rust_init_torus(
         } else {
             unsafe { Some(*angle_end) }
         };
-        cad::make_torus(ring_radius, tube_radius, center, z_axis, angle_val, a_start, a_end, eager)
+        cad::make_torus(
+            ring_radius,
+            tube_radius,
+            center,
+            z_axis,
+            angle_val,
+            a_start,
+            a_end,
+            eager,
+        )
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_torus failed");
         }
     }
+}
+
+// ── Sketch lifecycle ────────────────────────────────────────────────────────
+
+/// Return the size of SketchData for janet_abstract allocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_sketch_data_size() -> usize {
+    std::mem::size_of::<sketch::SketchData>()
+}
+
+/// Run destructors on a SketchData without freeing the backing memory.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_sketch_drop(data: *mut c_void, _len: usize) {
+    if !data.is_null() {
+        unsafe {
+            ptr::drop_in_place(data as *mut sketch::SketchData);
+        }
+    }
+}
+
+/// Create a new sketch on a workplane.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_sketch_new(
+    dest: *mut c_void,
+    plane: *const c_char,
+    at_x: c_double,
+    at_y: c_double,
+    at_z: c_double,
+) {
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+    let at = if at_x == 0.0 && at_y == 0.0 && at_z == 0.0 {
+        None
+    } else {
+        Some((at_x, at_y, at_z))
+    };
+    let wp = cad::workplane_from_keyword(&plane_str, at);
+    let sk = sketch::SketchData::new(wp);
+    unsafe {
+        ptr::write(dest as *mut sketch::SketchData, sk);
+    }
+}
+
+macro_rules! sketch_op {
+    ($name:ident, $method:ident, $( $arg:ident ),*) => {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(
+            dest: *mut c_void,
+            src: *mut c_void,
+            $( $arg: c_double ),*
+        ) {
+            let src_sketch = unsafe { &*(src as *const sketch::SketchData) };
+            let result = src_sketch.$method( $( $arg ),* );
+            unsafe { ptr::write(dest as *mut sketch::SketchData, result); }
+        }
+    };
+}
+
+sketch_op!(rust_sketch_move_to, move_to, x, y);
+sketch_op!(rust_sketch_line_to, line_to, x, y);
+sketch_op!(rust_sketch_line_dx, line_dx, dx);
+sketch_op!(rust_sketch_line_dy, line_dy, dy);
+sketch_op!(rust_sketch_line_dx_dy, line_dx_dy, dx, dy);
+sketch_op!(rust_sketch_arc_to, arc_to, x2, y2, x3, y3);
+
+/// Close a sketch into a Face.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_sketch_close(shape_dest: *mut c_void, src: *mut c_void) {
+    let src_sketch = unsafe { &*(src as *const sketch::SketchData) };
+    let wire = src_sketch.close();
+    let face = Face::from_wire(&wire);
+    let sd = ShapeData::new(Shape::from(face));
+    unsafe {
+        ptr::write(shape_dest as *mut ShapeData, sd);
+    }
+}
+
+/// Build an unclosed Wire from a sketch.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_sketch_build_wire(shape_dest: *mut c_void, src: *mut c_void) {
+    let src_sketch = unsafe { &*(src as *const sketch::SketchData) };
+    let wire = src_sketch.build_wire();
+    let sd = ShapeData::new(Shape::from(wire));
+    unsafe {
+        ptr::write(shape_dest as *mut ShapeData, sd);
+    }
+}
+
+// ── 2D Primitives — initialize at a pre-allocated destination ──────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_rect(
+    dest: *mut c_void,
+    w: c_double,
+    d: c_double,
+    is_wire: c_int,
+    plane: *const c_char,
+    at_x: c_double,
+    at_y: c_double,
+    at_z: c_double,
+    eager: c_int,
+) {
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+    let at = if at_x == 0.0 && at_y == 0.0 && at_z == 0.0 {
+        None
+    } else {
+        Some((at_x, at_y, at_z))
+    };
+    let sd = cad::make_rect(w, d, is_wire != 0, &plane_str, at, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_circle(
+    dest: *mut c_void,
+    r: c_double,
+    is_wire: c_int,
+    plane: *const c_char,
+    at_x: c_double,
+    at_y: c_double,
+    at_z: c_double,
+    eager: c_int,
+) {
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+    let at = if at_x == 0.0 && at_y == 0.0 && at_z == 0.0 {
+        None
+    } else {
+        Some((at_x, at_y, at_z))
+    };
+    let sd = cad::make_circle(r, is_wire != 0, &plane_str, at, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_polygon(
+    dest: *mut c_void,
+    pts: *const c_double,
+    npts: c_int,
+    is_wire: c_int,
+    plane: *const c_char,
+    at_x: c_double,
+    at_y: c_double,
+    at_z: c_double,
+    eager: c_int,
+) {
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+    let at = if at_x == 0.0 && at_y == 0.0 && at_z == 0.0 {
+        None
+    } else {
+        Some((at_x, at_y, at_z))
+    };
+    let pts_slice = unsafe { std::slice::from_raw_parts(pts, npts as usize) };
+    let sd = cad::make_polygon(pts_slice, is_wire != 0, &plane_str, at, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+// ── Ext/Rev Operations — operates on existing ShapeData ────────────────────
+
+/// Extrude a Face.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_extrude(
+    dest: *mut c_void,
+    data: *mut c_void,
+    height: c_double,
+    dx: c_double,
+    dy: c_double,
+    dz: c_double,
+    both: c_int,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::extrude_shape(shape, height, DVec3::new(dx, dy, dz), both != 0, eager != 0)
+    }));
+    match result {
+        Ok(sd) => unsafe {
+            ptr::write(dest as *mut ShapeData, sd);
+        },
+        Err(_) => panic!("extrude failed: could not create solid from face"),
+    }
+}
+
+/// Revolve a Face.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_revolve(
+    dest: *mut c_void,
+    data: *mut c_void,
+    angle: c_double,
+    ox: c_double,
+    oy: c_double,
+    oz: c_double,
+    dx: c_double,
+    dy: c_double,
+    dz: c_double,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::revolve_shape(
+            shape,
+            angle,
+            DVec3::new(ox, oy, oz),
+            DVec3::new(dx, dy, dz),
+            eager != 0,
+        )
+    }));
+    match result {
+        Ok(sd) => unsafe {
+            ptr::write(dest as *mut ShapeData, sd);
+        },
+        Err(_) => panic!("revolve failed: could not create solid from face"),
+    }
+}
+
+/// One-shot polygon extrusion.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_extrude_polygon(
+    dest: *mut c_void,
+    pts: *const c_double,
+    npts: c_int,
+    height: c_double,
+    plane: *const c_char,
+    at_x: c_double,
+    at_y: c_double,
+    at_z: c_double,
+    eager: c_int,
+) {
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+    let at = if at_x == 0.0 && at_y == 0.0 && at_z == 0.0 {
+        None
+    } else {
+        Some((at_x, at_y, at_z))
+    };
+    let pts_slice = unsafe { std::slice::from_raw_parts(pts, npts as usize) };
+    let sd = cad::extrude_polygon_raw(pts_slice, height, &plane_str, at, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+// ── Wire Operations ──────────────────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_wire_to_face(
+    dest: *mut c_void,
+    data: *mut c_void,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let sd = cad::wire_to_face(shape, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_wire_fillet(
+    dest: *mut c_void,
+    data: *mut c_void,
+    radius: c_double,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let sd = cad::wire_fillet(shape, radius, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_wire_chamfer(
+    dest: *mut c_void,
+    data: *mut c_void,
+    distance: c_double,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let sd = cad::wire_chamfer(shape, distance, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_wire_offset(
+    dest: *mut c_void,
+    data: *mut c_void,
+    distance: c_double,
+    eager: c_int,
+) {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let sd = cad::wire_offset(shape, distance, eager != 0);
+    unsafe {
+        ptr::write(dest as *mut ShapeData, sd);
+    }
+}
+
+// ── Helper Queries ────────────────────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_is_wire(data: *mut c_void) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    c_int::from(cad::is_wire(shape))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_is_face(data: *mut c_void) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    c_int::from(cad::is_face(shape))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_is_solid(data: *mut c_void) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    c_int::from(cad::is_solid(shape))
 }
 
 // ── Boolean operations — initialize at a pre-allocated destination ──────────
@@ -375,9 +749,9 @@ pub unsafe extern "C" fn rust_init_cut(
         cad::cut(shape_a, shape_b, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_cut failed");
         }
@@ -399,9 +773,9 @@ pub unsafe extern "C" fn rust_init_common(
         cad::common(shape_a, shape_b, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_common failed");
         }
@@ -423,9 +797,9 @@ pub unsafe extern "C" fn rust_init_fuse(
         cad::fuse(shape_a, shape_b, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_fuse failed");
         }
@@ -448,9 +822,9 @@ pub unsafe extern "C" fn rust_init_translate(
         cad::translate(shape, dx, dy, dz, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_translate failed");
         }
@@ -474,9 +848,9 @@ pub unsafe extern "C" fn rust_init_rotate(
         cad::rotate(shape, DVec3::new(ax, ay, az), angle, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_rotate failed");
         }
@@ -506,9 +880,9 @@ pub unsafe extern "C" fn rust_init_scale(
         cad::scale(shape, factor, center, eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_scale failed");
         }
@@ -534,9 +908,9 @@ pub unsafe extern "C" fn rust_init_mirror(
         cad::mirror(shape, DVec3::new(ox, oy, oz), DVec3::new(dx, dy, dz), eager)
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_mirror failed");
         }
@@ -588,21 +962,19 @@ pub unsafe extern "C" fn rust_shape_get_visible(data: *mut c_void) -> c_int {
 
 /// Read a shape from a STEP file, initializing at the given destination.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_init_read_step(
-    dest: *mut c_void,
-    path: *const c_char,
-    eager: c_int,
-) {
+pub unsafe extern "C" fn rust_init_read_step(dest: *mut c_void, path: *const c_char, eager: c_int) {
     let eager = eager != 0;
-    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let path_str = unsafe { CStr::from_ptr(path) }
+        .to_string_lossy()
+        .to_string();
     let result = catch_unwind(AssertUnwindSafe(|| {
         cad::read_step(&path_str, eager)
             .unwrap_or_else(|e| panic!("rust_init_read_step failed: {}", e))
     }));
     match result {
-        Ok(shape_data) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
-        }
+        Ok(shape_data) => unsafe {
+            ptr::write(dest as *mut ShapeData, shape_data);
+        },
         Err(_) => {
             panic!("rust_init_read_step failed");
         }
@@ -614,7 +986,9 @@ pub unsafe extern "C" fn rust_init_read_step(
 /// Write a shape to a STEP file. Returns 0 on success, 1 on failure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char) -> c_int {
-    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let path_str = unsafe { CStr::from_ptr(path) }
+        .to_string_lossy()
+        .to_string();
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_step(shape_data, &path_str) {
         Ok(()) => 0,
@@ -625,7 +999,9 @@ pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char)
 /// Write a shape to an STL file. Returns 0 on success, 1 on failure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) -> c_int {
-    let path_str = unsafe { CStr::from_ptr(path) }.to_string_lossy().to_string();
+    let path_str = unsafe { CStr::from_ptr(path) }
+        .to_string_lossy()
+        .to_string();
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_stl(shape_data, &path_str) {
         Ok(()) => 0,
@@ -833,9 +1209,8 @@ fn main() {
     let name_c = CString::new("boot.janet").unwrap();
 
     let mut result = bridge::Janet(0);
-    let status = unsafe {
-        bridge::janet_dostring(env, boot_c.as_ptr(), name_c.as_ptr(), &mut result)
-    };
+    let status =
+        unsafe { bridge::janet_dostring(env, boot_c.as_ptr(), name_c.as_ptr(), &mut result) };
 
     if status != 0 {
         eprintln!("rojcad: failed to load boot.janet");

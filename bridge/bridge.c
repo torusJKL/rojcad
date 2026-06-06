@@ -109,6 +109,47 @@ extern void rust_edge_set_thickness(double value);
 extern void rust_edge_set_color_inactive(double r, double g, double b);
 extern void rust_edge_set_color_active(double r, double g, double b);
 
+/* 2D primitives */
+extern void rust_init_rect(void *dest, double w, double d, int is_wire,
+                            const char *plane, double ax, double ay, double az, int eager);
+extern void rust_init_circle(void *dest, double r, int is_wire,
+                             const char *plane, double ax, double ay, double az, int eager);
+extern void rust_init_polygon(void *dest, const double *pts, int npts, int is_wire,
+                              const char *plane, double ax, double ay, double az, int eager);
+
+/* Extrusion / Revolution */
+extern void rust_init_extrude(void *dest, void *data, double height,
+                              double dx, double dy, double dz, int both, int eager);
+extern void rust_init_revolve(void *dest, void *data, double angle,
+                              double ox, double oy, double oz,
+                              double dx, double dy, double dz, int eager);
+extern void rust_init_extrude_polygon(void *dest, const double *pts, int npts, double height,
+                                      const char *plane, double ax, double ay, double az, int eager);
+
+/* Wire operations */
+extern void rust_init_wire_to_face(void *dest, void *data, int eager);
+extern void rust_init_wire_fillet(void *dest, void *data, double radius, int eager);
+extern void rust_init_wire_chamfer(void *dest, void *data, double distance, int eager);
+extern void rust_init_wire_offset(void *dest, void *data, double distance, int eager);
+
+/* Sketch */
+extern size_t rust_sketch_data_size(void);
+extern void rust_sketch_drop(void *data, size_t len);
+extern void rust_sketch_new(void *dest, const char *plane, double ax, double ay, double az);
+extern void rust_sketch_move_to(void *dest, void *src, double x, double y);
+extern void rust_sketch_line_to(void *dest, void *src, double x, double y);
+extern void rust_sketch_line_dx(void *dest, void *src, double dx);
+extern void rust_sketch_line_dy(void *dest, void *src, double dy);
+extern void rust_sketch_line_dx_dy(void *dest, void *src, double dx, double dy);
+extern void rust_sketch_arc_to(void *dest, void *src, double x2, double y2, double x3, double y3);
+extern void rust_sketch_close(void *shape_dest, void *src);
+extern void rust_sketch_build_wire(void *shape_dest, void *src);
+
+/* Helper queries */
+extern int rust_is_wire(void *data);
+extern int rust_is_face(void *data);
+extern int rust_is_solid(void *data);
+
 /* ── Abstract type definition ───────────────────────────────────────────── */
 
 /* The abstract type descriptor for rojcad/shape.
@@ -136,6 +177,35 @@ static void shape_to_string(void *data, JanetBuffer *buffer) {
     janet_buffer_push_cstring(buffer, "#<Shape(");
     janet_buffer_push_cstring(buffer, type_str);
     janet_buffer_push_cstring(buffer, ")>");
+}
+
+/* ── Sketch abstract type ────────────────────────────────────────────────── */
+
+static JanetAbstractType rojcad_sketch_type = {
+    .name = "rojcad/sketch",
+    .gc = NULL,
+    .tostring = NULL,
+    JANET_ATEND_GCPERTHREAD
+};
+
+static int sketch_gc_finish(void *data, size_t len) {
+    if (data) {
+        rust_sketch_drop(data, len);
+    }
+    return 0;
+}
+
+static void sketch_to_string(void *data, JanetBuffer *buffer) {
+    (void)data;
+    janet_buffer_push_cstring(buffer, "#<Sketch>");
+}
+
+static void *alloc_sketch(void) {
+    void *data = janet_abstract(&rojcad_sketch_type, rust_sketch_data_size());
+    if (!data) {
+        janet_panic("failed to allocate sketch");
+    }
+    return data;
 }
 
 /* ── Helper functions ───────────────────────────────────────────────────── */
@@ -1111,6 +1181,578 @@ JANET_FN(cad_read_step,
     return janet_wrap_abstract(shape);
 }
 
+// ── Helper for extracting :plane keyword ─────────────────────────────────
+
+static const char *kw_plane(const Janet *argv, int32_t argc) {
+    int idx = find_keyword(argv, argc, "plane");
+    if (idx < 0) return "xy";
+    if (idx + 1 >= argc) janet_panic(":plane requires a keyword value");
+    if (!janet_checktype(argv[idx + 1], JANET_KEYWORD)) janet_panic(":plane expects a keyword (:xy, :xz, :yz, etc.)");
+    return (const char *)janet_unwrap_keyword(argv[idx + 1]);
+}
+
+// ── 2D Primitives ─────────────────────────────────────────────────────────
+
+JANET_FN(cad_rect,
+         "(rect width depth &keys :w :d :h :wire :plane :at :eager :hide)",
+         "Create a rectangle.\n\n"
+         "Positional: (rect w d)\n"
+         "Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),\n"
+         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
+         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Examples:\n"
+         "  (rect 10 20)                     — on XY plane\n"
+         "  (rect :w 10 :d 20 :wire)         — rect wire\n"
+         "  (rect :w 10 :h 20)               — :h alias for :d\n"
+         "  (rect :w 10 :d 20 :plane :xz :at [5 0 0]) — on XZ plane\n\n"
+         "Returns a rojcad/shape abstract value (FACE by default, WIRE with :wire).")
+{
+    int eager = has_eager(argv, argc);
+    double w, d;
+    int has_w = kw_double(argv, argc, "w", &w);
+    int has_d = kw_double(argv, argc, "d", &d);
+    if (!has_d) has_d = kw_double(argv, argc, "h", &d);
+    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
+    double ax, ay, az;
+    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    const char *plane = kw_plane(argv, argc);
+
+    int pos_count = 0;
+    for (int i = 0; i < argc; i++) {
+        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
+        pos_count++;
+    }
+
+    if (has_w && has_d) goto create;
+    if (pos_count >= 2) {
+        w = janet_unwrap_number(argv[0]);
+        d = janet_unwrap_number(argv[1]);
+        goto create;
+    }
+    janet_panic("rect: expected :w and :d keywords, or 2 positional args");
+
+create:
+    {
+        void *shape = alloc_shape();
+        rust_init_rect(shape, w, d, is_wire, plane,
+                       has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+        maybe_hide(shape, argv, argc);
+        return janet_wrap_abstract(shape);
+    }
+}
+
+JANET_FN(cad_circle,
+         "(circle radius &keys :r :wire :plane :at :eager :hide)",
+         "Create a circle.\n\n"
+         "Positional: (circle radius)\n"
+         "Keywords: :r (radius), :wire (return Wire instead of Face),\n"
+         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
+         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Examples:\n"
+         "  (circle 5)                       — on XY plane\n"
+         "  (circle :r 5 :wire)              — circle wire\n"
+         "  (circle :r 5 :plane :xz)         — on XZ plane\n\n"
+         "Returns a rojcad/shape abstract value.")
+{
+    int eager = has_eager(argv, argc);
+    double r;
+    int has_r = kw_double(argv, argc, "r", &r);
+    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
+    double ax, ay, az;
+    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    const char *plane = kw_plane(argv, argc);
+
+    if (!has_r) {
+        if (argc < 1) janet_panic("circle: radius is required");
+        r = janet_unwrap_number(argv[0]);
+    }
+
+    void *shape = alloc_shape();
+    rust_init_circle(shape, r, is_wire, plane,
+                     has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_polygon,
+         "(polygon &keys :pts :wire :plane :at :eager :hide)",
+         "Create a polygon from a list of 2D points.\n\n"
+         "Keywords: :pts (array of [x y] tuples), :wire (return Wire instead of Face),\n"
+         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
+         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Examples:\n"
+         "  (polygon :pts [[0 0] [10 0] [10 10] [0 10]])  — square on XY\n"
+         "  (polygon :pts [[0 0] [10 0] [10 10]] :wire)    — L-shaped wire\n\n"
+         "Returns a rojcad/shape abstract value.")
+{
+    int eager = has_eager(argv, argc);
+    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
+    double ax, ay, az;
+    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    const char *plane = kw_plane(argv, argc);
+
+    int pts_idx = find_keyword(argv, argc, "pts");
+    if (pts_idx < 0) janet_panic("polygon: :pts keyword is required");
+
+    Janet pts_val = argv[pts_idx + 1];
+    if (!janet_checktype(pts_val, JANET_ARRAY) && !janet_checktype(pts_val, JANET_TUPLE)) {
+        janet_panic("polygon: :pts expects an array or tuple of [x y] pairs");
+    }
+
+    int32_t npts;
+    const Janet *pts_data;
+    if (janet_checktype(pts_val, JANET_ARRAY)) {
+        JanetArray *arr = janet_unwrap_array(pts_val);
+        npts = arr->count;
+        pts_data = arr->data;
+    } else {
+        pts_data = janet_unwrap_tuple(pts_val);
+        npts = janet_tuple_length(pts_data);
+    }
+
+    // Flatten 2D points into a single array: [x0, y0, x1, y1, ...]
+    double *flat = janet_smalloc((size_t)npts * 2 * sizeof(double));
+    for (int32_t i = 0; i < npts; i++) {
+        if (!janet_checktype(pts_data[i], JANET_ARRAY) && !janet_checktype(pts_data[i], JANET_TUPLE)) {
+            janet_panicf("polygon: point %d must be an [x y] array or tuple", i);
+        }
+        const Janet *pt;
+        int32_t ptlen;
+        if (janet_checktype(pts_data[i], JANET_ARRAY)) {
+            JanetArray *arr = janet_unwrap_array(pts_data[i]);
+            pt = arr->data;
+            ptlen = arr->count;
+        } else {
+            pt = janet_unwrap_tuple(pts_data[i]);
+            ptlen = janet_tuple_length(pt);
+        }
+        if (ptlen < 2) janet_panicf("polygon: point %d needs at least 2 coordinates", i);
+        flat[i * 2 + 0] = janet_unwrap_number(pt[0]);
+        flat[i * 2 + 1] = janet_unwrap_number(pt[1]);
+    }
+
+    void *shape = alloc_shape();
+    rust_init_polygon(shape, flat, npts * 2, is_wire, plane,
+                      has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+// ── Extrusion / Revolution ────────────────────────────────────────────────
+
+JANET_FN(cad_extrude,
+         "(extrude shape &keys :h :z :x :y :dir :both :eager :hide)",
+         "Extrude a Face into a Solid.\n\n"
+         "Keywords: :h (height, required), :z/:x/:y (cardinal axis),\n"
+         "         :dir [dx dy dz] (custom direction),\n"
+         "         :both (extrude both sides),\n"
+         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Default direction is the face normal.\n\n"
+         "Examples:\n"
+         "  (extrude face :h 20)               — along face normal\n"
+         "  (extrude face :h 20 :z)            — along Z axis\n"
+         "  (extrude face :h 10 :both)         — both sides\n"
+         "  (extrude face :h 5 :dir [0 0 -1])  — custom direction\n\n"
+         "Returns a rojcad/shape abstract value (SOLID).")
+{
+    int eager = has_eager(argv, argc);
+    if (argc < 1) janet_panic("extrude: shape is required");
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+
+    double height;
+    if (!kw_double(argv, argc, "h", &height)) {
+        janet_panic("extrude: :h (height) is required");
+    }
+
+    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
+
+    double dx = 0, dy = 0, dz = 0;
+
+    if (find_keyword(argv, argc, "z") >= 0) {
+        dz = 1.0;
+    } else if (find_keyword(argv, argc, "y") >= 0) {
+        dy = 1.0;
+    } else if (find_keyword(argv, argc, "x") >= 0) {
+        dx = 1.0;
+    } else {
+        kw_array_3(argv, argc, "dir", &dx, &dy, &dz);
+    }
+
+    void *shape = alloc_shape();
+    rust_init_extrude(shape, data, height, dx, dy, dz, both, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_revolve,
+         "(revolve shape &keys :a :ar :c :dir :eager :hide)",
+         "Revolve a Face into a Solid.\n\n"
+         "Angle via :a (degrees) or :ar (radians).\n"
+         "Axis via :c (point [x y z], default [0 0 0]) and :dir (direction, default [0 0 1]).\n"
+         "Keywords: :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Examples:\n"
+         "  (revolve face :a 360)                     — full revolution about Z\n"
+         "  (revolve face :a 180)                     — half revolution\n"
+         "  (revolve face :a 180 :c [0 0 0] :dir [0 1 0]) — about Y axis\n\n"
+         "Returns a rojcad/shape abstract value (SOLID).")
+{
+    int eager = has_eager(argv, argc);
+    if (argc < 1) janet_panic("revolve: shape is required");
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+
+    double angle;
+    if (kw_double(argv, argc, "ar", &angle)) {
+        /* radians — pass through */
+    } else if (kw_double(argv, argc, "a", &angle)) {
+        angle *= (M_PI / 180.0);
+    } else {
+        angle = 2.0 * M_PI; /* default: full circle */
+    }
+
+    double ox, oy, oz, dx, dy, dz;
+    int has_c = kw_array_3(argv, argc, "c", &ox, &oy, &oz);
+    int has_dir = kw_array_3(argv, argc, "dir", &dx, &dy, &dz);
+
+    if (!has_c) { ox = 0; oy = 0; oz = 0; }
+    if (!has_dir) { dx = 0; dy = 0; dz = 1; }
+
+    void *shape = alloc_shape();
+    rust_init_revolve(shape, data, angle, ox, oy, oz, dx, dy, dz, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_extrude_polygon,
+         "(extrude-polygon points height &keys :h :plane :at :eager :hide)",
+         "Create a Solid by extruding a polygon from points.\n\n"
+         "Positional: (extrude-polygon points height)\n"
+         "Points is an array of [x y] tuples.\n"
+         "Keywords: :h (height), :plane (workplane, default :xy),\n"
+         "         :at (position [x y z]),\n"
+         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
+         "Examples:\n"
+         "  (extrude-polygon [[0 0][10 0][10 10][0 10]] 20)\n"
+         "  (extrude-polygon [[0 0][10 0][10 10]] :h 5)\n\n"
+         "Returns a rojcad/shape abstract value (SOLID).")
+{
+    int eager = has_eager(argv, argc);
+    double ax, ay, az;
+    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    const char *plane = kw_plane(argv, argc);
+
+    double height;
+    int has_h = kw_double(argv, argc, "h", &height);
+
+    // Find points value — before any keywords
+    if (argc < 1) janet_panic("extrude-polygon: points are required");
+    int pos_count = 0;
+    for (int i = 0; i < argc; i++) {
+        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
+        pos_count++;
+    }
+
+    Janet pts_val;
+    if (pos_count >= 1) {
+        pts_val = argv[0];
+    } else {
+        int pts_idx = find_keyword(argv, argc, "pts");
+        if (pts_idx < 0) janet_panic("extrude-polygon: provide points as first argument or :pts");
+        pts_val = argv[pts_idx + 1];
+    }
+
+    if (has_h && pos_count >= 2) {
+        height = janet_unwrap_number(argv[1]);
+    } else if (!has_h) {
+        if (pos_count >= 2) {
+            height = janet_unwrap_number(argv[1]);
+        } else {
+            janet_panic("extrude-polygon: height is required");
+        }
+    }
+
+    if (!janet_checktype(pts_val, JANET_ARRAY) && !janet_checktype(pts_val, JANET_TUPLE)) {
+        janet_panic("extrude-polygon: points must be an array or tuple of [x y] pairs");
+    }
+
+    int32_t npts;
+    const Janet *pts_data;
+    if (janet_checktype(pts_val, JANET_ARRAY)) {
+        JanetArray *arr = janet_unwrap_array(pts_val);
+        npts = arr->count;
+        pts_data = arr->data;
+    } else {
+        pts_data = janet_unwrap_tuple(pts_val);
+        npts = janet_tuple_length(pts_data);
+    }
+
+    double *flat = janet_smalloc((size_t)npts * 2 * sizeof(double));
+    for (int32_t i = 0; i < npts; i++) {
+        if (!janet_checktype(pts_data[i], JANET_ARRAY) && !janet_checktype(pts_data[i], JANET_TUPLE)) {
+            janet_panicf("extrude-polygon: point %d must be an [x y] array or tuple", i);
+        }
+        const Janet *pt;
+        int32_t ptlen;
+        if (janet_checktype(pts_data[i], JANET_ARRAY)) {
+            JanetArray *arr = janet_unwrap_array(pts_data[i]);
+            pt = arr->data;
+            ptlen = arr->count;
+        } else {
+            pt = janet_unwrap_tuple(pts_data[i]);
+            ptlen = janet_tuple_length(pt);
+        }
+        if (ptlen < 2) janet_panicf("extrude-polygon: point %d needs at least 2 coordinates", i);
+        flat[i * 2 + 0] = janet_unwrap_number(pt[0]);
+        flat[i * 2 + 1] = janet_unwrap_number(pt[1]);
+    }
+
+    void *shape = alloc_shape();
+    rust_init_extrude_polygon(shape, flat, npts * 2, height, plane,
+                              has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+// ── Wire Operations ───────────────────────────────────────────────────────
+
+JANET_FN(cad_wire_to_face,
+         "(wire-to-face wire &keys :eager :hide)",
+         "Convert a Wire shape into a Face by filling its boundary.\n\n"
+         "Keywords: :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (FACE).")
+{
+    janet_arity(argc, 1, 2);
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    void *shape = alloc_shape();
+    rust_init_wire_to_face(shape, data, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_wire_fillet,
+         "(wire-fillet wire &keys :r :eager :hide)",
+         "Round all vertices of a closed Wire by a radius.\n\n"
+         "Keywords: :r (radius, required), :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (WIRE).")
+{
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double radius;
+    if (!kw_double(argv, argc, "r", &radius)) {
+        janet_panic("wire-fillet: :r (radius) is required");
+    }
+    void *shape = alloc_shape();
+    rust_init_wire_fillet(shape, data, radius, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_wire_chamfer,
+         "(wire-chamfer wire &keys :d :eager :hide)",
+         "Bevel all vertices of a closed Wire by a distance.\n\n"
+         "Keywords: :d (distance, required), :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (WIRE).")
+{
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double dist;
+    if (!kw_double(argv, argc, "d", &dist)) {
+        janet_panic("wire-chamfer: :d (distance) is required");
+    }
+    void *shape = alloc_shape();
+    rust_init_wire_chamfer(shape, data, dist, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_wire_offset,
+         "(wire-offset wire &keys :d :eager :hide)",
+         "Create a parallel offset of a closed Wire by a distance.\n\n"
+         "Keywords: :d (distance, required), :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (WIRE).")
+{
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double dist;
+    if (!kw_double(argv, argc, "d", &dist)) {
+        janet_panic("wire-offset: :d (distance) is required");
+    }
+    void *shape = alloc_shape();
+    rust_init_wire_offset(shape, data, dist, eager);
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+// ── Sketch ────────────────────────────────────────────────────────────────
+
+JANET_FN(cad_sketch,
+         "(sketch &keys :plane :at)",
+         "Create a new sketch on a workplane.\n\n"
+         "Keywords: :plane (workplane, default :xy), :at (position [x y z]).\n\n"
+         "Returns a rojcad/sketch abstract value. Each sketch operation returns\n"
+         "a new sketch — no mutation.\n\n"
+         "Examples:\n"
+         "  (sketch)                              — XY plane at origin\n"
+         "  (sketch :plane :xz :at [10 0 5])      — XZ plane at [10, 0, 5]\n\n"
+         "Combine with -> for threading:\n"
+         "  (-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))")
+{
+    double ax, ay, az;
+    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    const char *plane = kw_plane(argv, argc);
+
+    void *sk = alloc_sketch();
+    rust_sketch_new(sk, plane,
+                    has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0);
+    return janet_wrap_abstract(sk);
+}
+
+/* Helper: unwrap a rojcad/sketch abstract, panic if wrong type */
+static void *unwrap_sketch_or_panic(Janet val, int index) {
+    JanetAbstract abs = janet_checkabstract(val, &rojcad_sketch_type);
+    if (!abs) {
+        janet_panicf("expected rojcad/sketch, got %T at argument %d", val, index);
+    }
+    return abs;
+}
+
+/* Helper: apply a sketch operation that returns a new sketch */
+static Janet sketch_op(Janet sketch_val, void (*op)(void *, void *, double, double),
+                       double a1, double a2) {
+    void *src = unwrap_sketch_or_panic(sketch_val, 0);
+    void *dest = alloc_sketch();
+    op(dest, src, a1, a2);
+    return janet_wrap_abstract(dest);
+}
+
+JANET_FN(cad_move_to,
+         "(move-to sketch x y)",
+         "Move the sketch cursor to (x, y) without drawing. Returns a new sketch.")
+{
+    janet_arity(argc, 3, 3);
+    return sketch_op(argv[0], rust_sketch_move_to,
+                     janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
+}
+
+JANET_FN(cad_line_to,
+         "(line-to sketch x y)",
+         "Draw a line from the current cursor to (x, y). Returns a new sketch.")
+{
+    janet_arity(argc, 3, 3);
+    return sketch_op(argv[0], rust_sketch_line_to,
+                     janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
+}
+
+JANET_FN(cad_line_dx,
+         "(line-dx sketch dx)",
+         "Draw a horizontal line by dx units. Returns a new sketch.")
+{
+    janet_arity(argc, 2, 2);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *dest = alloc_sketch();
+    rust_sketch_line_dx(dest, src, janet_unwrap_number(argv[1]));
+    return janet_wrap_abstract(dest);
+}
+
+JANET_FN(cad_line_dy,
+         "(line-dy sketch dy)",
+         "Draw a vertical line by dy units. Returns a new sketch.")
+{
+    janet_arity(argc, 2, 2);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *dest = alloc_sketch();
+    rust_sketch_line_dy(dest, src, janet_unwrap_number(argv[1]));
+    return janet_wrap_abstract(dest);
+}
+
+JANET_FN(cad_line_dx_dy,
+         "(line-dx-dy sketch dx dy)",
+         "Draw a line by (dx, dy) offset. Returns a new sketch.")
+{
+    janet_arity(argc, 3, 3);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *dest = alloc_sketch();
+    rust_sketch_line_dx_dy(dest, src,
+                           janet_unwrap_number(argv[1]),
+                           janet_unwrap_number(argv[2]));
+    return janet_wrap_abstract(dest);
+}
+
+JANET_FN(cad_arc_to,
+         "(arc-to sketch x2 y2 x3 y3)",
+         "Draw a circular arc from current cursor through (x2, y2) to (x3, y3). "
+         "Returns a new sketch.")
+{
+    janet_arity(argc, 5, 5);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *dest = alloc_sketch();
+    rust_sketch_arc_to(dest, src,
+                       janet_unwrap_number(argv[1]),
+                       janet_unwrap_number(argv[2]),
+                       janet_unwrap_number(argv[3]),
+                       janet_unwrap_number(argv[4]));
+    return janet_wrap_abstract(dest);
+}
+
+JANET_FN(cad_close_sketch,
+         "(close-sketch sketch &keys :eager :hide)",
+         "Close the sketch and return a Face. Adds a closing edge if needed.\n\n"
+         "Keywords: :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (FACE).")
+{
+    int eager = has_eager(argv, argc);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *shape = alloc_shape();
+    rust_sketch_close(shape, src);
+    if (eager) { /* tessellation would happen on show, skip for now */ }
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_build_wire,
+         "(build-wire sketch &keys :eager :hide)",
+         "Return the sketch as an unclosed Wire. Does not close the loop.\n\n"
+         "Keywords: :eager, :hide\n\n"
+         "Returns a rojcad/shape abstract value (WIRE).")
+{
+    int eager = has_eager(argv, argc);
+    void *src = unwrap_sketch_or_panic(argv[0], 0);
+    void *shape = alloc_shape();
+    rust_sketch_build_wire(shape, src);
+    if (eager) {}
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+// ── Helper Queries ────────────────────────────────────────────────────────
+
+JANET_FN(cad_wire_q,
+         "(wire? shape)",
+         "Return true if the shape is a Wire.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    return rust_is_wire(data) ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_face_q,
+         "(face? shape)",
+         "Return true if the shape is a Face.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    return rust_is_face(data) ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_solid_q,
+         "(solid? shape)",
+         "Return true if the shape is a Solid.")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    return rust_is_solid(data) ? janet_wrap_true() : janet_wrap_false();
+}
+
 /* ── CAD function metadata ────────────────────────────────────────────────── */
 
 static const char *cad_fn_categories[][2] = {
@@ -1144,6 +1786,29 @@ static const char *cad_fn_categories[][2] = {
     {"edge-thickness", "edge-styling"},
     {"edge-color-inactive", "edge-styling"},
     {"edge-color-active", "edge-styling"},
+
+    {"rect", "2d-primitives"},
+    {"circle", "2d-primitives"},
+    {"polygon", "2d-primitives"},
+    {"extrude", "operations"},
+    {"revolve", "operations"},
+    {"extrude-polygon", "operations"},
+    {"wire-to-face", "wire-operations"},
+    {"wire-fillet", "wire-operations"},
+    {"wire-chamfer", "wire-operations"},
+    {"wire-offset", "wire-operations"},
+    {"sketch", "sketch"},
+    {"move-to", "sketch"},
+    {"line-to", "sketch"},
+    {"line-dx", "sketch"},
+    {"line-dy", "sketch"},
+    {"line-dx-dy", "sketch"},
+    {"arc-to", "sketch"},
+    {"close-sketch", "sketch"},
+    {"build-wire", "sketch"},
+    {"wire?", "queries"},
+    {"face?", "queries"},
+    {"solid?", "queries"},
     {NULL, NULL}
 };
 
@@ -1154,6 +1819,8 @@ void cad_register_functions(JanetTable *env) {
      * C functions defined in this translation unit. */
     rojcad_shape_type.gc = shape_gc_finish;
     rojcad_shape_type.tostring = shape_to_string;
+    rojcad_sketch_type.gc = sketch_gc_finish;
+    rojcad_sketch_type.tostring = sketch_to_string;
 
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
@@ -1189,6 +1856,38 @@ void cad_register_functions(JanetTable *env) {
         {"edge-thickness",         cad_edge_thickness,         cad_edge_thickness_docstring_},
         {"edge-color-inactive",    cad_edge_color_inactive,    cad_edge_color_inactive_docstring_},
         {"edge-color-active",      cad_edge_color_active,      cad_edge_color_active_docstring_},
+
+        /* 2D primitives */
+        {"rect",                   cad_rect,                   cad_rect_docstring_},
+        {"circle",                 cad_circle,                 cad_circle_docstring_},
+        {"polygon",                cad_polygon,                cad_polygon_docstring_},
+
+        /* Extrusion / Revolution */
+        {"extrude",                cad_extrude,                cad_extrude_docstring_},
+        {"revolve",                cad_revolve,                cad_revolve_docstring_},
+        {"extrude-polygon",        cad_extrude_polygon,        cad_extrude_polygon_docstring_},
+
+        /* Wire operations */
+        {"wire-to-face",           cad_wire_to_face,           cad_wire_to_face_docstring_},
+        {"wire-fillet",            cad_wire_fillet,            cad_wire_fillet_docstring_},
+        {"wire-chamfer",           cad_wire_chamfer,           cad_wire_chamfer_docstring_},
+        {"wire-offset",            cad_wire_offset,            cad_wire_offset_docstring_},
+
+        /* Sketch */
+        {"sketch",                 cad_sketch,                 cad_sketch_docstring_},
+        {"move-to",                cad_move_to,                cad_move_to_docstring_},
+        {"line-to",                cad_line_to,                cad_line_to_docstring_},
+        {"line-dx",                cad_line_dx,                cad_line_dx_docstring_},
+        {"line-dy",                cad_line_dy,                cad_line_dy_docstring_},
+        {"line-dx-dy",             cad_line_dx_dy,             cad_line_dx_dy_docstring_},
+        {"arc-to",                 cad_arc_to,                 cad_arc_to_docstring_},
+        {"close-sketch",           cad_close_sketch,           cad_close_sketch_docstring_},
+        {"build-wire",             cad_build_wire,             cad_build_wire_docstring_},
+
+        /* Helper queries */
+        {"wire?",                  cad_wire_q,                 cad_wire_q_docstring_},
+        {"face?",                  cad_face_q,                 cad_face_q_docstring_},
+        {"solid?",                 cad_solid_q,                cad_solid_q_docstring_},
         {NULL, NULL, NULL}
     };
 
