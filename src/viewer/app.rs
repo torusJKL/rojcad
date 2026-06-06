@@ -15,9 +15,9 @@ use winit::{
 };
 
 use crate::types::{
-    global_shape_registry, MeshData, ShapeId, REGISTRY_GENERATION, LAST_SELECTION,
-    SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES, EDGE_THICKNESS,
-    INACTIVE_EDGE_COLOR, ACTIVE_EDGE_COLOR, unpack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, MeshData,
+    REGISTRY_GENERATION, SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry,
+    unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -248,8 +248,13 @@ impl SurfaceDrawer {
             push_constant_ranges: &[],
         });
 
-        let render_pipeline =
-            Self::build_pipeline(device, &pipeline_layout, surface_format, depth_format, "fs_main");
+        let render_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "fs_main",
+        );
         let highlight_pipeline = Self::build_pipeline(
             device,
             &pipeline_layout,
@@ -276,9 +281,9 @@ impl SurfaceDrawer {
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mesh shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
-                include_str!("shader.wgsl"),
-            )),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+                "shader.wgsl"
+            ))),
         });
 
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -530,9 +535,7 @@ impl EdgeDrawer {
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("edge shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-                "edge.wgsl"
-            ))),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!("edge.wgsl"))),
         });
 
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -583,10 +586,16 @@ impl EdgeDrawer {
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue, view_proj: &ViewUniforms) {
         let inactive = unpack_color(INACTIVE_EDGE_COLOR.load(std::sync::atomic::Ordering::Relaxed));
         let active = unpack_color(ACTIVE_EDGE_COLOR.load(std::sync::atomic::Ordering::Relaxed));
-        let thickness = f64::from_bits(EDGE_THICKNESS.load(std::sync::atomic::Ordering::Relaxed)) as f32;
+        let thickness =
+            f64::from_bits(EDGE_THICKNESS.load(std::sync::atomic::Ordering::Relaxed)) as f32;
         let edge_uniforms = EdgeUniforms {
             view_proj: view_proj.view_proj,
-            inactive_color: [inactive[0] as f32, inactive[1] as f32, inactive[2] as f32, 1.0],
+            inactive_color: [
+                inactive[0] as f32,
+                inactive[1] as f32,
+                inactive[2] as f32,
+                1.0,
+            ],
             active_color: [active[0] as f32, active[1] as f32, active[2] as f32, 1.0],
             thickness,
             _pad: [0.0; 3],
@@ -743,10 +752,7 @@ struct ViewerApp {
 }
 
 /// Main entry point for the viewer thread.
-pub fn run_viewer(
-    viewer_tx: Sender<ViewerToRepl>,
-    running: Arc<AtomicBool>,
-) {
+pub fn run_viewer(viewer_tx: Sender<ViewerToRepl>, running: Arc<AtomicBool>) {
     let mut builder = EventLoop::builder();
     #[cfg(target_os = "linux")]
     builder.with_any_thread(true);
@@ -808,13 +814,12 @@ impl ApplicationHandler for ViewerApp {
         let surface = instance
             .create_surface(window.clone())
             .expect("failed to create surface");
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-            }))
-            .expect("failed to find adapter");
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
+        }))
+        .expect("failed to find adapter");
 
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
@@ -872,7 +877,11 @@ impl ApplicationHandler for ViewerApp {
 
         let gizmo_depth = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gizmo_depth"),
-            size: wgpu::Extent3d { width: size.width.max(1), height: size.height.max(1), depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: size.width.max(1),
+                height: size.height.max(1),
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -939,13 +948,19 @@ impl ApplicationHandler for ViewerApp {
                 state.size = new_size;
                 state.surface_config.width = new_size.width.max(1);
                 state.surface_config.height = new_size.height.max(1);
-                state.surface.configure(&state.device, &state.surface_config);
+                state
+                    .surface
+                    .configure(&state.device, &state.surface_config);
                 let (tex, view) = create_depth_texture(&state.device, new_size);
                 state.depth_texture = tex;
                 state.depth_texture_view = view;
                 let gizmo_depth = state.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("gizmo_depth"),
-                    size: wgpu::Extent3d { width: new_size.width.max(1), height: new_size.height.max(1), depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d {
+                        width: new_size.width.max(1),
+                        height: new_size.height.max(1),
+                        depth_or_array_layers: 1,
+                    },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
@@ -954,7 +969,9 @@ impl ApplicationHandler for ViewerApp {
                     view_formats: &[],
                 });
                 state.gizmo_depth = gizmo_depth;
-                state.gizmo_depth_view = state.gizmo_depth.create_view(&wgpu::TextureViewDescriptor::default());
+                state.gizmo_depth_view = state
+                    .gizmo_depth
+                    .create_view(&wgpu::TextureViewDescriptor::default());
             }
             WindowEvent::ModifiersChanged(m) => {
                 state.modifiers = m.state();
@@ -980,19 +997,25 @@ impl ApplicationHandler for ViewerApp {
                     state.show_back_edges = !state.show_back_edges;
                 }
                 Key::Character(c) if state.modifiers.control_key() && c == "1" => {
-                    let idx = state.keyboard_view.map_or(4, |v| if v == 4 { 5 } else { 4 });
+                    let idx = state
+                        .keyboard_view
+                        .map_or(4, |v| if v == 4 { 5 } else { 4 });
                     let (yaw, pitch) = VIEW_TARGETS[idx];
                     state.animation.start(&state.camera, yaw, pitch);
                     state.keyboard_view = Some(idx);
                 }
                 Key::Character(c) if state.modifiers.control_key() && c == "7" => {
-                    let idx = state.keyboard_view.map_or(2, |v| if v == 2 { 3 } else { 2 });
+                    let idx = state
+                        .keyboard_view
+                        .map_or(2, |v| if v == 2 { 3 } else { 2 });
                     let (yaw, pitch) = VIEW_TARGETS[idx];
                     state.animation.start(&state.camera, yaw, pitch);
                     state.keyboard_view = Some(idx);
                 }
                 Key::Character(c) if state.modifiers.control_key() && c == "3" => {
-                    let idx = state.keyboard_view.map_or(1, |v| if v == 1 { 0 } else { 1 });
+                    let idx = state
+                        .keyboard_view
+                        .map_or(1, |v| if v == 1 { 0 } else { 1 });
                     let (yaw, pitch) = VIEW_TARGETS[idx];
                     state.animation.start(&state.camera, yaw, pitch);
                     state.keyboard_view = Some(idx);
@@ -1061,11 +1084,11 @@ impl ApplicationHandler for ViewerApp {
 // ── Gizmo helpers ─────────────────────────────────────────────────────────
 
 const VIEW_TARGETS: [(f64, f64); 6] = [
-    (0.0, 0.0),       // 0: +X (YZ plane from +X)
-    (std::f64::consts::PI, 0.0), // 1: -X (YZ plane from -X)
-    (0.0, std::f64::consts::FRAC_PI_2), // 2: +Y (XZ plane from above)
+    (0.0, 0.0),                          // 0: +X (YZ plane from +X)
+    (std::f64::consts::PI, 0.0),         // 1: -X (YZ plane from -X)
+    (0.0, std::f64::consts::FRAC_PI_2),  // 2: +Y (XZ plane from above)
     (0.0, -std::f64::consts::FRAC_PI_2), // 3: -Y (XZ plane from below)
-    (std::f64::consts::FRAC_PI_2, 0.0), // 4: +Z (XY plane from +Z)
+    (std::f64::consts::FRAC_PI_2, 0.0),  // 4: +Z (XY plane from +Z)
     (-std::f64::consts::FRAC_PI_2, 0.0), // 5: -Z (XY plane from -Z)
 ];
 
@@ -1125,9 +1148,13 @@ impl ViewerApp {
         let uniforms = ViewUniforms {
             view_proj: view_proj.to_cols_array_2d().map(|r| r.map(|v| v as f32)),
         };
-        state.surface_drawer.update_uniforms(&state.queue, &uniforms);
+        state
+            .surface_drawer
+            .update_uniforms(&state.queue, &uniforms);
         state.edge_drawer.update_uniforms(&state.queue, &uniforms);
-        state.gizmo_renderer.update_uniforms(&state.queue, &state.device, &state.camera);
+        state
+            .gizmo_renderer
+            .update_uniforms(&state.queue, &state.device, &state.camera);
 
         // Rebuild GPU data only if registry has changed (dirty tracking)
         let current_gen = REGISTRY_GENERATION.load(std::sync::atomic::Ordering::Relaxed);
@@ -1252,16 +1279,14 @@ impl ViewerApp {
 
             // Shape edges (depth test: Less with negative bias toward camera,
             // rendered AFTER meshes so edges overlay mesh surfaces)
-            state
-                .edge_drawer
-                .render(
-                    &mut pass,
-                    &state.inactive_instance_buffer,
-                    state.inactive_num_instances,
-                    &state.active_instance_buffer,
-                    state.active_num_instances,
-                    state.show_back_edges,
-                );
+            state.edge_drawer.render(
+                &mut pass,
+                &state.inactive_instance_buffer,
+                state.inactive_num_instances,
+                &state.active_instance_buffer,
+                state.active_num_instances,
+                state.show_back_edges,
+            );
         }
 
         // Gizmo overlay pass (no depth, alpha blending, top-right viewport)
@@ -1293,14 +1318,7 @@ impl ViewerApp {
                 occlusion_query_set: None,
             });
 
-            pass.set_viewport(
-                gx as f32,
-                gy as f32,
-                gs as f32,
-                gs as f32,
-                0.0,
-                1.0,
-            );
+            pass.set_viewport(gx as f32, gy as f32, gs as f32, gs as f32, 0.0, 1.0);
             pass.set_scissor_rect(gx, gy, gs, gs);
             state.gizmo_renderer.render(&mut pass);
         }

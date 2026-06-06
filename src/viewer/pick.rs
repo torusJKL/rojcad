@@ -38,19 +38,11 @@ pub fn ray_triangle_intersect(
         return None;
     }
     let t = f * edge2.dot(q);
-    if t > 1e-12 {
-        Some(t)
-    } else {
-        None
-    }
+    if t > 1e-12 { Some(t) } else { None }
 }
 
 /// Cast a ray against all meshes and return the closest intersection.
-pub fn pick_shape(
-    origin: DVec3,
-    dir: DVec3,
-    meshes: &[(u64, &MeshData)],
-) -> Option<PickResult> {
+pub fn pick_shape(origin: DVec3, dir: DVec3, meshes: &[(u64, &MeshData)]) -> Option<PickResult> {
     let mut closest: Option<PickResult> = None;
     for (shape_id, mesh) in meshes {
         for chunk in mesh.indices.chunks(3) {
@@ -60,10 +52,7 @@ pub fn pick_shape(
             let i0 = chunk[0] as usize;
             let i1 = chunk[1] as usize;
             let i2 = chunk[2] as usize;
-            if i0 >= mesh.vertices.len()
-                || i1 >= mesh.vertices.len()
-                || i2 >= mesh.vertices.len()
-            {
+            if i0 >= mesh.vertices.len() || i1 >= mesh.vertices.len() || i2 >= mesh.vertices.len() {
                 continue;
             }
             let v0: DVec3 = mesh.vertices[i0].map(|x| x as f64).into();

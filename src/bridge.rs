@@ -33,10 +33,7 @@ pub struct JanetBuffer(*mut c_void);
 #[repr(C)]
 pub struct JanetMarshalContext(*mut c_void);
 
-pub type JanetCFunction = unsafe extern "C" fn(
-    argc: i32,
-    argv: *const Janet,
-) -> Janet;
+pub type JanetCFunction = unsafe extern "C" fn(argc: i32, argv: *const Janet) -> Janet;
 
 // ── Janet C API externs ───────────────────────────────────────────────────────
 
@@ -51,11 +48,7 @@ unsafe extern "C" {
         result: *mut Janet,
     ) -> c_int;
 
-    pub fn janet_cfuns(
-        env: *mut JanetTable,
-        prefix: *const c_char,
-        cfuns: *const JanetReg,
-    );
+    pub fn janet_cfuns(env: *mut JanetTable, prefix: *const c_char, cfuns: *const JanetReg);
 
     pub fn janet_abstract(abstract_type: *const JanetAbstractType, size: c_size_t) -> *mut c_void;
     pub fn janet_checkabstract(x: Janet, at: *const JanetAbstractType) -> *mut c_void;
@@ -149,8 +142,12 @@ unsafe extern "C" {
 
     pub fn rust_init_box_from_corners(
         dest: *mut c_void,
-        c1x: c_double, c1y: c_double, c1z: c_double,
-        c2x: c_double, c2y: c_double, c2z: c_double,
+        c1x: c_double,
+        c1y: c_double,
+        c1z: c_double,
+        c2x: c_double,
+        c2y: c_double,
+        c2z: c_double,
     );
 
     pub fn rust_init_cylinder(
@@ -164,16 +161,24 @@ unsafe extern "C" {
 
     pub fn rust_init_cylinder_from_points(
         dest: *mut c_void,
-        p1x: c_double, p1y: c_double, p1z: c_double,
-        p2x: c_double, p2y: c_double, p2z: c_double,
+        p1x: c_double,
+        p1y: c_double,
+        p1z: c_double,
+        p2x: c_double,
+        p2y: c_double,
+        p2z: c_double,
         radius: c_double,
     );
 
     pub fn rust_init_cylinder_point_dir(
         dest: *mut c_void,
-        px: c_double, py: c_double, pz: c_double,
+        px: c_double,
+        py: c_double,
+        pz: c_double,
         radius: c_double,
-        dx: c_double, dy: c_double, dz: c_double,
+        dx: c_double,
+        dy: c_double,
+        dz: c_double,
         height: c_double,
     );
 

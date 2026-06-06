@@ -39,7 +39,13 @@ fn to_array(v: Vec3) -> [f32; 3] {
     [v.x, v.y, v.z]
 }
 
-fn generate_cylinder(center: Vec3, tip: Vec3, color: [f32; 4], radius: f32, segments: u32) -> Vec<GizmoVertex> {
+fn generate_cylinder(
+    center: Vec3,
+    tip: Vec3,
+    color: [f32; 4],
+    radius: f32,
+    segments: u32,
+) -> Vec<GizmoVertex> {
     let dir = (tip - center).normalize();
     let up = if dir.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
     let right = dir.cross(up).normalize();
@@ -62,12 +68,30 @@ fn generate_cylinder(center: Vec3, tip: Vec3, color: [f32; 4], radius: f32, segm
         let t0 = tip + r0 * radius;
         let t1 = tip + r1 * radius;
 
-        verts.push(GizmoVertex { position: to_array(c0), color });
-        verts.push(GizmoVertex { position: to_array(t0), color });
-        verts.push(GizmoVertex { position: to_array(c1), color });
-        verts.push(GizmoVertex { position: to_array(t0), color });
-        verts.push(GizmoVertex { position: to_array(t1), color });
-        verts.push(GizmoVertex { position: to_array(c1), color });
+        verts.push(GizmoVertex {
+            position: to_array(c0),
+            color,
+        });
+        verts.push(GizmoVertex {
+            position: to_array(t0),
+            color,
+        });
+        verts.push(GizmoVertex {
+            position: to_array(c1),
+            color,
+        });
+        verts.push(GizmoVertex {
+            position: to_array(t0),
+            color,
+        });
+        verts.push(GizmoVertex {
+            position: to_array(t1),
+            color,
+        });
+        verts.push(GizmoVertex {
+            position: to_array(c1),
+            color,
+        });
     }
 
     verts
@@ -97,19 +121,43 @@ fn generate_sphere(center: Vec3, color: [f32; 4], radius: f32) -> Vec<GizmoVerte
             let v2 = Vec3::new(sin_t1 * cos_p0, cos_t1, sin_t1 * sin_p0) * radius + center;
             let v3 = Vec3::new(sin_t1 * cos_p1, cos_t1, sin_t1 * sin_p1) * radius + center;
 
-            verts.push(GizmoVertex { position: to_array(v0), color });
-            verts.push(GizmoVertex { position: to_array(v2), color });
-            verts.push(GizmoVertex { position: to_array(v1), color });
-            verts.push(GizmoVertex { position: to_array(v1), color });
-            verts.push(GizmoVertex { position: to_array(v2), color });
-            verts.push(GizmoVertex { position: to_array(v3), color });
+            verts.push(GizmoVertex {
+                position: to_array(v0),
+                color,
+            });
+            verts.push(GizmoVertex {
+                position: to_array(v2),
+                color,
+            });
+            verts.push(GizmoVertex {
+                position: to_array(v1),
+                color,
+            });
+            verts.push(GizmoVertex {
+                position: to_array(v1),
+                color,
+            });
+            verts.push(GizmoVertex {
+                position: to_array(v2),
+                color,
+            });
+            verts.push(GizmoVertex {
+                position: to_array(v3),
+                color,
+            });
         }
     }
 
     verts
 }
 
-fn build_letter_mesh_3d(center: Vec3, right: Vec3, up: Vec3, letter: u8, depth_bias: Vec3) -> Vec<GizmoVertex> {
+fn build_letter_mesh_3d(
+    center: Vec3,
+    right: Vec3,
+    up: Vec3,
+    letter: u8,
+    depth_bias: Vec3,
+) -> Vec<GizmoVertex> {
     let hw = 0.09;
     let hh = 0.12;
     let lw = 0.03;
@@ -150,17 +198,16 @@ fn build_letter_mesh_3d(center: Vec3, right: Vec3, up: Vec3, letter: u8, depth_b
     for [from, to] in bars {
         let pts = bar(pos, right, up, from, to, lw);
         for p in pts {
-            verts.push(GizmoVertex { position: to_array(p), color });
+            verts.push(GizmoVertex {
+                position: to_array(p),
+                color,
+            });
         }
     }
     verts
 }
 
-const HIT_TARGETS: [(f64, f64, f64); 3] = [
-    (1.0, 0.0, 0.0),
-    (0.0, 1.0, 0.0),
-    (0.0, 0.0, 1.0),
-];
+const HIT_TARGETS: [(f64, f64, f64); 3] = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)];
 
 pub struct GizmoRenderer {
     pipeline: wgpu::RenderPipeline,
@@ -306,7 +353,11 @@ impl GizmoRenderer {
         let size = size.max(1);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("gizmo_depth"),
-            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -326,13 +377,27 @@ impl GizmoRenderer {
             let tip = dir * AXIS_LEN;
             let color = axis_color(i);
 
-            verts.extend(generate_cylinder(Vec3::ZERO, tip, color, LINE_WIDTH * 0.5, SPHERE_LON));
+            verts.extend(generate_cylinder(
+                Vec3::ZERO,
+                tip,
+                color,
+                LINE_WIDTH * 0.5,
+                SPHERE_LON,
+            ));
 
-            let r = if hovered == Some(i) { CIRCLE_RADIUS * HOVER_SCALE } else { CIRCLE_RADIUS };
+            let r = if hovered == Some(i) {
+                CIRCLE_RADIUS * HOVER_SCALE
+            } else {
+                CIRCLE_RADIUS
+            };
             verts.extend(generate_sphere(tip, color, r));
         }
 
-        verts.extend(generate_sphere(Vec3::ZERO, [0.4, 0.4, 0.4, 1.0], LINE_WIDTH));
+        verts.extend(generate_sphere(
+            Vec3::ZERO,
+            [0.4, 0.4, 0.4, 1.0],
+            LINE_WIDTH,
+        ));
 
         verts
     }

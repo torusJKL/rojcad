@@ -113,7 +113,9 @@ pub unsafe extern "C" fn rust_init_box(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -154,7 +156,9 @@ pub unsafe extern "C" fn rust_init_sphere(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -189,7 +193,9 @@ pub unsafe extern "C" fn rust_init_cube(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -221,7 +227,9 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -257,7 +265,9 @@ pub unsafe extern "C" fn rust_init_cylinder(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -290,7 +300,9 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -324,7 +336,9 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -367,7 +381,9 @@ pub unsafe extern "C" fn rust_init_cone(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -425,11 +441,22 @@ pub unsafe extern "C" fn rust_init_torus(
         } else {
             unsafe { Some(*angle_end) }
         };
-        cad::make_torus(ring_radius, tube_radius, center, z_axis, angle_val, a_start, a_end, eager)
+        cad::make_torus(
+            ring_radius,
+            tube_radius,
+            center,
+            z_axis,
+            angle_val,
+            a_start,
+            a_end,
+            eager,
+        )
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -566,7 +593,9 @@ pub unsafe extern "C" fn rust_init_rect(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -609,7 +638,9 @@ pub unsafe extern "C" fn rust_init_circle(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -654,7 +685,9 @@ pub unsafe extern "C" fn rust_init_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -688,7 +721,9 @@ pub unsafe extern "C" fn rust_init_extrude(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -728,7 +763,9 @@ pub unsafe extern "C" fn rust_init_revolve(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -774,7 +811,9 @@ pub unsafe extern "C" fn rust_init_extrude_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -797,12 +836,12 @@ pub unsafe extern "C" fn rust_init_wire_to_face(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        cad::wire_to_face(shape, eager != 0)
-    }));
+    let result = catch_unwind(AssertUnwindSafe(|| cad::wire_to_face(shape, eager != 0)));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -829,7 +868,9 @@ pub unsafe extern "C" fn rust_init_wire_fillet(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -856,7 +897,9 @@ pub unsafe extern "C" fn rust_init_wire_chamfer(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -883,7 +926,9 @@ pub unsafe extern "C" fn rust_init_wire_offset(
     }));
     match result {
         Ok(Ok(sd)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, sd); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -935,7 +980,9 @@ pub unsafe extern "C" fn rust_init_cut(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -965,7 +1012,9 @@ pub unsafe extern "C" fn rust_init_common(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -995,7 +1044,9 @@ pub unsafe extern "C" fn rust_init_fuse(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -1026,7 +1077,9 @@ pub unsafe extern "C" fn rust_init_translate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -1058,7 +1111,9 @@ pub unsafe extern "C" fn rust_init_rotate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -1096,7 +1151,9 @@ pub unsafe extern "C" fn rust_init_scale(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -1130,7 +1187,9 @@ pub unsafe extern "C" fn rust_init_mirror(
     }));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {
@@ -1189,17 +1248,21 @@ pub unsafe extern "C" fn rust_shape_get_visible(data: *mut c_void) -> c_int {
 
 /// Read a shape from a STEP file, initializing at the given destination.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_init_read_step(dest: *mut c_void, path: *const c_char, eager: c_int) -> c_int {
+pub unsafe extern "C" fn rust_init_read_step(
+    dest: *mut c_void,
+    path: *const c_char,
+    eager: c_int,
+) -> c_int {
     let eager = eager != 0;
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        cad::read_step(&path_str, eager)
-    }));
+    let result = catch_unwind(AssertUnwindSafe(|| cad::read_step(&path_str, eager)));
     match result {
         Ok(Ok(shape_data)) => {
-            unsafe { ptr::write(dest as *mut ShapeData, shape_data); }
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
             0
         }
         Ok(Err(msg)) => {

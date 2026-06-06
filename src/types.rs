@@ -112,7 +112,12 @@ impl ShapeRegistry {
     }
 
     /// Update an existing shape's mesh and edge data.
-    pub fn update(&self, shape_id: ShapeId, mesh: Option<MeshData>, edge_polylines: Vec<Vec<[f64; 3]>>) {
+    pub fn update(
+        &self,
+        shape_id: ShapeId,
+        mesh: Option<MeshData>,
+        edge_polylines: Vec<Vec<[f64; 3]>>,
+    ) {
         let mut map = self.inner.write().expect("shape registry lock poisoned");
         if let Some(entry) = map.get_mut(&shape_id) {
             entry.mesh = mesh;

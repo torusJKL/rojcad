@@ -136,7 +136,11 @@ pub fn make_box(
 ///
 /// One corner at (0,0,0) by default.
 /// If `center` is provided, the cube is centered at that point.
-pub fn make_cube(size: f64, center: Option<(f64, f64, f64)>, eager: bool) -> Result<ShapeData, String> {
+pub fn make_cube(
+    size: f64,
+    center: Option<(f64, f64, f64)>,
+    eager: bool,
+) -> Result<ShapeData, String> {
     validate_dimension(size, "size")?;
     let mut shape = Shape::cube(size);
     if let Some((cx, cy, cz)) = center {
@@ -402,7 +406,13 @@ pub fn translate_shape(shape: &mut Shape, dx: f64, dy: f64, dz: f64) {
 }
 
 /// Create a translated copy of a shape.
-pub fn translate(data: &ShapeData, dx: f64, dy: f64, dz: f64, eager: bool) -> Result<ShapeData, String> {
+pub fn translate(
+    data: &ShapeData,
+    dx: f64,
+    dy: f64,
+    dz: f64,
+    eager: bool,
+) -> Result<ShapeData, String> {
     let new_shape = data.shape.translated(DVec3::new(dx, dy, dz));
     let mut sd = ShapeData::new(new_shape);
     if eager {
@@ -422,7 +432,12 @@ pub fn rotate(data: &ShapeData, axis: DVec3, angle: f64, eager: bool) -> Result<
 }
 
 /// Create a scaled copy of a shape about a point.
-pub fn scale(data: &ShapeData, factor: f64, center: DVec3, eager: bool) -> Result<ShapeData, String> {
+pub fn scale(
+    data: &ShapeData,
+    factor: f64,
+    center: DVec3,
+    eager: bool,
+) -> Result<ShapeData, String> {
     let new_shape = data.shape.scaled(center, factor);
     let mut sd = ShapeData::new(new_shape);
     if eager {
@@ -432,7 +447,12 @@ pub fn scale(data: &ShapeData, factor: f64, center: DVec3, eager: bool) -> Resul
 }
 
 /// Create a mirrored copy of a shape about an axis.
-pub fn mirror(data: &ShapeData, origin: DVec3, dir: DVec3, eager: bool) -> Result<ShapeData, String> {
+pub fn mirror(
+    data: &ShapeData,
+    origin: DVec3,
+    dir: DVec3,
+    eager: bool,
+) -> Result<ShapeData, String> {
     let new_shape = data.shape.mirrored(origin, dir);
     let mut sd = ShapeData::new(new_shape);
     if eager {
@@ -599,7 +619,13 @@ pub fn extrude_shape(
 ///
 /// Falls back to `face.revolve()` (OCCT MakeRevol) when the wire is
 /// rotationally symmetric about the revolve axis (degenerate loft case).
-pub fn revolve_shape(data: &ShapeData, angle_rad: f64, origin: DVec3, axis: DVec3, eager: bool) -> Result<ShapeData, String> {
+pub fn revolve_shape(
+    data: &ShapeData,
+    angle_rad: f64,
+    origin: DVec3,
+    axis: DVec3,
+    eager: bool,
+) -> Result<ShapeData, String> {
     let face = data.shape.expect_face();
     let wire = face.outer_wire();
 
@@ -653,7 +679,9 @@ pub fn revolve_shape(data: &ShapeData, angle_rad: f64, origin: DVec3, axis: DVec
     };
 
     let mut sd = ShapeData::new(Shape::from(solid));
-    if eager { sd.tessellate_if_needed(); }
+    if eager {
+        sd.tessellate_if_needed();
+    }
     Ok(sd)
 }
 
@@ -916,7 +944,10 @@ mod tests {
             unwrap_box(10.0, 10.0, 10.0, None, false).type_string(),
             "SOLID"
         );
-        assert_eq!(unwrap_sphere(10.0, None, None, false).type_string(), "SOLID");
+        assert_eq!(
+            unwrap_sphere(10.0, None, None, false).type_string(),
+            "SOLID"
+        );
     }
 
     // ── New Primitive Tests ─────────────────────────────────────────────────
@@ -966,7 +997,8 @@ mod tests {
 
     #[test]
     fn test_make_cylinder_point_dir() {
-        let sd = make_cylinder_point_dir((0.0, 0.0, 0.0), 5.0, (0.0, 0.0, 1.0), 10.0, false).unwrap();
+        let sd =
+            make_cylinder_point_dir((0.0, 0.0, 0.0), 5.0, (0.0, 0.0, 1.0), 10.0, false).unwrap();
         assert_eq!(sd.type_string(), "SOLID");
     }
 
@@ -1005,7 +1037,8 @@ mod tests {
             None,
             None,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sd.type_string(), "SOLID");
     }
 
@@ -1020,7 +1053,8 @@ mod tests {
             None,
             None,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sd.type_string(), "SOLID");
     }
 
@@ -1171,7 +1205,8 @@ mod tests {
     #[test]
     fn test_revolve_face_z() {
         let sd = make_rect(10.0, 20.0, false, "xy", None, false).unwrap();
-        let result = revolve_shape(&sd, std::f64::consts::TAU, DVec3::ZERO, DVec3::Z, false).unwrap();
+        let result =
+            revolve_shape(&sd, std::f64::consts::TAU, DVec3::ZERO, DVec3::Z, false).unwrap();
         assert_eq!(result.type_string(), "SOLID");
     }
 
@@ -1184,7 +1219,8 @@ mod tests {
             DVec3::ZERO,
             DVec3::Y,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(result.type_string(), "SOLID");
     }
 
