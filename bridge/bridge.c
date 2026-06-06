@@ -991,6 +991,7 @@ JANET_FN(cad_poll_selection,
          " invoked automatically with the result.")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
     uint64_t result = rust_poll_selection();
     if (result == 0) {
         return janet_wrap_nil();
@@ -1020,6 +1021,7 @@ JANET_FN(cad_edge_toggle_inactive,
          "Example: (edge-toggle-inactive)")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
     int result = rust_edge_toggle_inactive();
     return result ? janet_wrap_true() : janet_wrap_false();
 }
@@ -1031,6 +1033,7 @@ JANET_FN(cad_edge_toggle_active,
          "Example: (edge-toggle-active)")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
     int result = rust_edge_toggle_active();
     return result ? janet_wrap_true() : janet_wrap_false();
 }
@@ -1041,6 +1044,7 @@ JANET_FN(cad_edge_inactive_showing,
          "false if hidden.")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
     int result = rust_edge_inactive_showing();
     return result ? janet_wrap_true() : janet_wrap_false();
 }
@@ -1051,6 +1055,7 @@ JANET_FN(cad_edge_active_showing,
          "false if hidden.")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
     int result = rust_edge_active_showing();
     return result ? janet_wrap_true() : janet_wrap_false();
 }

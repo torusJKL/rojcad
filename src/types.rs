@@ -141,7 +141,6 @@ impl ShapeRegistry {
             REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
         }
     }
-
 }
 
 impl Clone for ShapeRegistry {
