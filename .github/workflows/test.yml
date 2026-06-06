@@ -1,0 +1,37 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+name: Cargo Test
+
+jobs:
+  test:
+    name: Cargo Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      # Cache OCCT build (opencascade-sys) with a key that only changes when the
+      # opencascade-rs git commit changes, so regular dependency bumps don't
+      # trigger a full OCCT rebuild.
+      - name: Extract opencascade-rs commit
+        id: occt
+        run: |
+          COMMIT=$(grep -A2 '^name = "opencascade-sys"' Cargo.lock | grep 'source = ' | sed 's/.*#//; s/"//g')
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            target/debug/build/opencascade-sys-*
+            target/debug/.fingerprint/opencascade-sys-*
+          key: occt-${{ steps.occt.outputs.commit }}
+
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-targets

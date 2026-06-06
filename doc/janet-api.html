@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rojcad Janet API Reference</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:sans-serif;color:#222;background:#fff;line-height:1.6;display:flex;flex-direction:column}
+#search{width:100%;padding:12px 20px;font-size:16px;border:none;border-bottom:1px solid #ddd;outline:none;flex-shrink:0}
+#search:focus{border-bottom-color:#06c}
+#layout{display:flex;flex:1;overflow:hidden}
+#sidebar{width:240px;flex-shrink:0;border-right:1px solid #eee;padding:20px;overflow-y:auto;background:#fafafa}
+#sidebar h2{font-size:11px;text-transform:uppercase;color:#999;letter-spacing:1px;margin-bottom:12px}
+#sidebar ul{list-style:none;margin-bottom:20px}
+#sidebar li{margin-bottom:4px}
+#sidebar a{color:#555;text-decoration:none;font-size:14px}
+#sidebar a:hover{color:#06c}
+#sidebar .cat{margin-top:4px;font-weight:600;color:#333}
+#sidebar .cat a{color:#333}
+#sidebar .fn{padding-left:14px;font-size:13px}
+main{flex:1;padding:32px 48px;overflow-y:auto}
+main h1{font-size:28px;margin-bottom:8px;color:#111}
+main h2{font-size:20px;margin-top:40px;margin-bottom:16px;padding-bottom:6px;border-bottom:1px solid #eee;color:#222}
+article{margin-bottom:32px;padding:20px 0 0 0}
+article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
+.usage{font-family:monospace;font-size:13px;background:#f5f5f5;padding:8px 12px;border-radius:4px;margin-bottom:12px;color:#555;overflow-x:auto}
+.desc p{margin-bottom:8px;font-size:14px}
+.examples{margin:12px 0}
+.examples pre{background:#f8f8f8;border:1px solid #eee;border-radius:4px;padding:12px;overflow-x:auto;font-family:monospace;font-size:13px;line-height:1.5}
+.returns{margin-top:8px;font-size:13px;color:#666}
+.tok-c{color:#888}
+.tok-s{color:#a31515}
+.tok-k{color:#00c}
+.tok-n{color:#098658}
+.tok-sp{color:#795e26}
+#top-btn{position:fixed;bottom:24px;right:24px;width:40px;height:40px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#555;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:background .15s,color .15s;z-index:100}
+#top-btn:hover{background:#06c;color:#fff;border-color:#06c}
+</style>
+</head>
+<body>
+<input id="search" type="text" placeholder="Search functions... (Ctrl+K)">
+<div id="layout">
+<nav id="sidebar">
+<h2>Categories</h2>
+<ul>
+<li class="cat"><a href="#selection">Selection</a></li>
+<li class="fn"><a href="#on-select">on-select</a></li>
+<li class="fn"><a href="#poll-selection">poll-selection</a></li>
+<li class="cat"><a href="#io">I/O</a></li>
+<li class="fn"><a href="#read-step">read-step</a></li>
+<li class="fn"><a href="#write-step">write-step</a></li>
+<li class="fn"><a href="#write-stl">write-stl</a></li>
+<li class="cat"><a href="#primitives">Primitives</a></li>
+<li class="fn"><a href="#box">box</a></li>
+<li class="fn"><a href="#cone">cone</a></li>
+<li class="fn"><a href="#cylinder">cylinder</a></li>
+<li class="fn"><a href="#sphere">sphere</a></li>
+<li class="fn"><a href="#torus">torus</a></li>
+<li class="cat"><a href="#registry">Registry</a></li>
+<li class="fn"><a href="#hide">hide</a></li>
+<li class="fn"><a href="#purge">purge</a></li>
+<li class="fn"><a href="#registry-remove">registry-remove</a></li>
+<li class="fn"><a href="#show">show</a></li>
+<li class="cat"><a href="#booleans">Booleans</a></li>
+<li class="fn"><a href="#common">common</a></li>
+<li class="fn"><a href="#cut">cut</a></li>
+<li class="fn"><a href="#fuse">fuse</a></li>
+<li class="cat"><a href="#queries">Queries</a></li>
+<li class="fn"><a href="#shape-type">shape-type</a></li>
+<li class="fn"><a href="#visible?">visible?</a></li>
+<li class="cat"><a href="#edge-styling">Edge Styling</a></li>
+<li class="fn"><a href="#edge-active-show?">edge-active-show?</a></li>
+<li class="fn"><a href="#edge-color-active">edge-color-active</a></li>
+<li class="fn"><a href="#edge-color-inactive">edge-color-inactive</a></li>
+<li class="fn"><a href="#edge-inactive-show?">edge-inactive-show?</a></li>
+<li class="fn"><a href="#edge-thickness">edge-thickness</a></li>
+<li class="fn"><a href="#edge-toggle-active">edge-toggle-active</a></li>
+<li class="fn"><a href="#edge-toggle-inactive">edge-toggle-inactive</a></li>
+<li class="cat"><a href="#transforms">Transforms</a></li>
+<li class="fn"><a href="#mirror">mirror</a></li>
+<li class="fn"><a href="#rotate">rotate</a></li>
+<li class="fn"><a href="#scale">scale</a></li>
+<li class="fn"><a href="#translate">translate</a></li>
+</ul>
+</nav>
+<main>
+<h1>rojcad Janet API Reference</h1>
+<section id="selection">
+<h2>Selection</h2>
+<article id="on-select">
+<h3>on-select</h3>
+<div class="usage">(on-select callback)</div>
+<div class="desc">
+<p>Register a Janet function to be called when a shape is selected in the viewer. The function receives the selected shape's ID as an integer, or nil when deselected.</p>
+<p>Pass nil to unregister the callback.</p>
+</div>
+</article>
+<article id="poll-selection">
+<h3>poll-selection</h3>
+<div class="usage">(poll-selection)</div>
+<div class="desc">
+<p>Check for a pending selection event from the viewer.</p>
+<p>If a callback was registered via (on-select), it will be invoked automatically with the result.</p>
+</div>
+<div class="returns">Returns nil if no event, the shape ID (integer) if a shape was selected, or :deselected if the selection was cleared.</div>
+</article>
+</section>
+<section id="io">
+<h2>I/O</h2>
+<article id="read-step">
+<h3>read-step</h3>
+<div class="usage">(read-step path &amp;keys :eager :hide)</div>
+<div class="desc">
+<p>Read a STEP file from disk and return a shape.</p>
+<p>Example:
+  (read-step "/tmp/model.step")       — load from file
+  (read-step "/tmp/model.step" :eager) — load and tessellate</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value. Signals an error on failure.</div>
+</article>
+<article id="write-step">
+<h3>write-step</h3>
+<div class="usage">(write-step shape path)</div>
+<div class="desc">
+</div>
+<div class="returns">Export a shape to a STEP file at the given path. Returns nil on success, signals an error on failure.</div>
+</article>
+<article id="write-stl">
+<h3>write-stl</h3>
+<div class="usage">(write-stl shape path)</div>
+<div class="desc">
+</div>
+<div class="returns">Export a shape to an STL file at the given path. Returns nil on success, signals an error on failure.</div>
+</article>
+</section>
+<section id="primitives">
+<h2>Primitives</h2>
+<article id="box">
+<h3>box</h3>
+<div class="usage">(box width depth height &amp;keys :w :d :h :c :pl :ph :eager :hide)</div>
+<div class="desc">
+<p>Create a box or cube.</p>
+<p>Positional: (box w d h) or (box size) for a cube.
+Keywords: :w :d :h (dimensions), :c (center [x y z]),
+         :pl :ph (opposite corners [x y z]).
+         :eager (tessellate immediately).
+         :hide (skip automatic show on def).</p>
+</div>
+<div class="examples">
+<pre><code>(box <span class="tok-n">10</span> <span class="tok-n">20</span> <span class="tok-n">30</span>)           — box at origin
+(box <span class="tok-n">10</span> <span class="tok-n">20</span> <span class="tok-n">30</span> <span class="tok-k">:c</span> [<span class="tok-n">5</span> <span class="tok-n">5</span> <span class="tok-n">5</span>]) — centered box
+(box <span class="tok-n">5</span>)                  — <span class="tok-n">5</span>x5x5 cube
+(box <span class="tok-k">:pl</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span>] <span class="tok-k">:ph</span> [<span class="tok-n">10</span> <span class="tok-n">20</span> <span class="tok-n">30</span>]) — from corners
+(box <span class="tok-k">:w</span> <span class="tok-n">10</span> <span class="tok-k">:d</span> <span class="tok-n">20</span> <span class="tok-k">:h</span> <span class="tok-n">30</span>) — keyword style
+(box <span class="tok-n">10</span> <span class="tok-k">:eager</span>)          — eager tessellation
+(box <span class="tok-n">10</span> <span class="tok-k">:hide</span>)           — create without showing</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="cone">
+<h3>cone</h3>
+<div class="usage">(cone bottom-radius height &amp;keys :br :tr :h :c :a :ar :eager)</div>
+<div class="desc">
+<p>Create a cone or truncated cone.</p>
+<p>Positional: (cone br h) for full cone, (cone br tr h) for truncated.
+Keywords: :br (bottom radius), :tr (top radius), :h (height),
+         :c (center [x y z]),
+         :a (angle in degrees), :ar (angle in radians, partial cone),
+         :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(cone <span class="tok-n">5</span> <span class="tok-n">10</span>)                — full cone, br=<span class="tok-n">5</span>, h=<span class="tok-n">10</span>
+(cone <span class="tok-n">5</span> <span class="tok-n">3</span> <span class="tok-n">10</span>)              — truncated cone
+(cone <span class="tok-n">5</span> <span class="tok-n">10</span> <span class="tok-k">:a</span> <span class="tok-n">180</span>)         — half cone
+(cone <span class="tok-k">:br</span> <span class="tok-n">5</span> <span class="tok-k">:h</span> <span class="tok-n">10</span>)         — keyword style
+(cone <span class="tok-n">5</span> <span class="tok-n">10</span> <span class="tok-k">:eager</span>)         — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="cylinder">
+<h3>cylinder</h3>
+<div class="usage">(cylinder radius height &amp;keys :r :h :c :dir :fp :tp :eager)</div>
+<div class="desc">
+<p>Create a cylinder.</p>
+<p>Positional: (cylinder radius height) — along Z axis, base at Z=0
+Keywords: :r (radius), :h (height), :c (center [x y z]),
+         :dir (direction [dx dy dz]),
+         :fp (from-point [x y z]), :tp (to-point [x y z]).
+         :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(cylinder <span class="tok-n">5</span> <span class="tok-n">10</span>)                       — simple
+(cylinder <span class="tok-n">5</span> <span class="tok-n">10</span> <span class="tok-k">:c</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">5</span>])            — centered
+(cylinder <span class="tok-k">:fp</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span>] <span class="tok-k">:tp</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">10</span>] <span class="tok-k">:r</span> <span class="tok-n">5</span>) — point-to-point
+(cylinder <span class="tok-k">:r</span> <span class="tok-n">5</span> <span class="tok-k">:h</span> <span class="tok-n">10</span>)                 — keyword style
+(cylinder <span class="tok-n">5</span> <span class="tok-n">10</span> <span class="tok-k">:eager</span>)                — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="sphere">
+<h3>sphere</h3>
+<div class="usage">(sphere radius &amp;keys :r :c :a :ar :eager)</div>
+<div class="desc">
+<p>Create a sphere.</p>
+<p>Positional: (sphere radius)
+Keywords: :r (radius), :c (center [x y z]),
+         :a (angle in degrees), :ar (angle in radians),
+         :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(sphere <span class="tok-n">10</span>)               — full sphere at origin
+(sphere <span class="tok-n">10</span> <span class="tok-k">:c</span> [<span class="tok-n">1</span> <span class="tok-n">2</span> <span class="tok-n">3</span>])    — repositioned
+(sphere <span class="tok-n">10</span> <span class="tok-k">:a</span> <span class="tok-n">180</span>)        — hemisphere
+(sphere <span class="tok-k">:r</span> <span class="tok-n">10</span>)            — keyword style
+(sphere <span class="tok-n">10</span> <span class="tok-k">:eager</span>)        — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="torus">
+<h3>torus</h3>
+<div class="usage">(torus ring-radius tube-radius &amp;keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager)</div>
+<div class="desc">
+<p>Create a torus.</p>
+<p>Positional: (torus rr tr)
+Keywords: :rr (ring radius), :tr (tube radius),
+         :c (center [x y z]),
+         :a (angle in degrees), :ar (angle in radians, partial),
+         :as (start angle degrees), :asr (start angle radians),
+         :ae (end angle degrees), :aer (end angle radians),
+         :dir (axis direction [dx dy dz]),
+         :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(torus <span class="tok-n">20</span> <span class="tok-n">10</span>)                    — full torus
+(torus <span class="tok-n">20</span> <span class="tok-n">10</span> <span class="tok-k">:c</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">5</span>])         — repositioned
+(torus <span class="tok-n">20</span> <span class="tok-n">10</span> <span class="tok-k">:a</span> <span class="tok-n">180</span>)             — half torus
+(torus <span class="tok-k">:rr</span> <span class="tok-n">20</span> <span class="tok-k">:tr</span> <span class="tok-n">10</span> <span class="tok-k">:as</span> <span class="tok-n">0</span> <span class="tok-k">:ae</span> <span class="tok-n">180</span>) — angled range
+(torus <span class="tok-k">:rr</span> <span class="tok-n">20</span> <span class="tok-k">:tr</span> <span class="tok-n">10</span> <span class="tok-k">:dir</span> [<span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">0</span>]) — oriented
+(torus <span class="tok-n">20</span> <span class="tok-n">10</span> <span class="tok-k">:eager</span>)             — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+</section>
+<section id="registry">
+<h2>Registry</h2>
+<article id="hide">
+<h3>hide</h3>
+<div class="usage">(hide shape)</div>
+<div class="desc">
+<p>Set a shape's visible flag to false. The shape stays registered in the viewer but is no longer rendered.</p>
+</div>
+<div class="examples">
+<pre><code>(hide b)         — shape disappears from viewer
+(show b)         — reappears without re-tessellating</code></pre>
+</div>
+<div class="returns">Returns nil.</div>
+</article>
+<article id="purge">
+<h3>purge</h3>
+<div class="usage">(purge shape)</div>
+<div class="desc">
+<p>Remove a shape from the viewer registry and mark it as purged.
+The shape will no longer be rendered. To also unbind the Janet variable,
+use (purge shape) followed by (def name nil).</p>
+</div>
+<div class="examples">
+<pre><code>(purge b)          — remove b from viewer
+(purge b) (<span class="tok-sp">def</span> b <span class="tok-sp">nil</span>) (gc)  — full cleanup</code></pre>
+</div>
+<div class="returns">Returns nil.</div>
+</article>
+<article id="registry-remove">
+<h3>registry-remove</h3>
+<div class="usage">(registry-remove shape)</div>
+<div class="desc">
+<p>Immediately remove a shape from the viewer registry and mark it as purged.
+The shape will no longer be rendered. The underlying OCCT shape memory
+is freed when Janet's GC collects the shape value.</p>
+<p>This is used internally by the `purge` macro.</p>
+</div>
+<div class="returns">Returns nil.</div>
+</article>
+<article id="show">
+<h3>show</h3>
+<div class="usage">(show shape)</div>
+<div class="desc">
+<p>Register a shape in the viewer and make it visible.</p>
+<p>If the shape has not been tessellated, tessellation happens automatically.
+Calling show on an already-visible shape is a no-op.</p>
+</div>
+<div class="examples">
+<pre><code>(<span class="tok-sp">def</span> b (box <span class="tok-n">10</span>))
+(show b)         — tessellates <span class="tok-sp">if</span> needed, registers, makes visible
+(show b)         — second call is a no-op (already visible)</code></pre>
+</div>
+<div class="returns">Returns nil.</div>
+</article>
+</section>
+<section id="booleans">
+<h2>Booleans</h2>
+<article id="common">
+<h3>common</h3>
+<div class="usage">(common shape-a shape-b &amp;keys :eager)</div>
+<div class="desc">
+<p>Signals an error if the shapes do not intersect.
+Keywords: :eager (tessellate immediately).</p>
+</div>
+<div class="returns">Intersect shape-a with shape-b. Returns a new rojcad/shape representing the shared volume.</div>
+</article>
+<article id="cut">
+<h3>cut</h3>
+<div class="usage">(cut shape-a shape-b &amp;keys :eager)</div>
+<div class="desc">
+<p>Signals an error if the shapes do not intersect or produce an empty result.
+Keywords: :eager (tessellate immediately).</p>
+</div>
+<div class="returns">Subtract shape-b from shape-a. Returns a new rojcad/shape representing the resulting solid.</div>
+</article>
+<article id="fuse">
+<h3>fuse</h3>
+<div class="usage">(fuse shape-a shape-b &amp;keys :eager)</div>
+<div class="desc">
+<p>Signals an error if the operation produces an empty result.
+Keywords: :eager (tessellate immediately).</p>
+</div>
+<div class="returns">Combine shape-a and shape-b into a single solid. Returns a new rojcad/shape representing the union of both shapes.</div>
+</article>
+</section>
+<section id="queries">
+<h2>Queries</h2>
+<article id="shape-type">
+<h3>shape-type</h3>
+<div class="usage">(shape-type shape)</div>
+<div class="desc">
+</div>
+<div class="returns">Return the OCCT topological type of a shape as a keyword. Returns :solid, :face, :edge, :wire, :shell, :vertex, :compound, :compound-solid, or :shape.</div>
+</article>
+<article id="visible?">
+<h3>visible?</h3>
+<div class="usage">(visible? shape)</div>
+<div class="desc">
+<p>Return true if the shape's visible flag is set, false otherwise.</p>
+</div>
+</article>
+</section>
+<section id="edge-styling">
+<h2>Edge Styling</h2>
+<article id="edge-active-show?">
+<h3>edge-active-show?</h3>
+<div class="usage">(edge-active-show?)</div>
+<div class="desc">
+<p>Return true if edges on the selected shape are currently visible, false if hidden.</p>
+</div>
+</article>
+<article id="edge-color-active">
+<h3>edge-color-active</h3>
+<div class="usage">(edge-color-active &amp;opt r g b)</div>
+<div class="desc">
+<p>Get or set the active (selected) edge color as RGB values in [0, 1].</p>
+<p>Called with no arguments, returns the current color as a tuple '(r g b).
+Called with three numeric arguments (r g b), sets the color.</p>
+<p>Example: (edge-color-active 0.3 0.5 1.0)  — light blue
+         (edge-color-active)               — query</p>
+</div>
+</article>
+<article id="edge-color-inactive">
+<h3>edge-color-inactive</h3>
+<div class="usage">(edge-color-inactive &amp;opt r g b)</div>
+<div class="desc">
+<p>Get or set the inactive edge color as RGB values in [0, 1].</p>
+<p>Called with no arguments, returns the current color as a tuple '(r g b).
+Called with three numeric arguments (r g b), sets the color.</p>
+<p>Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey
+         (edge-color-inactive)               — query</p>
+</div>
+</article>
+<article id="edge-inactive-show?">
+<h3>edge-inactive-show?</h3>
+<div class="usage">(edge-inactive-show?)</div>
+<div class="desc">
+<p>Return true if edges on non-selected shapes are currently visible, false if hidden.</p>
+</div>
+</article>
+<article id="edge-thickness">
+<h3>edge-thickness</h3>
+<div class="usage">(edge-thickness &amp;opt value)</div>
+<div class="desc">
+<p>Get or set the edge line thickness in NDC units.</p>
+<p>Called with no arguments, returns the current thickness.
+Called with one numeric argument, sets the thickness and returns it.</p>
+<p>Example: (edge-thickness 0.008) — thicker lines
+         (edge-thickness)      — query</p>
+</div>
+</article>
+<article id="edge-toggle-active">
+<h3>edge-toggle-active</h3>
+<div class="usage">(edge-toggle-active)</div>
+<div class="desc">
+<p>Example: (edge-toggle-active)</p>
+</div>
+<div class="returns">Toggle visibility of edges on the selected shape. Returns true if active edges are now visible, false if hidden.</div>
+</article>
+<article id="edge-toggle-inactive">
+<h3>edge-toggle-inactive</h3>
+<div class="usage">(edge-toggle-inactive)</div>
+<div class="desc">
+<p>Example: (edge-toggle-inactive)</p>
+</div>
+<div class="returns">Toggle visibility of edges on non-selected shapes. Returns true if inactive edges are now visible, false if hidden.</div>
+</article>
+</section>
+<section id="transforms">
+<h2>Transforms</h2>
+<article id="mirror">
+<h3>mirror</h3>
+<div class="usage">(mirror shape ox oy oz dx dy dz &amp;keys :eager)</div>
+<div class="desc">
+<p>Create a mirrored copy of shape about an axis.</p>
+<p>Positional: (mirror shape ox oy oz dx dy dz)
+Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.
+Keywords: :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(mirror box <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">0</span> <span class="tok-n">0</span>)       — mirror across X axis through origin
+(mirror box <span class="tok-n">5</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">0</span>)       — mirror across Y axis through (<span class="tok-n">5</span>,<span class="tok-n">0</span>,<span class="tok-n">0</span>)
+(mirror box <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-k">:eager</span>) — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a new rojcad/shape abstract value. The original shape is unchanged.</div>
+</article>
+<article id="rotate">
+<h3>rotate</h3>
+<div class="usage">(rotate shape &amp;keys :a :ar :x :y :z :r :eager)</div>
+<div class="desc">
+<p>Create a rotated copy of shape.</p>
+<p>Angle is specified via :a (degrees) or :ar (radians).
+Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).
+:eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(rotate box <span class="tok-k">:a</span> <span class="tok-n">45</span> <span class="tok-k">:z</span>)           — <span class="tok-n">45</span> degrees about Z
+(rotate box <span class="tok-k">:ar</span> <span class="tok-n">1.5708</span> <span class="tok-k">:x</span>)      — pi/<span class="tok-n">2</span> radians about X
+(rotate box <span class="tok-k">:a</span> <span class="tok-n">90</span> <span class="tok-k">:r</span> [<span class="tok-n">1</span> <span class="tok-n">1</span> <span class="tok-n">0</span>])   — <span class="tok-n">90</span> degrees about custom axis
+(rotate box <span class="tok-k">:a</span> <span class="tok-n">90</span> <span class="tok-k">:z</span> <span class="tok-k">:eager</span>)    — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a new rojcad/shape abstract value. The original shape is unchanged.</div>
+</article>
+<article id="scale">
+<h3>scale</h3>
+<div class="usage">(scale shape factor &amp;keys :o :eager)</div>
+<div class="desc">
+<p>Create a uniformly scaled copy of shape.</p>
+<p>Positional: (scale shape factor)
+Keywords: :o [x y z] (center point, defaults to origin),
+         :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(scale box <span class="tok-n">2.0</span>)                — <span class="tok-n">2</span>x about origin
+(scale box <span class="tok-n">2.0</span> <span class="tok-k">:o</span> [<span class="tok-n">5</span> <span class="tok-n">5</span> <span class="tok-n">5</span>])     — <span class="tok-n">2</span>x about custom point
+(scale box <span class="tok-n">2.0</span> <span class="tok-k">:eager</span>)         — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a new rojcad/shape abstract value. The original shape is unchanged.</div>
+</article>
+<article id="translate">
+<h3>translate</h3>
+<div class="usage">(translate shape dx dy dz &amp;keys :t :eager)</div>
+<div class="desc">
+<p>Create a translated copy of shape.</p>
+<p>Positional: (translate shape dx dy dz)
+Keywords: :t [dx dy dz], :eager (tessellate immediately).</p>
+</div>
+<div class="examples">
+<pre><code>(translate box <span class="tok-n">5</span> <span class="tok-n">0</span> <span class="tok-n">0</span>)               — move <span class="tok-n">5</span> units <span class="tok-sp">in</span> X
+(translate box <span class="tok-k">:t</span> [<span class="tok-n">1</span> <span class="tok-n">2</span> <span class="tok-n">3</span>])          — keyword style
+(translate box <span class="tok-n">5</span> <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-k">:eager</span>)        — eager tessellation</code></pre>
+</div>
+<div class="returns">Returns a new rojcad/shape abstract value. The original shape is unchanged.</div>
+</article>
+</section>
+</main>
+</div>
+<button id="top-btn" onclick="document.querySelector('main').scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+<script>
+document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='k'){e.preventDefault();document.getElementById('search').focus()}});
+document.getElementById('search').addEventListener('input',function(){var q=this.value.toLowerCase();document.querySelectorAll('article').forEach(function(a){a.style.display=a.textContent.toLowerCase().includes(q)?'':'none'})});
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+[workspace]
+members = ["."]
+
+[package]
+name = "rojcad"
+version = "0.1.0"
+edition = "2024"
+description = "Headless parametric CAD system with embedded Janet DSL"
+license = "GPL-3.0-only"
+authors = ["rojcad contributors"]
+
+[dependencies]
+opencascade = { git = "https://github.com/bschwind/opencascade-rs.git", branch = "main", features = ["builtin"] }
+glam = "0.24"
+thiserror = "1"
+wgpu = "24"
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 2
