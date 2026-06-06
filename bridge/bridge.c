@@ -21,45 +21,48 @@ extern size_t rust_shape_data_size(void);
 extern void rust_shape_drop(void *data, size_t len);
 extern const char *rust_shape_type_string(void *data);
 
-/* Shape constructors — initialize at destination pointer, eager flag last */
-extern void rust_init_box(void *dest,
+/* Retrieve the last CAD error message as a C string (caller frees) */
+extern const char *rust_take_last_error(void);
+
+/* Shape constructors — return 0 on success, 1 on error */
+extern int rust_init_box(void *dest,
                            double width, double depth, double height,
                            const double *cx, const double *cy, const double *cz,
                            int eager);
-extern void rust_init_cube(void *dest,
+extern int rust_init_cube(void *dest,
                              double size,
                              const double *cx, const double *cy, const double *cz,
                              int eager);
-extern void rust_init_box_from_corners(void *dest,
+extern int rust_init_box_from_corners(void *dest,
                                          double c1x, double c1y, double c1z,
                                          double c2x, double c2y, double c2z,
                                          int eager);
-extern void rust_init_sphere(void *dest,
+extern int rust_init_sphere(void *dest,
                                double radius,
                                const double *cx, const double *cy, const double *cz,
                                const double *angle,
                                int eager);
-extern void rust_init_cylinder(void *dest,
+extern int rust_init_cylinder(void *dest,
                                  double radius, double height,
                                  const double *cx, const double *cy, const double *cz,
                                  int eager);
-extern void rust_init_cylinder_from_points(void *dest,
+extern int rust_init_cylinder_from_points(void *dest,
                                              double p1x, double p1y, double p1z,
                                              double p2x, double p2y, double p2z,
                                              double radius,
                                              int eager);
-extern void rust_init_cylinder_point_dir(void *dest,
+extern int rust_init_cylinder_point_dir(void *dest,
                                            double px, double py, double pz,
                                            double radius,
                                            double dx, double dy, double dz,
                                            double height,
                                            int eager);
-extern void rust_init_cone(void *dest,
+extern int rust_init_cone(void *dest,
                              double bottom_radius, double top_radius, double height,
                              const double *cx, const double *cy, const double *cz,
                              const double *angle,
                              int eager);
-extern void rust_init_torus(void *dest,
+extern int rust_init_torus(void *dest,
                               double ring_radius, double tube_radius,
                               const double *cx, const double *cy, const double *cz,
                               const double *zx, const double *zy, const double *zz,
@@ -67,22 +70,22 @@ extern void rust_init_torus(void *dest,
                               const double *angle_start, const double *angle_end,
                               int eager);
 
-/* Boolean operations — allocate new shape via janet_abstract internally */
-extern void rust_init_cut(void *dest, void *a, void *b, int eager);
-extern void rust_init_common(void *dest, void *a, void *b, int eager);
-extern void rust_init_fuse(void *dest, void *a, void *b, int eager);
+/* Boolean operations */
+extern int rust_init_cut(void *dest, void *a, void *b, int eager);
+extern int rust_init_common(void *dest, void *a, void *b, int eager);
+extern int rust_init_fuse(void *dest, void *a, void *b, int eager);
 
 /* Transformation operations */
-extern void rust_init_translate(void *dest, void *data, double dx, double dy, double dz, int eager);
-extern void rust_init_rotate(void *dest, void *data, double ax, double ay, double az, double angle, int eager);
-extern void rust_init_scale(void *dest, void *data, double factor, const double *cx, const double *cy, const double *cz, int eager);
-extern void rust_init_mirror(void *dest, void *data, double ox, double oy, double oz, double dx, double dy, double dz, int eager);
+extern int rust_init_translate(void *dest, void *data, double dx, double dy, double dz, int eager);
+extern int rust_init_rotate(void *dest, void *data, double ax, double ay, double az, double angle, int eager);
+extern int rust_init_scale(void *dest, void *data, double factor, const double *cx, const double *cy, const double *cz, int eager);
+extern int rust_init_mirror(void *dest, void *data, double ox, double oy, double oz, double dx, double dy, double dz, int eager);
 
 /* Inspection */
 extern const char *rust_shape_type(void *data);
 
 /* Import */
-extern void rust_init_read_step(void *dest, const char *path, int eager);
+extern int rust_init_read_step(void *dest, const char *path, int eager);
 
 /* Export */
 extern int rust_write_step(void *data, const char *path);
@@ -110,27 +113,27 @@ extern void rust_edge_set_color_inactive(double r, double g, double b);
 extern void rust_edge_set_color_active(double r, double g, double b);
 
 /* 2D primitives */
-extern void rust_init_rect(void *dest, double w, double d, int is_wire,
+extern int rust_init_rect(void *dest, double w, double d, int is_wire,
                             const char *plane, double ax, double ay, double az, int eager);
-extern void rust_init_circle(void *dest, double r, int is_wire,
+extern int rust_init_circle(void *dest, double r, int is_wire,
                              const char *plane, double ax, double ay, double az, int eager);
-extern void rust_init_polygon(void *dest, const double *pts, int npts, int is_wire,
+extern int rust_init_polygon(void *dest, const double *pts, int npts, int is_wire,
                               const char *plane, double ax, double ay, double az, int eager);
 
 /* Extrusion / Revolution */
-extern void rust_init_extrude(void *dest, void *data, double height,
+extern int rust_init_extrude(void *dest, void *data, double height,
                               double dx, double dy, double dz, int both, int eager);
-extern void rust_init_revolve(void *dest, void *data, double angle,
+extern int rust_init_revolve(void *dest, void *data, double angle,
                               double ox, double oy, double oz,
                               double dx, double dy, double dz, int eager);
-extern void rust_init_extrude_polygon(void *dest, const double *pts, int npts, double height,
+extern int rust_init_extrude_polygon(void *dest, const double *pts, int npts, double height,
                                       const char *plane, double ax, double ay, double az, int eager);
 
 /* Wire operations */
-extern void rust_init_wire_to_face(void *dest, void *data, int eager);
-extern void rust_init_wire_fillet(void *dest, void *data, double radius, int eager);
-extern void rust_init_wire_chamfer(void *dest, void *data, double distance, int eager);
-extern void rust_init_wire_offset(void *dest, void *data, double distance, int eager);
+extern int rust_init_wire_to_face(void *dest, void *data, int eager);
+extern int rust_init_wire_fillet(void *dest, void *data, double radius, int eager);
+extern int rust_init_wire_chamfer(void *dest, void *data, double distance, int eager);
+extern int rust_init_wire_offset(void *dest, void *data, double distance, int eager);
 
 /* Sketch */
 extern size_t rust_sketch_data_size(void);
@@ -300,6 +303,15 @@ static void *alloc_shape(void) {
     return data;
 }
 
+/* Check return value from a rust_init_* call. If non-zero, retrieve the
+ * last error from the thread-local buffer and call janet_panic. */
+#define CAD_CHECK(call) do { \
+    if ((call)) { \
+        const char *_msg = rust_take_last_error(); \
+        janet_panic(_msg); \
+    } \
+} while (0)
+
 /* ── JANET_FN implementations ───────────────────────────────────────────── */
 
 /* With JANET_NO_SOURCEMAPS defined (see build.rs), JANET_FN expands to
@@ -343,7 +355,7 @@ JANET_FN(cad_box,
             janet_panic("box: :pl and :ph must both be provided");
         }
         void *shape = alloc_shape();
-        rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager);
+        CAD_CHECK(rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -357,8 +369,8 @@ JANET_FN(cad_box,
 
     if (has_w && has_d && has_h) {
         void *shape = alloc_shape();
-        rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        CAD_CHECK(rust_init_box(shape, w, d, h,
+                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -370,8 +382,8 @@ JANET_FN(cad_box,
     if (pos_count == 1) {
         double size = janet_unwrap_number(argv[0]);
         void *shape = alloc_shape();
-        rust_init_cube(shape, size,
-                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        CAD_CHECK(rust_init_cube(shape, size,
+                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -381,8 +393,8 @@ JANET_FN(cad_box,
         d = janet_unwrap_number(argv[1]);
         h = janet_unwrap_number(argv[2]);
         void *shape = alloc_shape();
-        rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        CAD_CHECK(rust_init_box(shape, w, d, h,
+                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -424,9 +436,9 @@ JANET_FN(cad_sphere,
     }
 
     void *shape = alloc_shape();
-    rust_init_sphere(shape, radius,
+    CAD_CHECK(rust_init_sphere(shape, radius,
                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                     has_a ? &angle : NULL, eager);
+                     has_a ? &angle : NULL, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -466,7 +478,7 @@ JANET_FN(cad_cylinder,
             janet_panic("cylinder: :r (radius) is required with :fp/:tp");
         }
         void *shape = alloc_shape();
-        rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager);
+        CAD_CHECK(rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -486,15 +498,15 @@ JANET_FN(cad_cylinder,
     if (has_dir) {
         double ox = has_c ? cx : 0.0, oy = has_c ? cy : 0.0, oz = has_c ? cz : 0.0;
         void *shape = alloc_shape();
-        rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager);
+        CAD_CHECK(rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
 
     {
         void *shape = alloc_shape();
-        rust_init_cylinder(shape, radius, height,
-                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager);
+        CAD_CHECK(rust_init_cylinder(shape, radius, height,
+                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -564,9 +576,9 @@ JANET_FN(cad_cone,
 create:
     {
         void *shape = alloc_shape();
-        rust_init_cone(shape, br, tr, h,
+        CAD_CHECK(rust_init_cone(shape, br, tr, h,
                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                       has_a ? &angle : NULL, eager);
+                       has_a ? &angle : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -636,14 +648,14 @@ JANET_FN(cad_torus,
 create:
     {
         void *shape = alloc_shape();
-        rust_init_torus(shape, rr, tr,
+        CAD_CHECK(rust_init_torus(shape, rr, tr,
                         has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
                         has_dir ? &dir[0] : NULL,
                         has_dir ? &dir[1] : NULL,
                         has_dir ? &dir[2] : NULL,
                         has_a ? &angle : NULL,
                         has_as ? &a_start : NULL,
-                        has_ae ? &a_end : NULL, eager);
+                        has_ae ? &a_end : NULL, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -666,7 +678,7 @@ JANET_FN(cad_cut,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    rust_init_cut(result, a, b, eager);
+    CAD_CHECK(rust_init_cut(result, a, b, eager));
     maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
@@ -687,7 +699,7 @@ JANET_FN(cad_common,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    rust_init_common(result, a, b, eager);
+    CAD_CHECK(rust_init_common(result, a, b, eager));
     maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
@@ -708,7 +720,7 @@ JANET_FN(cad_fuse,
     if (!result) {
         janet_panic("failed to allocate shape");
     }
-    rust_init_fuse(result, a, b, eager);
+    CAD_CHECK(rust_init_fuse(result, a, b, eager));
     maybe_hide(result, argv, argc);
     return janet_wrap_abstract(result);
 }
@@ -746,7 +758,7 @@ JANET_FN(cad_translate,
     }
 
     void *shape = alloc_shape();
-    rust_init_translate(shape, data, dx, dy, dz, eager);
+    CAD_CHECK(rust_init_translate(shape, data, dx, dy, dz, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -792,7 +804,7 @@ JANET_FN(cad_rotate,
     }
 
     void *shape = alloc_shape();
-    rust_init_rotate(shape, data, ax, ay, az, angle, eager);
+    CAD_CHECK(rust_init_rotate(shape, data, ax, ay, az, angle, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -821,10 +833,10 @@ JANET_FN(cad_scale,
     int has_o = kw_array_3(argv, argc, "o", &cx, &cy, &cz);
 
     void *shape = alloc_shape();
-    rust_init_scale(shape, data, factor,
+    CAD_CHECK(rust_init_scale(shape, data, factor,
                     has_o ? &cx : NULL,
                     has_o ? &cy : NULL,
-                    has_o ? &cz : NULL, eager);
+                    has_o ? &cz : NULL, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -860,7 +872,7 @@ JANET_FN(cad_mirror,
     double dz = janet_unwrap_number(argv[6]);
 
     void *shape = alloc_shape();
-    rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz, eager);
+    CAD_CHECK(rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1176,7 +1188,7 @@ JANET_FN(cad_read_step,
     const char *path = (const char *)path_bytes;
     int eager = has_eager(argv, argc);
     void *shape = alloc_shape();
-    rust_init_read_step(shape, path, eager);
+    CAD_CHECK(rust_init_read_step(shape, path, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1234,8 +1246,8 @@ JANET_FN(cad_rect,
 create:
     {
         void *shape = alloc_shape();
-        rust_init_rect(shape, w, d, is_wire, plane,
-                       has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+        CAD_CHECK(rust_init_rect(shape, w, d, is_wire, plane,
+                       has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
         maybe_hide(shape, argv, argc);
         return janet_wrap_abstract(shape);
     }
@@ -1268,8 +1280,8 @@ JANET_FN(cad_circle,
     }
 
     void *shape = alloc_shape();
-    rust_init_circle(shape, r, is_wire, plane,
-                     has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    CAD_CHECK(rust_init_circle(shape, r, is_wire, plane,
+                     has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1332,8 +1344,8 @@ JANET_FN(cad_polygon,
     }
 
     void *shape = alloc_shape();
-    rust_init_polygon(shape, flat, npts * 2, is_wire, plane,
-                      has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    CAD_CHECK(rust_init_polygon(shape, flat, npts * 2, is_wire, plane,
+                      has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1379,7 +1391,7 @@ JANET_FN(cad_extrude,
     }
 
     void *shape = alloc_shape();
-    rust_init_extrude(shape, data, height, dx, dy, dz, both, eager);
+    CAD_CHECK(rust_init_extrude(shape, data, height, dx, dy, dz, both, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1417,7 +1429,7 @@ JANET_FN(cad_revolve,
     if (!has_dir) { dx = 0; dy = 0; dz = 1; }
 
     void *shape = alloc_shape();
-    rust_init_revolve(shape, data, angle, ox, oy, oz, dx, dy, dz, eager);
+    CAD_CHECK(rust_init_revolve(shape, data, angle, ox, oy, oz, dx, dy, dz, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1506,8 +1518,8 @@ JANET_FN(cad_extrude_polygon,
     }
 
     void *shape = alloc_shape();
-    rust_init_extrude_polygon(shape, flat, npts * 2, height, plane,
-                              has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager);
+    CAD_CHECK(rust_init_extrude_polygon(shape, flat, npts * 2, height, plane,
+                              has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1524,7 +1536,7 @@ JANET_FN(cad_wire_to_face,
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
     void *shape = alloc_shape();
-    rust_init_wire_to_face(shape, data, eager);
+    CAD_CHECK(rust_init_wire_to_face(shape, data, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1542,7 +1554,7 @@ JANET_FN(cad_wire_fillet,
         janet_panic("wire-fillet: :r (radius) is required");
     }
     void *shape = alloc_shape();
-    rust_init_wire_fillet(shape, data, radius, eager);
+    CAD_CHECK(rust_init_wire_fillet(shape, data, radius, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1560,7 +1572,7 @@ JANET_FN(cad_wire_chamfer,
         janet_panic("wire-chamfer: :d (distance) is required");
     }
     void *shape = alloc_shape();
-    rust_init_wire_chamfer(shape, data, dist, eager);
+    CAD_CHECK(rust_init_wire_chamfer(shape, data, dist, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
@@ -1578,7 +1590,7 @@ JANET_FN(cad_wire_offset,
         janet_panic("wire-offset: :d (distance) is required");
     }
     void *shape = alloc_shape();
-    rust_init_wire_offset(shape, data, dist, eager);
+    CAD_CHECK(rust_init_wire_offset(shape, data, dist, eager));
     maybe_hide(shape, argv, argc);
     return janet_wrap_abstract(shape);
 }
