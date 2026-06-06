@@ -111,21 +111,6 @@ impl ShapeRegistry {
         REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// Update an existing shape's mesh and edge data.
-    pub fn update(
-        &self,
-        shape_id: ShapeId,
-        mesh: Option<MeshData>,
-        edge_polylines: Vec<Vec<[f64; 3]>>,
-    ) {
-        let mut map = self.inner.write().expect("shape registry lock poisoned");
-        if let Some(entry) = map.get_mut(&shape_id) {
-            entry.mesh = mesh;
-            entry.edge_polylines = edge_polylines;
-            REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
     /// Remove a shape from the registry.
     pub fn remove(&self, shape_id: ShapeId) {
         let mut map = self.inner.write().expect("shape registry lock poisoned");
@@ -157,22 +142,6 @@ impl ShapeRegistry {
         }
     }
 
-    /// Look up a single shape by ID.
-    pub fn shape_by_id(&self, shape_id: ShapeId) -> Option<ShapeEntry> {
-        let map = self.inner.read().expect("shape registry lock poisoned");
-        map.get(&shape_id).map(|e| ShapeEntry {
-            shape_id: e.shape_id,
-            mesh: e.mesh.clone(),
-            edge_polylines: e.edge_polylines.clone(),
-            visible: e.visible,
-            color: e.color,
-        })
-    }
-
-    /// Return a clone of the inner Arc for sharing across threads.
-    pub fn clone_inner(&self) -> Arc<RwLock<HashMap<ShapeId, ShapeEntry>>> {
-        self.inner.clone()
-    }
 }
 
 impl Clone for ShapeRegistry {

@@ -659,7 +659,7 @@ pub fn revolve_shape(
             })
             .collect();
 
-        Solid::loft(wires.iter().map(|w| w))
+        Solid::loft(wires.iter())
     } else {
         let n = (angle_rad / TAU * 48.0).ceil().max(3.0) as u32;
         let step = angle_rad / n as f64;
@@ -675,7 +675,7 @@ pub fn revolve_shape(
             })
             .collect();
 
-        Solid::loft(wires.iter().map(|w| w))
+        Solid::loft(wires.iter())
     };
 
     let mut sd = ShapeData::new(Shape::from(solid));
@@ -1091,9 +1091,8 @@ mod tests {
         let b = unwrap_box(10.0, 10.0, 10.0, Some((100.0, 0.0, 0.0)), false);
         let result = fuse(&a, &b, false);
         // Non-overlapping fuse returns an error or produces a compound
-        match result {
-            Ok(sd) => assert_ne!(sd.type_string(), "SHAPE"),
-            Err(_) => {} // error is also acceptable
+        if let Ok(sd) = result {
+            assert_ne!(sd.type_string(), "SHAPE");
         }
     }
 

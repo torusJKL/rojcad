@@ -1,9 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
-
-use crate::types::ShapeId;
 
 pub mod app;
 pub mod camera;
@@ -13,16 +11,15 @@ pub mod pick;
 /// Messages from the viewer thread back to the REPL thread.
 #[derive(Debug, Clone)]
 pub enum ViewerToRepl {
-    ShapeSelected(ShapeId),
+    ShapeSelected,
     ShapeDeselected,
     ViewerClosed,
 }
 
 /// Handle for controlling the viewer thread from the REPL thread.
 pub struct ViewerHandle {
-    pub viewer_rx: Receiver<ViewerToRepl>,
-    pub join_handle: Option<JoinHandle<()>>,
-    pub running: Arc<AtomicBool>,
+    join_handle: Option<JoinHandle<()>>,
+    running: Arc<AtomicBool>,
 }
 
 impl ViewerHandle {
@@ -34,10 +31,16 @@ impl ViewerHandle {
     }
 }
 
+impl Drop for ViewerHandle {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
 /// Spawn the viewer on a background thread.
 /// Returns a `ViewerHandle` that the REPL thread can use to receive selection events.
 pub fn spawn_viewer() -> ViewerHandle {
-    let (viewer_tx, viewer_rx) = mpsc::channel::<ViewerToRepl>();
+    let (viewer_tx, _viewer_rx) = mpsc::channel::<ViewerToRepl>();
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
 
@@ -49,7 +52,6 @@ pub fn spawn_viewer() -> ViewerHandle {
         .expect("failed to spawn viewer thread");
 
     ViewerHandle {
-        viewer_rx,
         join_handle: Some(handle),
         running,
     }

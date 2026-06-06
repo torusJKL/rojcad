@@ -718,8 +718,6 @@ pub struct ViewerState {
     window: Arc<Window>,
     camera: OrbitCamera,
     size: PhysicalSize<u32>,
-    surface_format: wgpu::TextureFormat,
-    depth_format: wgpu::TextureFormat,
     surface_drawer: SurfaceDrawer,
     edge_drawer: EdgeDrawer,
     inactive_instance_buffer: wgpu::Buffer,
@@ -901,8 +899,6 @@ impl ApplicationHandler for ViewerApp {
             window,
             camera,
             size,
-            surface_format,
-            depth_format,
             surface_drawer,
             edge_drawer,
             inactive_instance_buffer,
@@ -1063,7 +1059,7 @@ impl ApplicationHandler for ViewerApp {
             WindowEvent::MouseWheel { delta, .. } => {
                 let zoom_factor = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y as f64 * 0.01,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
                 };
                 state.camera.zoom(zoom_factor * 0.1);
             }
@@ -1123,7 +1119,7 @@ impl ViewerApp {
 
         if let Some(result) = pick_shape(origin, dir, &mesh_refs) {
             state.selected_id = Some(result.shape_id);
-            let _ = viewer_tx.send(ViewerToRepl::ShapeSelected(result.shape_id));
+            let _ = viewer_tx.send(ViewerToRepl::ShapeSelected);
             LAST_SELECTION.store(result.shape_id, std::sync::atomic::Ordering::SeqCst);
         } else {
             let was_selected = state.selected_id.is_some();

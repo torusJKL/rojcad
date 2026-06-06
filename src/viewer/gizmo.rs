@@ -1,4 +1,4 @@
-use glam::{DMat4, DVec3, DVec4, Vec3};
+use glam::{DMat4, DVec3, Vec3};
 use wgpu::{self, util::DeviceExt};
 
 use super::camera::OrbitCamera;
@@ -207,8 +207,6 @@ fn build_letter_mesh_3d(
     verts
 }
 
-const HIT_TARGETS: [(f64, f64, f64); 3] = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)];
-
 pub struct GizmoRenderer {
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
@@ -409,10 +407,6 @@ impl GizmoRenderer {
         self.depth_texture_view = view;
     }
 
-    pub fn depth_view(&self) -> &wgpu::TextureView {
-        &self.depth_texture_view
-    }
-
     pub fn update_uniforms(
         &mut self,
         queue: &wgpu::Queue,
@@ -471,52 +465,7 @@ impl GizmoRenderer {
         self.num_vertices = all_verts.len() as u32;
     }
 
-    pub fn hit_test(&self, mx: f64, my: f64, main_camera: &OrbitCamera) -> Option<usize> {
-        let vs = self.viewport_size as f64;
-        let ndc_x = (mx / vs) * 2.0 - 1.0;
-        let ndc_y = 1.0 - (my / vs) * 2.0;
-
-        let forward = main_camera.forward();
-        let eye = forward * 5.0;
-        let f = (DVec3::ZERO - eye).normalize();
-        let right = f.cross(DVec3::Y).normalize();
-        let up = right.cross(f).normalize();
-
-        let frustum_half = GIZMO_VIEWPORT_SIZE;
-        let ray_origin = eye + right * ndc_x * frustum_half + up * ndc_y * frustum_half;
-        let ray_dir = f;
-
-        let sphere_radius = CIRCLE_RADIUS as f64;
-
-        let mut best: Option<(usize, f64)> = None;
-
-        for i in 0..3 {
-            let (dx, dy, dz) = HIT_TARGETS[i];
-            let center = DVec3::new(dx, dy, dz);
-
-            let oc = ray_origin - center;
-            let a = ray_dir.dot(ray_dir);
-            let b = 2.0 * oc.dot(ray_dir);
-            let c = oc.dot(oc) - sphere_radius * sphere_radius;
-            let disc = b * b - 4.0 * a * c;
-
-            if disc < 0.0 {
-                continue;
-            }
-
-            let t = (-b - disc.sqrt()) / (2.0 * a);
-            if t > 0.0 {
-                let is_closer = best.as_ref().is_none_or(|&(_, d)| t < d);
-                if is_closer {
-                    best = Some((i, t));
-                }
-            }
-        }
-
-        best.map(|(i, _)| i)
-    }
-
-    pub fn set_hovered(&mut self, device: &wgpu::Device, hovered: Option<usize>) {
+    pub fn set_hovered(&mut self, _device: &wgpu::Device, hovered: Option<usize>) {
         if self.hovered == hovered {
             return;
         }

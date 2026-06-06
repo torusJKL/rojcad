@@ -52,7 +52,7 @@ use opencascade::primitives::{Face, Shape};
 
 use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES,
-    SHOW_INACTIVE_EDGES, ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
+    SHOW_INACTIVE_EDGES, ShapeData, init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1494,7 +1494,7 @@ fn main() {
 
     // Embed and run boot.janet
     let boot_base = include_str!("../boot.janet");
-    let boot_code = if false == eval_exprs.is_empty() {
+    let boot_code = if !eval_exprs.is_empty() {
         // Append --eval expression(s) as raw Janet code at end of boot.janet.
         format!("{}\n\n{}\n", boot_base, eval_exprs.join("\n"))
     } else {
