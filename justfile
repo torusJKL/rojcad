@@ -76,6 +76,10 @@ test-unit:
 test-name name:
     {{_env}} cargo test {{name}} -- --nocapture
 
+# Run REPL integration tests for variadic CAD function wrappers
+test-repl:
+    {{_env}} tests/test-variadic.sh
+
 # ── Run ────────────────────────────────────────────────────────────────────────
 
 # Run the server (debug)

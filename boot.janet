@@ -9,6 +9,158 @@
 
 (def core-env (fiber/getenv (fiber/current)))
 
+# ── Variadic wrappers ───────────────────────────────────────────────────────
+# Wraps C functions to accept multiple shapes. Uses table mutation to
+# preserve metadata (doc, source, category) for discovery tools.
+
+# ── Side-effects ──
+
+(def t (get core-env 'hide))
+(def _hide (t :value))
+(put t :value (fn [& shapes]
+  (var i 0) (def n (length shapes))
+  (while (< i n) (_hide (shapes i)) (set i (+ i 1)))))
+
+(def t (get core-env 'show))
+(def _show (t :value))
+(put t :value (fn [& shapes]
+  (var i 0) (def n (length shapes))
+  (while (< i n) (_show (shapes i)) (set i (+ i 1)))))
+
+(def t (get core-env 'purge))
+(def _purge (t :value))
+(put t :value (fn [& shapes]
+  (var i 0) (def n (length shapes))
+  (while (< i n) (_purge (shapes i)) (set i (+ i 1)))))
+
+(def t (get core-env 'registry-remove))
+(def _registry-remove (t :value))
+(put t :value (fn [& shapes]
+  (var i 0) (def n (length shapes))
+  (while (< i n) (_registry-remove (shapes i)) (set i (+ i 1)))))
+
+# ── Queries ──
+
+(def t (get core-env 'shape-type))
+(def _shape-type (t :value))
+(put t :value (fn [& shapes]
+  (def results @[])
+  (var i 0) (def n (length shapes))
+  (while (< i n) (array/push results (_shape-type (shapes i))) (set i (+ i 1)))
+  results))
+
+(def t (get core-env 'visible?))
+(def _visible (t :value))
+(put t :value (fn [& shapes]
+  (def results @[])
+  (var i 0) (def n (length shapes))
+  (while (< i n) (array/push results (_visible (shapes i))) (set i (+ i 1)))
+  results))
+
+(def t (get core-env 'wire?))
+(def _wire (t :value))
+(put t :value (fn [& shapes]
+  (def results @[])
+  (var i 0) (def n (length shapes))
+  (while (< i n) (array/push results (_wire (shapes i))) (set i (+ i 1)))
+  results))
+
+(def t (get core-env 'face?))
+(def _face (t :value))
+(put t :value (fn [& shapes]
+  (def results @[])
+  (var i 0) (def n (length shapes))
+  (while (< i n) (array/push results (_face (shapes i))) (set i (+ i 1)))
+  results))
+
+(def t (get core-env 'solid?))
+(def _solid (t :value))
+(put t :value (fn [& shapes]
+  (def results @[])
+  (var i 0) (def n (length shapes))
+  (while (< i n) (array/push results (_solid (shapes i))) (set i (+ i 1)))
+  results))
+
+# ── Booleans (chain + keyword routing) ──
+
+(def t (get core-env 'cut))
+(def _cut (t :value))
+(put t :value (fn [tool & rest]
+  (var result tool)
+  (var shapes @[])
+  (var eager? false)
+  (var j 0) (def m (length rest))
+  (while (< j m)
+    (def x (rest j))
+    (if (= :keyword (type x))
+      (if (= x :eager) (set eager? true))
+      (array/push shapes x))
+    (set j (+ j 1)))
+  (def n (length shapes))
+  (if (> n 0)
+    (do
+      (var k 0) (def l (- n 1))
+      (while (< k l)
+        (set result (_cut result (shapes k)))
+        (set k (+ k 1)))
+      (def last-b (shapes (- n 1)))
+      (if eager?
+        (set result (_cut result last-b :eager))
+        (set result (_cut result last-b)))))
+  result))
+
+(def t (get core-env 'common))
+(def _common (t :value))
+(put t :value (fn [first & rest]
+  (var result first)
+  (var shapes @[])
+  (var eager? false)
+  (var j 0) (def m (length rest))
+  (while (< j m)
+    (def x (rest j))
+    (if (= :keyword (type x))
+      (if (= x :eager) (set eager? true))
+      (array/push shapes x))
+    (set j (+ j 1)))
+  (def n (length shapes))
+  (if (> n 0)
+    (do
+      (var k 0) (def l (- n 1))
+      (while (< k l)
+        (set result (_common result (shapes k)))
+        (set k (+ k 1)))
+      (def last-b (shapes (- n 1)))
+      (if eager?
+        (set result (_common result last-b :eager))
+        (set result (_common result last-b)))))
+  result))
+
+(def t (get core-env 'fuse))
+(def _fuse (t :value))
+(put t :value (fn [first & rest]
+  (var result first)
+  (var shapes @[])
+  (var eager? false)
+  (var j 0) (def m (length rest))
+  (while (< j m)
+    (def x (rest j))
+    (if (= :keyword (type x))
+      (if (= x :eager) (set eager? true))
+      (array/push shapes x))
+    (set j (+ j 1)))
+  (def n (length shapes))
+  (if (> n 0)
+    (do
+      (var k 0) (def l (- n 1))
+      (while (< k l)
+        (set result (_fuse result (shapes k)))
+        (set k (+ k 1)))
+      (def last-b (shapes (- n 1)))
+      (if eager?
+        (set result (_fuse result last-b :eager))
+        (set result (_fuse result last-b)))))
+  result))
+
 # ── Display helper (array-aware string conversion) ─────────────────────────
 
 (def display-val (fn [x]
@@ -66,7 +218,9 @@
   (while k
     (def v (get core-env k))
     (if (= :cfunction (type (get v :value)))
-      (array/push fns k))
+      (array/push fns k)
+      (if (= "rojcad" (get v :source))
+        (array/push fns k)))
     (set k (next core-env k)))
   (sort-syms fns)))
 
@@ -77,7 +231,10 @@
     (def v (get core-env k))
     (if (= :cfunction (type (get v :value)))
       (if (string/find pat (string k))
-        (array/push fns k)))
+        (array/push fns k))
+      (if (= "rojcad" (get v :source))
+        (if (string/find pat (string k))
+          (array/push fns k))))
     (set k (next core-env k)))
   (sort-syms fns)))
 
