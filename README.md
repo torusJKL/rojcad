@@ -26,6 +26,7 @@ just run
 
 # In another terminal:
 nc 127.0.0.1 9365
+```
 
 Then in the REPL:
 
@@ -36,7 +37,6 @@ Then in the REPL:
 (hide b) (hide s)             # operands are still shown by default
 (write-step result "result.step")
 ```
-```
 
 ## CLI
 
@@ -44,7 +44,7 @@ Then in the REPL:
 |------|-------------|
 | `--headless` | Disable the 3D viewer |
 | `--port <PORT>` | TCP REPL port (default: **9365**) |
-| `--eval <EXPR>` | Run Janet code after boot, then exit |
+| `--eval <EXPR>` | Run Janet code after boot |
 
 ## Common just recipes
 
