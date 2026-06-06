@@ -67,6 +67,27 @@ Use `just` (not raw `cargo`) for all build/test/run commands — the sandbox
 env in `justfile` avoids filesystem permission issues. Raw `cargo` is safe
 only for `cargo fmt`, `cargo clean`, and read-only operations.
 
+## Documentation
+
+Generate the Janet API reference (Markdown + HTML):
+
+```bash
+just doc-janet
+```
+
+This runs the server headless, calls `(dump-docs "doc")`, then exits. The output files are written to `doc/`:
+
+| File | Format |
+|------|--------|
+| `doc/janet-api.md` | Markdown reference |
+| `doc/janet-api.html` | HTML reference (viewable in browser) |
+
+Rust API documentation can be built with:
+
+```bash
+just doc
+```
+
 ## Dependencies & Licenses
 
 | Dependency | License |
@@ -88,10 +109,10 @@ Full license texts are in [`licenses/`](licenses/) with a mapping in [`licenses/
 
 ```
 ┌──────────────────────────────────────────┐
-│           rojcad binary                   │
+│           rojcad binary                  │
 │  ┌──────────┐  ┌──────────────────────┐  │
-│  │  main.rs  │  │  boot.janet          │  │
-│  │  (entry)  │  │  (TCP REPL server)   │  │
+│  │ main.rs  │  │  boot.janet          │  │
+│  │ (entry)  │  │  (TCP REPL server)   │  │
 │  └────┬─────┘  └──────────────────────┘  │
 │       │  include_str!()                  │
 │       ▼                                  │
@@ -110,8 +131,8 @@ Full license texts are in [`licenses/`](licenses/) with a mapping in [`licenses/
 │       ▼                                  │
 │  ┌──────────────────────────────────┐    │
 │  │  opencascade-rs (opencascade)    │    │
-│  │  └─ opencascade-sys (occt-sys)  │    │
-│  │     └─ OCCT (C++ library)       │    │
+│  │  └─ opencascade-sys (occt-sys)   │    │
+│  │     └─ OCCT (C++ library)        │    │
 │  └──────────────────────────────────┘    │
 └──────────────────────────────────────────┘
 ```
