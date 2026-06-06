@@ -1491,6 +1491,7 @@ dependencies = [
  "opencascade",
  "pollster",
  "thiserror 1.0.69",
+ "ttf-parser",
  "wgpu",
  "winit",
 ]

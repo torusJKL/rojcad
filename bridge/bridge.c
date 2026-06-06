@@ -153,6 +153,17 @@ extern int rust_is_wire(void *data);
 extern int rust_is_face(void *data);
 extern int rust_is_solid(void *data);
 
+/* Text */
+extern int rust_init_text(void *dest, const char *text, const char *font_path,
+                           double size, const char *plane,
+                           double ax, double ay, double az, int eager);
+extern int rust_init_text_extruded(void *dest, const char *text, const char *font_path,
+                                    double size, double depth, int both,
+                                    const char *plane,
+                                    double ax, double ay, double az, int eager);
+extern char **rust_list_fonts(int *count_out);
+extern void rust_free_fonts_list(char **list, int count);
+
 /* ── Abstract type definition ───────────────────────────────────────────── */
 
 /* The abstract type descriptor for rojcad/shape.
@@ -1770,6 +1781,162 @@ JANET_FN(cad_solid_q,
     return rust_is_solid(data) ? janet_wrap_true() : janet_wrap_false();
 }
 
+// ── Text ──────────────────────────────────────────────────────────────────
+
+JANET_FN(cad_text,
+         "(text string font-path size &keys :depth :plane :at :eager :hide)",
+         "Create a 2D or 3D text shape from a TrueType/OpenType font.\n\n"
+         "Positional: (text \"Hello\" \"DejaVuSans.ttf\" 10)\n"
+         "Keywords: :depth (extrude 3D text), :plane (\"xy\"/\"xz\"/\"yz\"...),\n"
+         "         :at (position [x y z]), :eager, :hide.\n\n"
+         "Without :depth returns a Face. With :depth returns an extruded Solid.\n\n"
+         "Examples:\n"
+         "  (text \"Hi\" \"font.ttf\" 10)              — 2D text face\n"
+         "  (text \"Hi\" \"font.ttf\" 10 :depth 5)     — 3D extruded text\n"
+         "  (text \"Hi\" \"font.ttf\" 10 :plane \"xz\") — on XZ plane\n"
+         "  (text \"Hi\" \"font.ttf\" 10 :at [5 0 0])  — positioned\n\n"
+         "Returns a rojcad/shape abstract value.")
+{
+    janet_arity(argc, 3, -1);
+
+    const char *text_str = (const char *)janet_unwrap_string(argv[0]);
+    const char *font_str = (const char *)janet_unwrap_string(argv[1]);
+    double size = janet_unwrap_number(argv[2]);
+
+    double depth = 0.0;
+    int has_depth = kw_double(argv, argc, "depth", &depth);
+    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
+    int eager = has_eager(argv, argc);
+
+    /* Parse :plane and :at */
+    const char *plane = NULL;
+    int plane_used = 0;
+    {
+        int pi = find_keyword(argv, argc, "plane");
+        if (pi >= 0 && pi + 1 < argc) {
+            plane = (const char *)janet_unwrap_keyword(argv[pi + 1]);
+            plane_used = 1;
+        }
+    }
+    double ax = 0.0, ay = 0.0, az = 0.0;
+    kw_array_3(argv, argc, "at", &ax, &ay, &az);
+
+    void *shape = alloc_shape();
+    int rc;
+    if (has_depth && depth > 0.0) {
+        rc = rust_init_text_extruded(shape, text_str, font_str, size,
+                                      depth, both,
+                                      plane_used ? plane : NULL,
+                                      ax, ay, az, eager);
+    } else {
+        rc = rust_init_text(shape, text_str, font_str, size,
+                             plane_used ? plane : NULL,
+                             ax, ay, az, eager);
+    }
+    if (rc) {
+        const char *msg = rust_take_last_error();
+        janet_panic(msg);
+    }
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_text3d,
+         "(text3d string font-path size depth &keys :plane :at :both :eager :hide)",
+         "Create a 3D extruded text shape.\n\n"
+         "Positional: (text3d \"Hello\" \"DejaVuSans.ttf\" 10 5)\n"
+         "Keywords: :plane (\"xy\"/\"xz\"/\"yz\"...), :at (position [x y z]),\n"
+         "         :both (extrude symetrically), :eager, :hide.\n\n"
+         "Equivalent to (text ... :depth depth).\n\n"
+         "Returns a rojcad/shape abstract value.")
+{
+    janet_arity(argc, 4, -1);
+
+    const char *text_str = (const char *)janet_unwrap_string(argv[0]);
+    const char *font_str = (const char *)janet_unwrap_string(argv[1]);
+    double size = janet_unwrap_number(argv[2]);
+    double depth = janet_unwrap_number(argv[3]);
+
+    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
+    int eager = has_eager(argv, argc);
+
+    const char *plane = NULL;
+    int plane_used = 0;
+    {
+        int pi = find_keyword(argv, argc, "plane");
+        if (pi >= 0 && pi + 1 < argc) {
+            plane = (const char *)janet_unwrap_keyword(argv[pi + 1]);
+            plane_used = 1;
+        }
+    }
+    double ax = 0.0, ay = 0.0, az = 0.0;
+    kw_array_3(argv, argc, "at", &ax, &ay, &az);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_text_extruded(shape, text_str, font_str, size,
+                                       depth, both,
+                                       plane_used ? plane : NULL,
+                                       ax, ay, az, eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(cad_list_fonts,
+         "(list-fonts)",
+         "List available system fonts.\n\n"
+         "Scans standard OS font directories and returns an array of\n"
+         "[name path aspect] tuples for each discovered TTF/OTF font.\n"
+         "Aspect is :regular, :bold, :italic, or :bold-italic.\n\n"
+         "Examples:\n"
+         "  (list-fonts)  — all system fonts\n"
+         "  (keep [name path] (list-fonts)) — just names and paths\n\n"
+         "Returns an array of tuples.")
+{
+    janet_arity(argc, 0, 0);
+
+    int count = 0;
+    char **list = rust_list_fonts(&count);
+
+    JanetArray *arr = janet_array(count);
+    for (int i = 0; i < count; i++) {
+        /* Split "name|path|aspect" */
+        char *entry = list[i];
+        char *sep1 = strchr(entry, '|');
+        if (!sep1) continue;
+        *sep1 = '\0';
+        char *name = entry;
+        char *rest = sep1 + 1;
+        char *sep2 = strchr(rest, '|');
+        if (!sep2) continue;
+        *sep2 = '\0';
+        char *path = rest;
+        char *aspect_str = sep2 + 1;
+
+        /* Build Janet tuple (name path aspect) */
+        Janet parts[3];
+        parts[0] = janet_cstringv(name);
+        parts[1] = janet_cstringv(path);
+        /* Map aspect string to keyword */
+        JanetKeyword kw;
+        if (strcmp(aspect_str, "bold") == 0) {
+            kw = janet_ckeyword("bold");
+        } else if (strcmp(aspect_str, "italic") == 0) {
+            kw = janet_ckeyword("italic");
+        } else if (strcmp(aspect_str, "bold-italic") == 0) {
+            kw = janet_ckeyword("bold-italic");
+        } else {
+            kw = janet_ckeyword("regular");
+        }
+        parts[2] = janet_wrap_keyword(kw);
+
+        const Janet *tup = janet_tuple_n(parts, 3);
+        janet_array_push(arr, janet_wrap_tuple(tup));
+    }
+
+    rust_free_fonts_list(list, count);
+    return janet_wrap_array(arr);
+}
+
 /* ── CAD function metadata ────────────────────────────────────────────────── */
 
 static const char *cad_fn_categories[][2] = {
@@ -1826,6 +1993,9 @@ static const char *cad_fn_categories[][2] = {
     {"wire?", "queries"},
     {"face?", "queries"},
     {"solid?", "queries"},
+    {"text", "text"},
+    {"text3d", "text"},
+    {"list-fonts", "text"},
     {NULL, NULL}
 };
 
@@ -1905,6 +2075,11 @@ void cad_register_functions(JanetTable *env) {
         {"wire?",                  cad_wire_q,                 cad_wire_q_docstring_},
         {"face?",                  cad_face_q,                 cad_face_q_docstring_},
         {"solid?",                 cad_solid_q,                cad_solid_q_docstring_},
+
+        /* Text */
+        {"text",                   cad_text,                   cad_text_docstring_},
+        {"text3d",                 cad_text3d,                 cad_text3d_docstring_},
+        {"list-fonts",             cad_list_fonts,             cad_list_fonts_docstring_},
         {NULL, NULL, NULL}
     };
 

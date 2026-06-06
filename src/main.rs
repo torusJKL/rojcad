@@ -16,6 +16,7 @@
 mod bridge;
 mod cad;
 mod sketch;
+mod text;
 mod types;
 mod viewer;
 
@@ -1273,6 +1274,170 @@ pub unsafe extern "C" fn rust_init_read_step(
             set_last_error("unexpected error in rust_init_read_step".to_string());
             1
         }
+    }
+}
+
+// ── Text ───────────────────────────────────────────────────────────────────
+
+/// Create a 2D text shape (Face) from a string and font file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_text(
+    dest: *mut c_void,
+    text: *const c_char,
+    font_path: *const c_char,
+    size: c_double,
+    plane: *const c_char,
+    ax: c_double,
+    ay: c_double,
+    az: c_double,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let text_str = unsafe { CStr::from_ptr(text) }
+        .to_string_lossy()
+        .to_string();
+    let font_str = unsafe { CStr::from_ptr(font_path) }
+        .to_string_lossy()
+        .to_string();
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let font = text::FontData::from_path(&font_str)?;
+        let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
+        let shape = text::text_to_shape(&text_str, &font, size, &wp)?;
+        let mut sd = ShapeData::new(shape);
+        if eager {
+            sd.tessellate_if_needed();
+        }
+        Ok(sd)
+    }));
+
+    match result {
+        Ok(Ok(sd)) => {
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_text".to_string());
+            1
+        }
+    }
+}
+
+/// Create an extruded 3D text shape (Solid) from a string and font file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_text_extruded(
+    dest: *mut c_void,
+    text: *const c_char,
+    font_path: *const c_char,
+    size: c_double,
+    depth: c_double,
+    both: c_int,
+    plane: *const c_char,
+    ax: c_double,
+    ay: c_double,
+    az: c_double,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let both = both != 0;
+    let text_str = unsafe { CStr::from_ptr(text) }
+        .to_string_lossy()
+        .to_string();
+    let font_str = unsafe { CStr::from_ptr(font_path) }
+        .to_string_lossy()
+        .to_string();
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let font = text::FontData::from_path(&font_str)?;
+        let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
+        let shape = text::text_to_solid(&text_str, &font, size, depth, both, &wp)?;
+        let mut sd = ShapeData::new(shape);
+        if eager {
+            sd.tessellate_if_needed();
+        }
+        Ok(sd)
+    }));
+
+    match result {
+        Ok(Ok(sd)) => {
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_text_extruded".to_string());
+            1
+        }
+    }
+}
+
+/// List system fonts. Returns an array of "name|/path|:aspect" C strings.
+/// Sets count_out to the number of entries. Caller must free with rust_free_fonts_list.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_list_fonts(count_out: *mut c_int) -> *mut *mut c_char {
+    let fonts = text::list_system_fonts();
+    let count = fonts.len();
+    let mut entries: Vec<*mut c_char> = Vec::with_capacity(count);
+
+    for (name, path, aspect) in fonts {
+        let entry = format!("{}|{}|{}", name, path, aspect.as_str());
+        if let Ok(cs) = CString::new(entry) {
+            entries.push(cs.into_raw());
+        }
+    }
+
+    let boxed = entries.into_boxed_slice();
+    let ptr = boxed.as_ptr() as *mut *mut c_char;
+    std::mem::forget(boxed);
+    unsafe {
+        ptr::write(count_out, count as c_int);
+    }
+    ptr
+}
+
+/// Free the font list allocated by rust_list_fonts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_int) {
+    if ptr.is_null() {
+        return;
+    }
+    let count = count as usize;
+    for i in 0..count {
+        let p = unsafe { *ptr.add(i) };
+        if !p.is_null() {
+            unsafe {
+                drop(CString::from_raw(p));
+            }
+        }
+    }
+    unsafe {
+        let sl = std::ptr::slice_from_raw_parts_mut(ptr, count);
+        drop(Box::<[*mut c_char]>::from_raw(sl));
     }
 }
 

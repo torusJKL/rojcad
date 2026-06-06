@@ -256,6 +256,36 @@ unsafe extern "C" {
     pub fn rust_shape_hide(data: *mut c_void);
     pub fn rust_shape_remove_from_registry(data: *mut c_void);
     pub fn rust_shape_get_visible(data: *mut c_void) -> c_int;
+
+    // Text functions
+    pub fn rust_init_text(
+        dest: *mut c_void,
+        text: *const c_char,
+        font_path: *const c_char,
+        size: c_double,
+        plane: *const c_char,
+        ax: c_double,
+        ay: c_double,
+        az: c_double,
+        eager: c_int,
+    ) -> c_int;
+
+    pub fn rust_init_text_extruded(
+        dest: *mut c_void,
+        text: *const c_char,
+        font_path: *const c_char,
+        size: c_double,
+        depth: c_double,
+        both: c_int,
+        plane: *const c_char,
+        ax: c_double,
+        ay: c_double,
+        az: c_double,
+        eager: c_int,
+    ) -> c_int;
+
+    pub fn rust_list_fonts(count_out: *mut c_int) -> *mut *mut c_char;
+    pub fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_int);
 }
 
 // ── JanetReg struct ───────────────────────────────────────────────────────────
