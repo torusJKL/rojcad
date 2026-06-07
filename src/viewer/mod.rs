@@ -13,8 +13,7 @@ pub mod pick;
 /// Messages from the viewer thread back to the REPL thread.
 #[derive(Debug, Clone)]
 pub enum ViewerToRepl {
-    ShapeSelected,
-    ShapeDeselected,
+    SelectionChanged,
     ViewerClosed,
 }
 

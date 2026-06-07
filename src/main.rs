@@ -54,9 +54,9 @@ use glam::DVec3;
 use opencascade::primitives::{Face, Shape};
 
 use types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, PROJECTION_PERSPECTIVE,
-    ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeData,
-    global_shape_registry, init_edge_color_defaults, pack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
+    PROJECTION_PERSPECTIVE, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES,
+    ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1476,10 +1476,16 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
 
 /// Poll for a pending selection event.
 /// Returns 0 if no event, u64::MAX for deselected, or the selected shape ID.
-/// Resets the event to 0 after reading.
+/// Writes the action type (0=none, 1=toggled_on, 2=toggled_off, 3=cleared)
+/// to the out-parameter pointed to by `action` if non-null.
+/// Resets both atomics to 0 after reading.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_poll_selection() -> u64 {
-    LAST_SELECTION.swap(0, Ordering::SeqCst)
+pub unsafe extern "C" fn rust_poll_selection(action: *mut u8) -> u64 {
+    let id = LAST_SELECTION.swap(0, Ordering::SeqCst);
+    if !action.is_null() {
+        unsafe { *action = LAST_SELECTION_ACTION.swap(0, Ordering::SeqCst); }
+    }
+    id
 }
 
 /// Sender for REPL→Viewer commands (fit-to-bounds, etc.).
@@ -1593,15 +1599,14 @@ pub unsafe extern "C" fn rust_view_fit_shapes(shapes: *mut *mut c_void, count: c
         .map(|&p| unsafe { &*(p as *const ShapeData) })
         .collect();
 
-    if let Some((center, radius)) = cad::compute_union_bounds(&shape_refs) {
-        if let Some(tx) = REPL_TO_VIEWER.get() {
-            let _ = tx.send(ReplToViewer::FitToBounds {
-                center,
-                radius,
-                animate: true,
-                keep_angle: !reset, // invert: reset=false → keep angle (default)
-            });
-        }
+    if let Some((center, radius)) = cad::compute_union_bounds(&shape_refs)
+        && let Some(tx) = REPL_TO_VIEWER.get()
+    {
+        let _ = tx.send(ReplToViewer::FitToBounds {
+            center,
+            radius,
+            keep_angle: !reset,
+        });
     }
 }
 
@@ -1648,7 +1653,6 @@ pub unsafe extern "C" fn rust_view_fit_all(include_hidden: bool, reset: bool) {
         let _ = tx.send(ReplToViewer::FitToBounds {
             center,
             radius,
-            animate: true,
             keep_angle: final_keep,
         });
     }

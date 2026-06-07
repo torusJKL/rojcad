@@ -5,7 +5,7 @@
 //! state between the REPL thread and the viewer thread.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use glam::DVec3;
@@ -20,6 +20,10 @@ use opencascade::primitives::Shape;
 /// Last selected shape ID, used to propagate selection events to Janet.
 /// 0 = no event pending, u64::MAX = deselected, other = selected shape ID.
 pub static LAST_SELECTION: AtomicU64 = AtomicU64::new(0);
+
+/// Action type for the last selection event.
+/// 0 = none, 1 = toggled_on, 2 = toggled_off, 3 = cleared.
+pub static LAST_SELECTION_ACTION: AtomicU8 = AtomicU8::new(0);
 
 /// Edge visibility toggles, controlled from the Janet REPL.
 pub static SHOW_INACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
@@ -39,7 +43,6 @@ pub enum ReplToViewer {
     FitToBounds {
         center: DVec3,
         radius: f64,
-        animate: bool,
         keep_angle: bool,
     },
 }

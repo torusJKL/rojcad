@@ -633,9 +633,11 @@
   (while true
     (def event (poll-selection))
     (if (not= event nil)
-      (if (not= event :deselected)
-        (eprint "■ selected: " event)
-        (eprint "■ deselected")))
+      (if (= :tuple (type event))
+        (eprint "■ deselected: " (in event 1))
+        (if (= event :deselected)
+          (eprint "■ deselected all")
+          (eprint "■ selected: " event))))
     (ev/sleep 0.1))))
 
 (ev/go (fiber/new poll-viewer))

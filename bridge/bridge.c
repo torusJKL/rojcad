@@ -98,7 +98,7 @@ extern void rust_shape_remove_from_registry(void *data);
 extern int rust_shape_get_visible(void *data);
 
 /* Selection */
-extern uint64_t rust_poll_selection(void);
+extern uint64_t rust_poll_selection(uint8_t *action);
 
 /* Edge visibility toggles */
 extern int rust_edge_toggle_inactive(void);
@@ -989,9 +989,11 @@ static Janet on_select_callback = {0};
 JANET_FN(cad_on_select,
          "(on-select callback)",
          "Register a Janet function to be called when a shape is selected"
-         " in the viewer. The function receives the selected shape's ID"
-         " as an integer, or nil when deselected.\n\n"
-         "Pass nil to unregister the callback.")
+         " in the viewer. The function receives the same value as"
+         " (poll-selection): a shape ID (integer), :deselected, or"
+         " [:deselected id]. Pass nil to unregister the callback.\n\n"
+         "Example:\n"
+         "  (on-select (fn [event] (print \"selection: \" event)))")
 {
     janet_arity(argc, 1, 1);
     if (janet_checktype(argv[0], JANET_NIL)) {
@@ -1008,22 +1010,32 @@ JANET_FN(cad_poll_selection,
          "(poll-selection)",
          "Check for a pending selection event from the viewer.\n\n"
          "Returns nil if no event, the shape ID (integer) if a shape was"
-         " selected, or :deselected if the selection was cleared.\n\n"
+         " selected, a tuple [:deselected id] if a shape was toggled off,\n"
+         " or :deselected if the entire selection was cleared.\n\n"
          "If a callback was registered via (on-select), it will be"
          " invoked automatically with the result.")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
-    uint64_t result = rust_poll_selection();
-    if (result == 0) {
+    uint8_t action;
+    uint64_t id = rust_poll_selection(&action);
+    if (action == 0) {
         return janet_wrap_nil();
     }
 
     Janet event;
-    if (result == UINT64_MAX) {
-        event = janet_wrap_nil();
+    if (action == 3) {
+        /* Cleared */
+        event = janet_ckeywordv("deselected");
+    } else if (action == 2) {
+        /* Toggled off — return [:deselected id] */
+        Janet parts[2];
+        parts[0] = janet_ckeywordv("deselected");
+        parts[1] = janet_wrap_number((double)id);
+        event = janet_wrap_tuple(janet_tuple_n(parts, 2));
     } else {
-        event = janet_wrap_number((double)result);
+        /* Toggled on (action == 1) — return shape id (backward compat) */
+        event = janet_wrap_number((double)id);
     }
 
     /* Invoke the stored callback if registered */

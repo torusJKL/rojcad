@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -17,9 +18,9 @@ use winit::{
 };
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, MeshData,
-    PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
-    SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry, unpack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
+    MeshData, PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, ReplToViewer, SHOW_ACTIVE_EDGES,
+    SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -29,6 +30,7 @@ use super::pick::pick_shape;
 use super::ViewerToRepl;
 
 const GIZMO_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+const CLICK_THRESHOLD: f64 = 3.0;
 
 // ── Uniform buffers ───────────────────────────────────────────────────────
 
@@ -396,10 +398,10 @@ impl SurfaceDrawer {
         self.meshes = meshes;
     }
 
-    pub fn render(&self, pass: &mut wgpu::RenderPass, selected_id: Option<ShapeId>) {
+    pub fn render(&self, pass: &mut wgpu::RenderPass, selected_ids: &HashSet<ShapeId>) {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         for mesh in &self.meshes {
-            let is_selected = Some(mesh.shape_id) == selected_id;
+            let is_selected = selected_ids.contains(&mesh.shape_id);
             if is_selected {
                 pass.set_pipeline(&self.highlight_pipeline);
             } else {
@@ -787,7 +789,8 @@ pub struct ViewerState {
     gizmo_depth_view: wgpu::TextureView,
     gizmo_viewport_size: u32,
     gizmo_margin: u32,
-    selected_id: Option<ShapeId>,
+    selected_ids: HashSet<ShapeId>,
+    click_start_pos: PhysicalPosition<f64>,
     mouse_pressed: [bool; 3],
     mouse_pos: PhysicalPosition<f64>,
     last_generation: u64,
@@ -974,7 +977,8 @@ impl ApplicationHandler for ViewerApp {
             gizmo_depth_view,
             gizmo_viewport_size,
             gizmo_margin,
-            selected_id: None,
+            selected_ids: HashSet::new(),
+            click_start_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             mouse_pressed: [false; 3],
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             last_generation: 0,
@@ -1095,8 +1099,18 @@ impl ApplicationHandler for ViewerApp {
                 let pressed = button_state == ElementState::Pressed;
                 state.mouse_pressed[idx] = pressed;
 
-                if pressed && button == MouseButton::Left {
-                    Self::handle_click(state, &self.viewer_tx);
+                if button == MouseButton::Left {
+                    if pressed {
+                        state.click_start_pos = state.mouse_pos;
+                    } else {
+                        // Released — fire click only if not a drag
+                        let dx = state.mouse_pos.x - state.click_start_pos.x;
+                        let dy = state.mouse_pos.y - state.click_start_pos.y;
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        if dist < CLICK_THRESHOLD {
+                            Self::handle_click(state, &self.viewer_tx);
+                        }
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -1181,17 +1195,61 @@ impl ViewerApp {
             .filter_map(|e| e.mesh.as_ref().map(|m| (e.shape_id, m)))
             .collect();
 
+        let ctrl = state.modifiers.control_key();
+        let shift = state.modifiers.shift_key();
+
         if let Some(result) = pick_shape(origin, dir, &mesh_refs) {
-            state.selected_id = Some(result.shape_id);
-            let _ = viewer_tx.send(ViewerToRepl::ShapeSelected);
-            LAST_SELECTION.store(result.shape_id, std::sync::atomic::Ordering::SeqCst);
-        } else {
-            let was_selected = state.selected_id.is_some();
-            state.selected_id = None;
-            if was_selected {
-                let _ = viewer_tx.send(ViewerToRepl::ShapeDeselected);
-                LAST_SELECTION.store(u64::MAX, std::sync::atomic::Ordering::SeqCst);
+            if ctrl {
+                // Toggle clicked shape in/out of selection
+                if state.selected_ids.contains(&result.shape_id) {
+                    state.selected_ids.remove(&result.shape_id);
+                    viewer_tx
+                        .send(ViewerToRepl::SelectionChanged)
+                        .ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(2, Ordering::SeqCst);
+                } else {
+                    state.selected_ids.insert(result.shape_id);
+                    viewer_tx
+                        .send(ViewerToRepl::SelectionChanged)
+                        .ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                }
+            } else if shift {
+                // Additive — insert if not already present
+                if state.selected_ids.insert(result.shape_id) {
+                    viewer_tx
+                        .send(ViewerToRepl::SelectionChanged)
+                        .ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                }
+            } else {
+                // Plain click — replace selection
+                state.selected_ids.clear();
+                state.selected_ids.insert(result.shape_id);
+                viewer_tx
+                    .send(ViewerToRepl::SelectionChanged)
+                    .ok();
+                LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
             }
+        } else {
+            // Miss — no shape under cursor
+            if !ctrl && !shift {
+                // Plain click on empty space: clear selection
+                let was_selected = !state.selected_ids.is_empty();
+                state.selected_ids.clear();
+                if was_selected {
+                    viewer_tx
+                        .send(ViewerToRepl::SelectionChanged)
+                        .ok();
+                    LAST_SELECTION.store(u64::MAX, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(3, Ordering::SeqCst);
+                }
+            }
+            // Ctrl/Shift click on empty space: no-op
         }
     }
 
@@ -1201,7 +1259,6 @@ impl ViewerApp {
                 ReplToViewer::FitToBounds {
                     center,
                     radius,
-                    animate: _,
                     keep_angle,
                 } => {
                     Self::fit_to_bounds(state, center, radius, keep_angle);
@@ -1252,10 +1309,10 @@ impl ViewerApp {
         let dt = (now - state.last_time).as_secs_f64();
         state.last_time = now;
         state.animation.update(&mut state.camera, dt);
-        if let Some(ref mut fit) = state.fit_animation {
-            if fit.update(&mut state.camera, dt) {
-                state.fit_animation = None;
-            }
+        if let Some(ref mut fit) = state.fit_animation
+            && fit.update(&mut state.camera, dt)
+        {
+            state.fit_animation = None;
         }
 
         // Update camera uniforms
@@ -1293,12 +1350,12 @@ impl ViewerApp {
             state.surface_drawer.set_meshes(meshes);
 
             // Build SegmentInstance arrays for instanced line rendering
-            let selected_id = state.selected_id;
+            let selected_ids = &state.selected_ids;
             let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
             let mut active_instances: Vec<SegmentInstance> = Vec::new();
 
             for entry in &visible {
-                let is_active = selected_id.is_some_and(|id| id == entry.shape_id);
+                let is_active = selected_ids.contains(&entry.shape_id);
                 let target = if is_active {
                     &mut active_instances
                 } else {
@@ -1391,7 +1448,7 @@ impl ViewerApp {
             state.grid_renderer.render(&mut pass);
 
             // Mesh surfaces (depth test: Less, writes depth)
-            state.surface_drawer.render(&mut pass, state.selected_id);
+            state.surface_drawer.render(&mut pass, &state.selected_ids);
 
             // Shape edges (depth test: Less with negative bias toward camera,
             // rendered AFTER meshes so edges overlay mesh surfaces)
