@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference</title>
+<title>rojcad Janet API Reference — 94b0b3f-dirty</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -71,9 +71,15 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#view-left">view-left</a></li>
 <li class="fn"><a href="#view-right">view-right</a></li>
 <li class="fn"><a href="#view-top">view-top</a></li>
+<li class="fn"><a href="#window-fullscreen">window-fullscreen</a></li>
+<li class="fn"><a href="#window-fullscreen?">window-fullscreen?</a></li>
 <li class="fn"><a href="#window-help-show">window-help-show</a></li>
 <li class="fn"><a href="#window-help-show?">window-help-show?</a></li>
 <li class="fn"><a href="#window-help-toggle">window-help-toggle</a></li>
+<li class="fn"><a href="#window-maximized">window-maximized</a></li>
+<li class="fn"><a href="#window-maximized?">window-maximized?</a></li>
+<li class="fn"><a href="#window-size">window-size</a></li>
+<li class="fn"><a href="#window-size?">window-size?</a></li>
 <li class="cat"><a href="#primitives">Primitives</a></li>
 <li class="fn"><a href="#box">box</a></li>
 <li class="fn"><a href="#cone">cone</a></li>
@@ -139,7 +145,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference</h1>
+<h1>rojcad Janet API Reference — 94b0b3f-dirty</h1>
 <section id="operations">
 <h2>Operations</h2>
 <article id="extrude">
@@ -431,6 +437,27 @@ Optional distance sets zoom level; omitted preserves current.</p>
 (view-top <span class="tok-n">200</span>)</code></pre>
 </div>
 </article>
+<article id="window-fullscreen">
+<h3>window-fullscreen</h3>
+<div class="usage">(window-fullscreen value)</div>
+<div class="desc">
+<p>Enter or exit fullscreen mode.</p>
+<p>Pass true to enter borderless fullscreen, false to return to windowed mode.</p>
+</div>
+<div class="examples">
+<pre><code>(window-fullscreen <span class="tok-sp">true</span>)   <span class="tok-c">; enter fullscreen</span>
+(window-fullscreen <span class="tok-sp">false</span>)  <span class="tok-c">; exit fullscreen</span></code></pre>
+</div>
+</article>
+<article id="window-fullscreen?">
+<h3>window-fullscreen?</h3>
+<div class="usage">(window-fullscreen?)</div>
+<div class="desc">
+<p>Return true if the viewer is in fullscreen mode, false otherwise.</p>
+<p>Example:
+  (window-fullscreen?)   ; returns true or false</p>
+</div>
+</article>
 <article id="window-help-show">
 <h3>window-help-show</h3>
 <div class="usage">(window-help-show &amp;opt value)</div>
@@ -458,6 +485,46 @@ Called with one boolean argument, sets the visibility.</p>
 <p>Example: (window-help-toggle)</p>
 </div>
 <div class="returns">Toggle the help window visibility. Returns true if now visible, false if hidden.</div>
+</article>
+<article id="window-maximized">
+<h3>window-maximized</h3>
+<div class="usage">(window-maximized value)</div>
+<div class="desc">
+<p>Enter or exit maximized state.</p>
+<p>Pass true to maximize, false to restore to windowed.</p>
+</div>
+<div class="examples">
+<pre><code>(window-maximized <span class="tok-sp">true</span>)   <span class="tok-c">; maximize</span>
+(window-maximized <span class="tok-sp">false</span>)  <span class="tok-c">; restore</span></code></pre>
+</div>
+</article>
+<article id="window-maximized?">
+<h3>window-maximized?</h3>
+<div class="usage">(window-maximized?)</div>
+<div class="desc">
+<p>Return true if the viewer window is maximized, false otherwise.</p>
+<p>Example:
+  (window-maximized?)   ; returns true or false</p>
+</div>
+</article>
+<article id="window-size">
+<h3>window-size</h3>
+<div class="usage">(window-size width height)</div>
+<div class="desc">
+<p>Resize the viewer window to the given logical pixel dimensions.</p>
+<p>Both width and height must be positive integers.</p>
+<p>Example:
+  (window-size 800 600)    ; resize to 800x600</p>
+</div>
+</article>
+<article id="window-size?">
+<h3>window-size?</h3>
+<div class="usage">(window-size?)</div>
+<div class="desc">
+<p>Return the current viewer window dimensions as a tuple [width height] in logical pixels.</p>
+<p>Example:
+  (window-size?)    ; e.g., returns [1024 768]</p>
+</div>
 </article>
 </section>
 <section id="primitives">

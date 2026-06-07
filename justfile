@@ -18,6 +18,10 @@ _env := "HOME=/tmp GIT_CONFIG_NOSYSTEM=1 CC=clang CXX=clang++ CARGO_HOME=" + _ca
 # Version from Cargo.toml (evaluated at load time)
 _version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml`
 
+# Version for documentation: git tag (with -dirty if uncommitted),
+# short hash (with -dirty), or Cargo.toml fallback
+_doc_version := `desc=$(git describe --tags --exact-match --dirty 2>/dev/null); if [ -n "$desc" ]; then echo "$desc"; else hash=$(git rev-parse --short HEAD 2>/dev/null); if [ -n "$hash" ]; then dirty=$(git status --porcelain 2>/dev/null | grep -q . && echo "-dirty"); echo "$hash$dirty"; else sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml; fi; fi`
+
 # ── Default ────────────────────────────────────────────────────────────────────
 
 # Default recipe — shown when running `just` with no arguments
@@ -31,7 +35,7 @@ default:
     @echo "  build          Build in debug mode"
     @echo "  build-release  Build in release mode"
     @echo "  test           Run all tests"
-    @echo "  run            Start the TCP REPL server on port 9000"
+    @echo "  run            Start the TCP REPL server on port 9365"
     @echo "  run-release    Start the server (release build)"
     @echo "  lint           Run clippy"
     @echo "  fmt            Format code with rustfmt"
@@ -121,7 +125,7 @@ doc-open:
 
 # Generate Janet API reference (Markdown + HTML)
 doc-janet:
-    {{_env}} cargo run -- --headless --eval '(do (dump-docs "doc") (os/exit 0))'
+    {{_env}} cargo run -- --headless --eval '(do (dump-docs "doc" "{{_doc_version}}") (os/exit 0))'
 
 # ── Packaging ──────────────────────────────────────────────────────────────────
 
@@ -161,7 +165,7 @@ appimage: build-release _appimage-tools
 tarball: build-release
     mkdir -p dist/rojcad-{{_version}}-x86_64
     {{_env}} cargo run --release -- \
-      --headless --eval '(do (dump-docs "doc") (os/exit 0))'
+      --headless --eval '(do (dump-docs "doc" "{{_doc_version}}") (os/exit 0))'
     cp -r doc dist/rojcad-{{_version}}-x86_64/
     cp target/release/rojcad dist/rojcad-{{_version}}-x86_64/
     cp README.md dist/rojcad-{{_version}}-x86_64/

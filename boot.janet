@@ -471,12 +471,13 @@
     (set pi (+ pi 1)))
   (array usage (string/join body "\n\n") examples returns)))
 
-(def gen-markdown (fn [path]
+(def gen-markdown (fn [path &opt version]
   (def f (file/open path :wn))
   (if (= nil f)
     (print "dump-docs: failed to open " path)
     (do
-      (file/write f "# rojcad Janet API Reference\n\n")
+      (def title (string "rojcad Janet API Reference" (if version (string " — " version) "")))
+      (file/write f (string "# " title "\n\n"))
       (def all-groups (group))
       (var cat-k (next cad-groups nil))
       (while cat-k
@@ -536,16 +537,17 @@
             (set fi (+ fi 1))))
       (file/close f))))))
 
-(def gen-html (fn [path]
+(def gen-html (fn [path &opt version]
   (def f (file/open path :wn))
   (if (= nil f)
     (print "dump-docs: failed to open " path)
     (do
+      (def title (string "rojcad Janet API Reference" (if version (string " — " version) "")))
       (file/write f
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
         "<meta charset=\"UTF-8\">\n"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "<title>rojcad Janet API Reference</title>\n"
+        (string "<title>" title "</title>\n")
         "<style>\n"
         "*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}\n"
         "html,body{height:100%;overflow:hidden}\n"
@@ -607,7 +609,7 @@
             (def fn-name (get other-fns fi))
             (file/write f (string "<li class=\"fn\"><a href=\"#" fn-name "\">" fn-name "</a></li>\n"))
             (set fi (+ fi 1)))))
-      (file/write f "</ul>\n</nav>\n<main>\n<h1>rojcad Janet API Reference</h1>\n")
+      (file/write f (string "</ul>\n</nav>\n<main>\n<h1>" title "</h1>\n"))
       (set cat-k (next cad-groups nil))
       (while cat-k
         (def fns (get all-groups cat-k))
@@ -692,13 +694,13 @@
         "</script>\n</body>\n</html>\n")
       (file/close f)))))
 
-(def dump-docs (fn [&opt path]
+(def dump-docs (fn [&opt path version]
   (def dir (if path path "doc"))
   (try-catch (fn [] (os/mkdir dir)) (fn [e] nil))
   (def md-path (string dir "/janet-api.md"))
   (def html-path (string dir "/janet-api.html"))
-  (gen-markdown md-path)
-  (gen-html html-path)
+  (gen-markdown md-path version)
+  (gen-html html-path version)
   (string "Documentation written to " dir "/")))
 (def addr "127.0.0.1")
 

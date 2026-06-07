@@ -1,4 +1,4 @@
-# rojcad Janet API Reference
+# rojcad Janet API Reference — 94b0b3f-dirty
 
 ## Operations
 
@@ -321,6 +321,29 @@ Optional distance sets zoom level; omitted preserves current.
 (view-top 200)
 ```
 
+### `window-fullscreen`
+
+**Usage:** `(window-fullscreen value)`
+
+Enter or exit fullscreen mode.
+
+Pass true to enter borderless fullscreen, false to return to windowed mode.
+
+**Examples:**
+```janet
+(window-fullscreen true)   ; enter fullscreen
+(window-fullscreen false)  ; exit fullscreen
+```
+
+### `window-fullscreen?`
+
+**Usage:** `(window-fullscreen?)`
+
+Return true if the viewer is in fullscreen mode, false otherwise.
+
+Example:
+  (window-fullscreen?)   ; returns true or false
+
 ### `window-help-show`
 
 **Usage:** `(window-help-show &opt value)`
@@ -349,6 +372,49 @@ Example: (window-help-show?)
 Example: (window-help-toggle)
 
 **Toggle the help window visibility. Returns true if now visible, false if hidden.**
+
+### `window-maximized`
+
+**Usage:** `(window-maximized value)`
+
+Enter or exit maximized state.
+
+Pass true to maximize, false to restore to windowed.
+
+**Examples:**
+```janet
+(window-maximized true)   ; maximize
+(window-maximized false)  ; restore
+```
+
+### `window-maximized?`
+
+**Usage:** `(window-maximized?)`
+
+Return true if the viewer window is maximized, false otherwise.
+
+Example:
+  (window-maximized?)   ; returns true or false
+
+### `window-size`
+
+**Usage:** `(window-size width height)`
+
+Resize the viewer window to the given logical pixel dimensions.
+
+Both width and height must be positive integers.
+
+Example:
+  (window-size 800 600)    ; resize to 800x600
+
+### `window-size?`
+
+**Usage:** `(window-size?)`
+
+Return the current viewer window dimensions as a tuple [width height] in logical pixels.
+
+Example:
+  (window-size?)    ; e.g., returns [1024 768]
 
 ## Primitives
 
