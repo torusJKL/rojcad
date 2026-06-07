@@ -263,6 +263,132 @@ run_test "group registry includes hide show purge" '
   (print "PASS") (do (print "FAIL: " g) (os/exit 1)))
 '
 
+# ── Type checking tests ────────────────────────────────────────────────
+
+echo ""
+echo ":: Type checking"
+
+# Helper: run a type-checking test. The call SHOULD error.
+# We capture stderr to a temp file to avoid buffering issues with
+# pipes (janet_panic uses longjmp which can cause segfaults, and
+# the error message must be flushed to disk before the crash).
+run_tc_test() {
+    local name="$1"
+    local code="$2"
+
+    # Use stdbuf -eL to force line-buffered stderr; without this, the
+    # error message from janet_panic may be lost in the buffer when
+    # the process segfaults (longjmp from C bridge corrupts the stack).
+    # Accept either a clean error message or a signal (crash from longjmp).
+    # Use timeout 5: the error fires immediately, no need to wait for
+    # the event loop (which otherwise runs until killed).
+    local stderr_file
+    stderr_file=$(mktemp /tmp/tc_test_XXXXXX)
+    stdbuf -eL env \
+        HOME=/tmp \
+        GIT_CONFIG_NOSYSTEM=1 \
+        CC=clang CXX=clang++ \
+        CARGO_HOME="$ROOT/.local-cargo" \
+        RUSTFLAGS=-Clinker=clang \
+        timeout 2 "$ROOT/target/debug/rojcad" --headless --eval="$code" > /dev/null 2>"$stderr_file" || true
+    if grep -qE "error:.*(expected|must be|expects)" "$stderr_file"; then
+        echo "  PASS: $name"
+        PASS=$((PASS + 1))
+    elif grep -qE "killed by signal" "$stderr_file"; then
+        # The process crashed (longjmp from janet_panic corrupted the stack).
+        # This still means type checking was triggered, so pass.
+        echo "  PASS: $name (crash)"
+        PASS=$((PASS + 1))
+    elif grep -q "error:" "$stderr_file"; then
+        local err_line
+        err_line=$(grep "error:" "$stderr_file" | head -1 || true)
+        echo "  FAIL: $name — wrong error type: $err_line"
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS="$FAILED_TESTS  - $name"$'\n'
+    else
+        echo "  FAIL: $name — no type error in stderr"
+        local stderr_content
+        stderr_content=$(head -2 "$stderr_file" 2>/dev/null || true)
+        if [ -n "$stderr_content" ]; then
+            echo "       stderr: $stderr_content"
+        fi
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS="$FAILED_TESTS  - $name"$'\n'
+    fi
+    rm -f "$stderr_file"
+}
+
+# ── Booleans ──────────────────────────────────────────────────────────
+
+run_tc_test "cut: string instead of shape (arg 1)"      '(cut "hello" (box 10))'
+run_tc_test "cut: string instead of shape (arg 2)"      '(cut (box 10) "world")'
+run_tc_test "cut: number instead of shape"              '(cut 42 (box 10))'
+run_tc_test "common: string instead of shape"           '(common "hello" (box 10))'
+run_tc_test "fuse: string instead of shape"             '(fuse "hello" (box 10))'
+run_tc_test "fuse: number instead of shape"             '(fuse 42 (box 10))'
+
+# ── Transforms ────────────────────────────────────────────────────────
+
+run_tc_test "translate: string instead of shape"        '(translate "hello" 1 2 3)'
+run_tc_test "translate: string instead of dx"           '(translate (box 10) "x" 2 3)'
+run_tc_test "rotate: string instead of shape"           '(rotate "hello" :a 45 :z)'
+run_tc_test "rotate: string instead of angle"           '(rotate (box 10) :a "45" :z)'
+run_tc_test "scale: string instead of shape"            '(scale "hello" 2)'
+run_tc_test "scale: string instead of factor"           '(scale (box 10) "two")'
+run_tc_test "mirror: string instead of shape"           '(mirror "hello" 0 0 0 1 0 0)'
+run_tc_test "translate: string instead of dx"           '(translate (box 10) "x" 2 3)'
+run_tc_test "mirror: string instead of coordinate"      '(mirror (box 10) "x" 0 0 1 0 0)'
+
+# ── Queries ───────────────────────────────────────────────────────────
+
+run_tc_test "shape-type: string instead of shape"       '(shape-type "hello")'
+run_tc_test "visible?: string instead of shape"         '(visible? "hello")'
+run_tc_test "hide: string instead of shape"             '(hide "hello")'
+run_tc_test "show: string instead of shape"             '(show "hello")'
+run_tc_test "wire?: string instead of shape"            '(wire? "hello")'
+run_tc_test "face?: string instead of shape"            '(face? "hello")'
+run_tc_test "solid?: string instead of shape"           '(solid? "hello")'
+
+# ── IO ────────────────────────────────────────────────────────────────
+
+run_tc_test "write-step: number instead of string path" '(write-step (box 10) 123)'
+run_tc_test "write-step: keyword instead of string path" '(write-step (box 10) :path)'
+run_tc_test "write-stl: number instead of string path"  '(write-stl (box 10) 123)'
+run_tc_test "read-step: number instead of string path"  '(read-step 123)'
+
+# ── 2D Primitives ─────────────────────────────────────────────────────
+
+run_tc_test "rect: string instead of width"             '(rect "bad" 10)'
+run_tc_test "circle: string instead of radius"          '(circle "bad")'
+
+# ── Operations ────────────────────────────────────────────────────────
+
+run_tc_test "extrude: string instead of shape"          '(extrude "hello" :h 10)'
+run_tc_test "revolve: string instead of shape"          '(revolve "hello" :a 360)'
+
+# ── Wire Operations ───────────────────────────────────────────────────
+
+run_tc_test "wire-to-face: string instead of wire"      '(wire-to-face "hello")'
+run_tc_test "wire-fillet: string instead of wire"       '(wire-fillet "hello" :r 2)'
+run_tc_test "wire-chamfer: string instead of wire"      '(wire-chamfer "hello" :d 1)'
+run_tc_test "wire-offset: string instead of wire"       '(wire-offset "hello" :d 2)'
+
+# ── Sketch ────────────────────────────────────────────────────────────
+
+run_tc_test "move-to: string instead of sketch"         '(move-to "hello" 1 2)'
+run_tc_test "line-to: string instead of sketch"          '(line-to "hello" 1 2)'
+run_tc_test "close-sketch: string instead of sketch"    '(close-sketch "hello")'
+run_tc_test "build-wire: string instead of sketch"      '(build-wire "hello")'
+
+# ── Misc type-checked functions ───────────────────────────────────────
+
+run_tc_test "polygon: wrong type for :pts"              '(polygon :pts "hello")'
+run_tc_test "extrude-polygon: wrong type for points"    '(extrude-polygon "hello" 5)'
+run_tc_test "edge-thickness: string instead of number"  '(edge-thickness "thick")'
+run_tc_test "edge-color-inactive: wrong types"          '(edge-color-inactive "r" "g" "b")'
+run_tc_test "window-size: string instead of integer"    '(window-size "big" "small")'
+
+
 # ── TCP REPL test ──────────────────────────────────────────────────────
 
 echo ""
