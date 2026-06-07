@@ -42,6 +42,27 @@ jobs:
       - run: just appimage
       - run: just tarball
 
+      - name: Extract version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Generate Rust API docs
+        run: just doc
+
+      - name: Prepare docs for deployment
+        run: |
+          mkdir -p "_site/$VERSION/rust" _site/latest/rust
+          cp doc/janet-api.md doc/janet-api.html "_site/$VERSION/"
+          cp doc/janet-api.md doc/janet-api.html _site/latest/
+          cp -r target/doc/* "_site/$VERSION/rust/"
+          cp -r target/doc/* _site/latest/rust/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          keep_files: true
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
