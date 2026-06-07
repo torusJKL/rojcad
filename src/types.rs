@@ -4,7 +4,8 @@
 //! Also defines the shared `ShapeRegistry` used to synchronize shape
 //! state between the REPL thread and the viewer thread.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -89,6 +90,61 @@ pub static ACTIVE_EDGE_COLOR: AtomicU64 = AtomicU64::new(0);
 pub fn init_edge_color_defaults() {
     INACTIVE_EDGE_COLOR.store(pack_color(0.7, 0.7, 0.7), Ordering::SeqCst);
     ACTIVE_EDGE_COLOR.store(pack_color(0.4, 0.6, 1.0), Ordering::SeqCst);
+}
+
+/// Wrapper around `*mut c_void` that implements Send + Sync for use in statics.
+/// Safe because all access is behind a RwLock.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct ShapePointer(pub *mut c_void);
+
+unsafe impl Send for ShapePointer {}
+unsafe impl Sync for ShapePointer {}
+
+/// Global map from ShapeId to ShapeData pointer (Janet GC-allocated).
+/// Populated when shapes are constructed, cleaned up on ShapeData::drop.
+/// Allows the C bridge to return real ShapeData objects from ID-based queries.
+pub static SHAPE_PTR_MAP: OnceLock<RwLock<HashMap<ShapeId, ShapePointer>>> = OnceLock::new();
+
+/// Register a ShapeData pointer by its shape ID.
+pub fn register_shape_pointer(id: ShapeId, ptr: *mut c_void) {
+    SHAPE_PTR_MAP
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .write()
+        .expect("SHAPE_PTR_MAP lock poisoned")
+        .insert(id, ShapePointer(ptr));
+}
+
+/// Unregister a ShapeData pointer (called from Drop).
+pub fn unregister_shape_pointer(id: ShapeId) {
+    if let Some(map) = SHAPE_PTR_MAP.get() {
+        map.write()
+            .expect("SHAPE_PTR_MAP lock poisoned")
+            .remove(&id);
+    }
+}
+
+/// Look up a ShapeData pointer by shape ID. Returns null if not found.
+pub fn get_shape_pointer(id: ShapeId) -> *mut c_void {
+    SHAPE_PTR_MAP
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .read()
+        .expect("SHAPE_PTR_MAP lock poisoned")
+        .get(&id)
+        .map(|sp| sp.0)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Global set of currently selected shape IDs, synced from the viewer thread.
+pub static SELECTED_IDS: OnceLock<RwLock<HashSet<ShapeId>>> = OnceLock::new();
+
+/// Read the current selection set. Returns an empty HashSet if not initialized.
+pub fn get_selected_ids() -> HashSet<ShapeId> {
+    SELECTED_IDS
+        .get_or_init(|| RwLock::new(HashSet::new()))
+        .read()
+        .expect("SELECTED_IDS lock poisoned")
+        .clone()
 }
 
 /// Monotonically increasing shape ID counter.
@@ -176,6 +232,21 @@ impl ShapeRegistry {
         let map = self.inner.read().expect("shape registry lock poisoned");
         map.values()
             .filter(|e| e.visible)
+            .map(|e| ShapeEntry {
+                shape_id: e.shape_id,
+                mesh: e.mesh.clone(),
+                edge_polylines: e.edge_polylines.clone(),
+                visible: e.visible,
+                color: e.color,
+            })
+            .collect()
+    }
+
+    /// Return a snapshot of all currently hidden shapes with their data.
+    pub fn hidden_shapes(&self) -> Vec<ShapeEntry> {
+        let map = self.inner.read().expect("shape registry lock poisoned");
+        map.values()
+            .filter(|e| !e.visible)
             .map(|e| ShapeEntry {
                 shape_id: e.shape_id,
                 mesh: e.mesh.clone(),
@@ -323,6 +394,7 @@ impl ShapeData {
 
 impl Drop for ShapeData {
     fn drop(&mut self) {
+        unregister_shape_pointer(self.shape_id);
         if self.registered {
             global_shape_registry().remove(self.shape_id);
         }

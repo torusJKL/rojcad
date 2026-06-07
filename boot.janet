@@ -174,24 +174,35 @@
         (array/push parts (string (get x i)))
         (set i (+ i 1)))
       (string/join parts "\n"))
-    (if (= :table t)
-      (do
-        (def lines @[])
-        (var k (next x nil))
-        (while k
-          (def val (get x k))
-          (if (= :array (type val))
-            (do
-              (array/push lines (string k ":"))
-              (var j 0)
-              (def m (length val))
-              (while (< j m)
-                (array/push lines (string "  " (get val j)))
-                (set j (+ j 1))))
-            (array/push lines (string k " → " val)))
-          (set k (next x k)))
-        (string/join lines "\n"))
-      (string x)))))
+    (if (= :tuple t)
+      (if (= 0 (length x))
+        "()"
+        (do
+          (def parts @[])
+          (var i 0)
+          (def n (length x))
+          (while (< i n)
+            (array/push parts (string (get x i)))
+            (set i (+ i 1)))
+          (string/join parts "\n")))
+      (if (= :table t)
+        (do
+          (def lines @[])
+          (var k (next x nil))
+          (while k
+            (def val (get x k))
+            (if (= :array (type val))
+              (do
+                (array/push lines (string k ":"))
+                (var j 0)
+                (def m (length val))
+                (while (< j m)
+                  (array/push lines (string "  " (get val j)))
+                  (set j (+ j 1))))
+              (array/push lines (string k " → " val)))
+            (set k (next x k)))
+          (string/join lines "\n"))
+        (string x))))))
 
 # ── REPL discoverability helpers ────────────────────────────────────────────
 

@@ -57,7 +57,7 @@ use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
     SHOW_INACTIVE_EDGES, SHOW_HELP_OVERLAY, SHOW_STATS_OVERLAY, ShapeData, global_shape_registry,
-    init_edge_color_defaults, pack_color,
+    init_edge_color_defaults, pack_color, register_shape_pointer,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -118,9 +118,11 @@ pub unsafe extern "C" fn rust_init_box(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -161,9 +163,11 @@ pub unsafe extern "C" fn rust_init_sphere(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -198,9 +202,11 @@ pub unsafe extern "C" fn rust_init_cube(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -232,9 +238,11 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -270,9 +278,11 @@ pub unsafe extern "C" fn rust_init_cylinder(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -305,9 +315,11 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -341,9 +353,11 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -386,9 +400,11 @@ pub unsafe extern "C" fn rust_init_cone(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -459,9 +475,11 @@ pub unsafe extern "C" fn rust_init_torus(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -550,9 +568,11 @@ pub unsafe extern "C" fn rust_sketch_close(shape_dest: *mut c_void, src: *mut c_
     let wire = src_sketch.close();
     let face = Face::from_wire(&wire);
     let sd = ShapeData::new(Shape::from(face));
+    let shape_id = sd.shape_id;
     unsafe {
         ptr::write(shape_dest as *mut ShapeData, sd);
     }
+    register_shape_pointer(shape_id, shape_dest);
 }
 
 /// Build an unclosed Wire from a sketch.
@@ -561,9 +581,11 @@ pub unsafe extern "C" fn rust_sketch_build_wire(shape_dest: *mut c_void, src: *m
     let src_sketch = unsafe { &*(src as *const sketch::SketchData) };
     let wire = src_sketch.build_wire();
     let sd = ShapeData::new(Shape::from(wire));
+    let shape_id = sd.shape_id;
     unsafe {
         ptr::write(shape_dest as *mut ShapeData, sd);
     }
+    register_shape_pointer(shape_id, shape_dest);
 }
 
 // ── 2D Primitives — initialize at a pre-allocated destination ──────────────
@@ -598,9 +620,11 @@ pub unsafe extern "C" fn rust_init_rect(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -643,9 +667,11 @@ pub unsafe extern "C" fn rust_init_circle(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -690,9 +716,11 @@ pub unsafe extern "C" fn rust_init_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -726,9 +754,11 @@ pub unsafe extern "C" fn rust_init_extrude(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -768,9 +798,11 @@ pub unsafe extern "C" fn rust_init_revolve(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -816,9 +848,11 @@ pub unsafe extern "C" fn rust_init_extrude_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -844,9 +878,11 @@ pub unsafe extern "C" fn rust_init_wire_to_face(
     let result = catch_unwind(AssertUnwindSafe(|| cad::wire_to_face(shape, eager != 0)));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -873,9 +909,11 @@ pub unsafe extern "C" fn rust_init_wire_fillet(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -902,9 +940,11 @@ pub unsafe extern "C" fn rust_init_wire_chamfer(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -931,9 +971,11 @@ pub unsafe extern "C" fn rust_init_wire_offset(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -985,9 +1027,11 @@ pub unsafe extern "C" fn rust_init_cut(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1017,9 +1061,11 @@ pub unsafe extern "C" fn rust_init_common(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1049,9 +1095,11 @@ pub unsafe extern "C" fn rust_init_fuse(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1082,9 +1130,11 @@ pub unsafe extern "C" fn rust_init_translate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1116,9 +1166,11 @@ pub unsafe extern "C" fn rust_init_rotate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1156,9 +1208,11 @@ pub unsafe extern "C" fn rust_init_scale(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1192,9 +1246,11 @@ pub unsafe extern "C" fn rust_init_mirror(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1265,9 +1321,11 @@ pub unsafe extern "C" fn rust_init_read_step(
     let result = catch_unwind(AssertUnwindSafe(|| cad::read_step(&path_str, eager)));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1324,9 +1382,11 @@ pub unsafe extern "C" fn rust_init_text(
 
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1384,9 +1444,11 @@ pub unsafe extern "C" fn rust_init_text_extruded(
 
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1470,6 +1532,61 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
     match cad::write_stl(shape_data, &path_str) {
         Ok(()) => 0,
         Err(_) => 1,
+    }
+}
+
+// ── Shape Query FFI ───────────────────────────────────────────────────────────
+
+/// Return an array of selected shape IDs and their count.
+/// Caller must free the returned array with rust_free_u64_array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_selected_shape_ids(count_out: *mut usize) -> *mut u64 {
+    let ids: Vec<u64> = types::get_selected_ids().into_iter().collect();
+    let count = ids.len();
+    let ptr = ids.as_ptr() as *mut u64;
+    std::mem::forget(ids);
+    if !count_out.is_null() {
+        unsafe { *count_out = count; }
+    }
+    ptr
+}
+
+/// Return an array of registered shape IDs matching the given filter.
+/// filter: 0 = all, 1 = visible only, 2 = hidden only.
+/// Caller must free the returned array with rust_free_u64_array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_registered_shape_ids(
+    filter: u8,
+    count_out: *mut usize,
+) -> *mut u64 {
+    let registry = global_shape_registry();
+    let entries = match filter {
+        1 => registry.visible_shapes(),
+        2 => registry.hidden_shapes(),
+        _ => registry.all_shapes(),
+    };
+    let ids: Vec<u64> = entries.iter().map(|e| e.shape_id).collect();
+    let count = ids.len();
+    let ptr = ids.as_ptr() as *mut u64;
+    std::mem::forget(ids);
+    if !count_out.is_null() {
+        unsafe { *count_out = count; }
+    }
+    ptr
+}
+
+/// Look up a ShapeData pointer by shape ID. Returns null if not found.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_shape_pointer(id: u64) -> *mut c_void {
+    types::get_shape_pointer(id)
+}
+
+/// Free an array of u64 allocated by rust_get_selected_shape_ids
+/// or rust_get_registered_shape_ids.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_free_u64_array(ptr: *mut u64, count: usize) {
+    if !ptr.is_null() {
+        unsafe { drop(Vec::from_raw_parts(ptr, count, count)); }
     }
 }
 

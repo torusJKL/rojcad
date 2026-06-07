@@ -100,6 +100,12 @@ extern int rust_shape_get_visible(void *data);
 /* Selection */
 extern uint64_t rust_poll_selection(uint8_t *action);
 
+/* Shape queries */
+extern uint64_t *rust_get_selected_shape_ids(size_t *count_out);
+extern uint64_t *rust_get_registered_shape_ids(uint8_t filter, size_t *count_out);
+extern void *rust_get_shape_pointer(uint64_t id);
+extern void rust_free_u64_array(uint64_t *ptr, size_t count);
+
 /* Quit request */
 extern int rust_quit_requested(void);
 
@@ -2225,6 +2231,76 @@ JANET_FN(cad_list_fonts,
     return janet_wrap_array(arr);
 }
 
+// ── Shape Query Functions ────────────────────────────────────────────────────
+
+JANET_FN(cad_selected_shapes,
+         "(selected-shapes)",
+         "Return a tuple of ShapeData abstract values currently selected in the"
+         " 3D viewer.\n\n"
+         "Returns an empty tuple `()` if nothing is selected.\n\n"
+         "Examples:\n"
+         "  (selected-shapes)                     — get selected shapes\n"
+         "  (each s (selected-shapes) (hide s))   — hide all selected\n\n"
+         "Returns a tuple of rojcad/shape abstract values.")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+
+    size_t count = 0;
+    uint64_t *ids = rust_get_selected_shape_ids(&count);
+
+    Janet *parts = janet_smalloc(sizeof(Janet) * count);
+    for (size_t i = 0; i < count; i++) {
+        void *ptr = rust_get_shape_pointer(ids[i]);
+        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+    }
+    const Janet *tup = janet_tuple_n(parts, count);
+    janet_sfree(parts);
+    rust_free_u64_array(ids, count);
+    return janet_wrap_tuple(tup);
+}
+
+JANET_FN(cad_list_shapes,
+         "(list-shapes &keys :visible :hidden)",
+         "Return a tuple of all registered ShapeData abstract values,"
+         " optionally filtered by visibility.\n\n"
+         "With no arguments, returns all registered shapes.\n"
+         "With :visible, returns only visible shapes.\n"
+         "With :hidden, returns only hidden shapes.\n"
+         "If both :visible and :hidden are given, :hidden takes precedence.\n\n"
+         "Only shapes that have been shown (registered in the viewer)"
+         " are included.\n\n"
+         "Examples:\n"
+         "  (list-shapes)                    — all registered shapes\n"
+         "  (list-shapes :visible)           — visible shapes only\n"
+         "  (list-shapes :hidden)            — hidden shapes only\n"
+         "  (each s (list-shapes) (print s)) — print all shapes\n\n"
+         "Returns a tuple of rojcad/shape abstract values.")
+{
+    int hidden = find_keyword(argv, argc, "hidden") >= 0 ? 1 : 0;
+    int visible = find_keyword(argv, argc, "visible") >= 0 ? 1 : 0;
+
+    uint8_t filter = 0;
+    if (hidden) {
+        filter = 2;
+    } else if (visible) {
+        filter = 1;
+    }
+
+    size_t count = 0;
+    uint64_t *ids = rust_get_registered_shape_ids(filter, &count);
+
+    Janet *parts = janet_smalloc(sizeof(Janet) * count);
+    for (size_t i = 0; i < count; i++) {
+        void *ptr = rust_get_shape_pointer(ids[i]);
+        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+    }
+    const Janet *tup = janet_tuple_n(parts, count);
+    janet_sfree(parts);
+    rust_free_u64_array(ids, count);
+    return janet_wrap_tuple(tup);
+}
+
 /* ── CAD function metadata ────────────────────────────────────────────────── */
 
 static const char *cad_fn_categories[][2] = {
@@ -2291,6 +2367,8 @@ static const char *cad_fn_categories[][2] = {
     {"text", "text"},
     {"text3d", "text"},
     {"list-fonts", "text"},
+    {"selected-shapes", "queries"},
+    {"list-shapes", "queries"},
     {NULL, NULL}
 };
 
@@ -2331,6 +2409,8 @@ void cad_register_functions(JanetTable *env) {
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
         {"on-select",              cad_on_select,              cad_on_select_docstring_},
         {"poll-selection",         cad_poll_selection,         cad_poll_selection_docstring_},
+        {"selected-shapes",        cad_selected_shapes,        cad_selected_shapes_docstring_},
+        {"list-shapes",            cad_list_shapes,            cad_list_shapes_docstring_},
         {"quit-requested",         cad_quit_requested,         cad_quit_requested_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},

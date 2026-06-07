@@ -84,6 +84,8 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#fuse">fuse</a></li>
 <li class="cat"><a href="#queries">Queries</a></li>
 <li class="fn"><a href="#face?">face?</a></li>
+<li class="fn"><a href="#list-shapes">list-shapes</a></li>
+<li class="fn"><a href="#selected-shapes">selected-shapes</a></li>
 <li class="fn"><a href="#shape-type">shape-type</a></li>
 <li class="fn"><a href="#solid?">solid?</a></li>
 <li class="fn"><a href="#visible?">visible?</a></li>
@@ -541,6 +543,37 @@ Keywords: :eager (tessellate immediately).</p>
 <div class="desc">
 <p>Return true if the shape is a Face.</p>
 </div>
+</article>
+<article id="list-shapes">
+<h3>list-shapes</h3>
+<div class="usage">(list-shapes &amp;keys :visible :hidden)</div>
+<div class="desc">
+<p>Return a tuple of all registered ShapeData abstract values, optionally filtered by visibility.</p>
+<p>With no arguments, returns all registered shapes.
+With :visible, returns only visible shapes.
+With :hidden, returns only hidden shapes.
+If both :visible and :hidden are given, :hidden takes precedence.</p>
+<p>Only shapes that have been shown (registered in the viewer) are included.</p>
+</div>
+<div class="examples">
+<pre><code>(list-shapes)                    — all registered shapes
+(list-shapes <span class="tok-k">:visible</span>)           — visible shapes only
+(list-shapes <span class="tok-k">:hidden</span>)            — hidden shapes only
+(each s (list-shapes) (print s)) — print all shapes</code></pre>
+</div>
+<div class="returns">Returns a tuple of rojcad/shape abstract values.</div>
+</article>
+<article id="selected-shapes">
+<h3>selected-shapes</h3>
+<div class="usage">(selected-shapes)</div>
+<div class="desc">
+<p>Return a tuple of ShapeData abstract values currently selected in the 3D viewer.</p>
+</div>
+<div class="examples">
+<pre><code>(selected-shapes)                     — <span class="tok-sp">get</span> selected shapes
+(each s (selected-shapes) (hide s))   — hide all selected</code></pre>
+</div>
+<div class="returns">Returns a tuple of rojcad/shape abstract values.</div>
 </article>
 <article id="shape-type">
 <h3>shape-type</h3>

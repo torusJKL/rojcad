@@ -475,6 +475,43 @@ Keywords: :eager (tessellate immediately).
 
 Return true if the shape is a Face.
 
+### `list-shapes`
+
+**Usage:** `(list-shapes &keys :visible :hidden)`
+
+Return a tuple of all registered ShapeData abstract values, optionally filtered by visibility.
+
+With no arguments, returns all registered shapes.
+With :visible, returns only visible shapes.
+With :hidden, returns only hidden shapes.
+If both :visible and :hidden are given, :hidden takes precedence.
+
+Only shapes that have been shown (registered in the viewer) are included.
+
+**Examples:**
+```janet
+(list-shapes)                    — all registered shapes
+(list-shapes :visible)           — visible shapes only
+(list-shapes :hidden)            — hidden shapes only
+(each s (list-shapes) (print s)) — print all shapes
+```
+
+**Returns a tuple of rojcad/shape abstract values.**
+
+### `selected-shapes`
+
+**Usage:** `(selected-shapes)`
+
+Return a tuple of ShapeData abstract values currently selected in the 3D viewer.
+
+**Examples:**
+```janet
+(selected-shapes)                     — get selected shapes
+(each s (selected-shapes) (hide s))   — hide all selected
+```
+
+**Returns a tuple of rojcad/shape abstract values.**
+
 ### `shape-type`
 
 **Usage:** `(shape-type shape)`

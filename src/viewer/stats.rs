@@ -110,11 +110,9 @@ impl Stats {
         let mut total_tris = 0usize;
         let mut total_verts = 0usize;
         for entry in &all {
-            if entry.visible {
-                if let Some(ref mesh) = entry.mesh {
-                    total_tris += mesh.indices.len() / 3;
-                    total_verts += mesh.vertices.len();
-                }
+            if entry.visible && let Some(ref mesh) = entry.mesh {
+                total_tris += mesh.indices.len() / 3;
+                total_verts += mesh.vertices.len();
             }
         }
 

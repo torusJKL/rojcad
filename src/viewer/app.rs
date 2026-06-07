@@ -20,8 +20,8 @@ use winit::{
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
-    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY,
-    ShapeId, global_shape_registry, unpack_color,
+    SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES,
+    SHOW_STATS_OVERLAY, ShapeId, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -1025,7 +1025,7 @@ impl ApplicationHandler for ViewerApp {
             None => return,
         };
 
-        state.egui_state.on_window_event(&state.window, &event);
+        let _ = state.egui_state.on_window_event(&state.window, &event);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -1291,6 +1291,11 @@ impl ViewerApp {
                 }
             }
             // Ctrl/Shift click on empty space: no-op
+        }
+
+        // Sync selection state to the global for Janet queries
+        if let Some(selected) = SELECTED_IDS.get() {
+            *selected.write().unwrap() = state.selected_ids.clone();
         }
     }
 
