@@ -56,7 +56,7 @@ use opencascade::primitives::{Face, Shape};
 use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
-    SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, global_shape_registry,
+    SHOW_INACTIVE_EDGES, SHOW_HELP_OVERLAY, SHOW_STATS_OVERLAY, ShapeData, global_shape_registry,
     init_edge_color_defaults, pack_color,
 };
 
@@ -1616,6 +1616,27 @@ pub unsafe extern "C" fn rust_stats_overlay_showing() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_stats_overlay_set(value: c_int) {
     SHOW_STATS_OVERLAY.store(value != 0, Ordering::SeqCst);
+}
+
+// ── Help overlay toggle ────────────────────────────────────────────────────
+
+/// Toggle help window. Returns new state (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_toggle() -> c_int {
+    let old = SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query help window visibility (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_showing() -> c_int {
+    c_int::from(SHOW_HELP_OVERLAY.load(Ordering::SeqCst))
+}
+
+/// Set help window visibility (0 = hidden, non-zero = visible).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_set(value: c_int) {
+    SHOW_HELP_OVERLAY.store(value != 0, Ordering::SeqCst);
 }
 
 // ── View fit ───────────────────────────────────────────────────────────────────

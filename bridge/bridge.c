@@ -127,6 +127,11 @@ extern int rust_stats_overlay_toggle(void);
 extern int rust_stats_overlay_showing(void);
 extern void rust_stats_overlay_set(int value);
 
+/* Help overlay */
+extern int rust_help_overlay_toggle(void);
+extern int rust_help_overlay_showing(void);
+extern void rust_help_overlay_set(int value);
+
 /* View fit */
 extern void rust_view_fit_shapes(void **shapes, int count, int reset);
 extern void rust_view_fit_all(int include_hidden, int reset);
@@ -1210,6 +1215,49 @@ JANET_FN(cad_stats_overlay,
     return janet_wrap_true();
 }
 
+JANET_FN(cad_help_toggle,
+         "(window-help-toggle)",
+         "Toggle the help window visibility. "
+         "Returns true if now visible, false if hidden.\n\n"
+         "Example: (window-help-toggle)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_help_overlay_toggle();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_help_showing,
+         "(window-help-show?)",
+         "Return true if the help window is currently visible, "
+         "false if hidden.\n\n"
+         "Example: (window-help-show?)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_help_overlay_showing();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_help_set,
+         "(window-help-show &opt value)",
+         "Get or set the help window visibility.\n\n"
+         "Called with no arguments, returns true if visible, false if hidden.\n"
+         "Called with one boolean argument, sets the visibility.\n\n"
+         "Example: (window-help-show)        — query\n"
+         "         (window-help-show true)    — show\n"
+         "         (window-help-show false)   — hide")
+{
+    janet_arity(argc, 0, 1);
+    if (argc == 0) {
+        int result = rust_help_overlay_showing();
+        return result ? janet_wrap_true() : janet_wrap_false();
+    }
+    int val = janet_truthy(argv[0]);
+    rust_help_overlay_set(val);
+    return janet_wrap_true();
+}
+
 JANET_FN(cad_view_fit,
          "(view-fit shape & shapes ; reset)",
          "Fit camera to the bounding box of one or more shapes.\n\n"
@@ -2215,6 +2263,9 @@ static const char *cad_fn_categories[][2] = {
     {"view-fit", "view"},
     {"view-fit-all", "view"},
     {"stats-overlay", "view"},
+    {"window-help-toggle", "view"},
+    {"window-help-show?", "view"},
+    {"window-help-show", "view"},
     {"text", "text"},
     {"text3d", "text"},
     {"list-fonts", "text"},
@@ -2274,6 +2325,11 @@ void cad_register_functions(JanetTable *env) {
 
         /* Stats overlay */
         {"stats-overlay",          cad_stats_overlay,          cad_stats_overlay_docstring_},
+
+        /* Help overlay */
+        {"window-help-toggle",     cad_help_toggle,            cad_help_toggle_docstring_},
+        {"window-help-show?",      cad_help_showing,           cad_help_showing_docstring_},
+        {"window-help-show",       cad_help_set,               cad_help_set_docstring_},
 
         /* View fit */
         {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},

@@ -39,6 +39,9 @@ pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
 /// Stats overlay visibility toggle.
 pub static SHOW_STATS_OVERLAY: AtomicBool = AtomicBool::new(false);
 
+/// Help window visibility toggle (default visible on startup).
+pub static SHOW_HELP_OVERLAY: AtomicBool = AtomicBool::new(true);
+
 /// Set to true when the viewer requests the application to quit (Ctrl+Q or window close).
 pub static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 

@@ -13,20 +13,21 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, ModifiersState},
+    keyboard::{Key, ModifiersState, NamedKey},
     window::{Window, WindowId},
 };
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
-    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeId,
-    global_shape_registry, unpack_color,
+    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY,
+    ShapeId, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
 use super::pick::pick_shape;
+use super::help::Help;
 use super::stats::Stats;
 
 use super::ViewerToRepl;
@@ -805,6 +806,7 @@ pub struct ViewerState {
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
     stats: Stats,
+    help: Help,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -1008,6 +1010,7 @@ impl ApplicationHandler for ViewerApp {
             egui_state,
             egui_renderer,
             stats: Stats::new(),
+            help: Help::new(),
         });
     }
 
@@ -1072,6 +1075,11 @@ impl ApplicationHandler for ViewerApp {
                     },
                 ..
             } => match key {
+                Key::Named(NamedKey::Escape) => {
+                    if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
+                        SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+                    }
+                }
                 Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
                     PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
                 }
@@ -1109,6 +1117,12 @@ impl ApplicationHandler for ViewerApp {
                         && (c == "s" || c == "S") =>
                 {
                     SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                }
+                Key::Character(c)
+                    if !state.egui_ctx.wants_keyboard_input()
+                        && (c == "h" || c == "H") =>
+                {
+                    SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c) if state.modifiers.control_key() && (c == "q" || c == "Q") => {
                     QUIT_REQUESTED.store(true, Ordering::SeqCst);
@@ -1528,6 +1542,7 @@ impl ViewerApp {
             let raw_input = state.egui_state.take_egui_input(&state.window);
             let full_output = state.egui_ctx.run(raw_input, |ctx| {
                 state.stats.ui(ctx, &state.camera, &state.selected_ids, dt);
+                state.help.ui(ctx);
             });
 
             let pixels_per_point = state.window.scale_factor() as f32;

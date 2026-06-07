@@ -8,6 +8,7 @@ use crate::types::ReplToViewer;
 pub mod app;
 pub mod camera;
 pub mod gizmo;
+pub mod help;
 pub mod pick;
 pub mod stats;
 
