@@ -119,6 +119,11 @@ extern int rust_projection_perspective_toggle(void);
 extern int rust_projection_perspective_showing(void);
 extern void rust_projection_perspective_set(int value);
 
+/* Stats overlay */
+extern int rust_stats_overlay_toggle(void);
+extern int rust_stats_overlay_showing(void);
+extern void rust_stats_overlay_set(int value);
+
 /* View fit */
 extern void rust_view_fit_shapes(void **shapes, int count, int reset);
 extern void rust_view_fit_all(int include_hidden, int reset);
@@ -1169,6 +1174,27 @@ JANET_FN(cad_projection_perspective,
     return janet_wrap_true();
 }
 
+JANET_FN(cad_stats_overlay,
+         "(stats-overlay &opt value)",
+         "Get or set the stats overlay visibility.\n\n"
+         "Called with no arguments, returns true if the overlay is visible, "
+         "false if hidden.\n"
+         "Called with one boolean argument, sets the visibility.\n\n"
+         "Example: (stats-overlay)        — query\n"
+         "         (stats-overlay true)    — show overlay\n"
+         "         (stats-overlay false)   — hide overlay\n\n"
+         "The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.")
+{
+    janet_arity(argc, 0, 1);
+    if (argc == 0) {
+        int result = rust_stats_overlay_showing();
+        return result ? janet_wrap_true() : janet_wrap_false();
+    }
+    int val = janet_truthy(argv[0]);
+    rust_stats_overlay_set(val);
+    return janet_wrap_true();
+}
+
 JANET_FN(cad_view_fit,
          "(view-fit shape & shapes ; reset)",
          "Fit camera to the bounding box of one or more shapes.\n\n"
@@ -2173,6 +2199,7 @@ static const char *cad_fn_categories[][2] = {
     {"solid?", "queries"},
     {"view-fit", "view"},
     {"view-fit-all", "view"},
+    {"stats-overlay", "view"},
     {"text", "text"},
     {"text3d", "text"},
     {"list-fonts", "text"},
@@ -2228,6 +2255,9 @@ void cad_register_functions(JanetTable *env) {
         {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
         {"projection-toggle",      cad_projection_toggle,      cad_projection_toggle_docstring_},
         {"projection-perspective", cad_projection_perspective, cad_projection_perspective_docstring_},
+
+        /* Stats overlay */
+        {"stats-overlay",          cad_stats_overlay,          cad_stats_overlay_docstring_},
 
         /* View fit */
         {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},

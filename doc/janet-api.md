@@ -6,9 +6,10 @@
 
 **Usage:** `(on-select callback)`
 
-Register a Janet function to be called when a shape is selected in the viewer. The function receives the selected shape's ID as an integer, or nil when deselected.
+Register a Janet function to be called when a shape is selected in the viewer. The function receives the same value as (poll-selection): a shape ID (integer), :deselected, or [:deselected id]. Pass nil to unregister the callback.
 
-Pass nil to unregister the callback.
+Example:
+  (on-select (fn [event] (print "selection: " event)))
 
 ### `poll-selection`
 
@@ -18,7 +19,8 @@ Check for a pending selection event from the viewer.
 
 If a callback was registered via (on-select), it will be invoked automatically with the result.
 
-**Returns nil if no event, the shape ID (integer) if a shape was selected, or :deselected if the selection was cleared.**
+**Returns nil if no event, the shape ID (integer) if a shape was selected, a tuple [:deselected id] if a shape was toggled off,
+ or :deselected if the entire selection was cleared.**
 
 ## I/O
 

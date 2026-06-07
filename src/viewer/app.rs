@@ -20,12 +20,14 @@ use winit::{
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     MeshData, PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, ReplToViewer, SHOW_ACTIVE_EDGES,
-    SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry, unpack_color,
+    SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeId, global_shape_registry,
+    unpack_color,
 };
 
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
 use super::pick::pick_shape;
+use super::stats::Stats;
 
 use super::ViewerToRepl;
 
@@ -799,6 +801,10 @@ pub struct ViewerState {
     last_time: std::time::Instant,
     keyboard_view: Option<usize>,
     modifiers: ModifiersState,
+    egui_ctx: egui::Context,
+    egui_state: egui_winit::State,
+    egui_renderer: egui_wgpu::Renderer,
+    stats: Stats,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -886,7 +892,7 @@ impl ApplicationHandler for ViewerApp {
         .expect("failed to find adapter");
 
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("failed to create device");
 
         let surface_caps = surface.get_capabilities(&adapter);
@@ -917,6 +923,17 @@ impl ApplicationHandler for ViewerApp {
         let edge_drawer = EdgeDrawer::new(&device, surface_format, depth_format);
         let grid_renderer = GridRenderer::new(&device);
         let mut gizmo_renderer = GizmoRenderer::new(&device, surface_format);
+
+        let egui_ctx = egui::Context::default();
+        let egui_state = egui_winit::State::new(
+            egui_ctx.clone(),
+            egui::ViewportId::ROOT,
+            event_loop,
+            None,
+            None,
+            None,
+        );
+        let egui_renderer = egui_wgpu::Renderer::new(&device, surface_format, None, 1, false);
 
         // Initial empty instance buffers (populated from ShapeRegistry each frame)
         let inactive_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -987,6 +1004,10 @@ impl ApplicationHandler for ViewerApp {
             last_time: std::time::Instant::now(),
             keyboard_view: None,
             modifiers: ModifiersState::default(),
+            egui_ctx,
+            egui_state,
+            egui_renderer,
+            stats: Stats::new(),
         });
     }
 
@@ -1000,6 +1021,8 @@ impl ApplicationHandler for ViewerApp {
             Some(s) => s,
             None => return,
         };
+
+        state.egui_state.on_window_event(&state.window, &event);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -1083,6 +1106,14 @@ impl ApplicationHandler for ViewerApp {
                     state.animation.start(&state.camera, yaw, pitch);
                     state.keyboard_view = Some(idx);
                 }
+                Key::Character(c)
+                    if state.modifiers.control_key()
+                        && state.modifiers.shift_key()
+                        && state.modifiers.alt_key()
+                        && (c == "s" || c == "S") =>
+                {
+                    SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                }
                 _ => {}
             },
             WindowEvent::MouseInput {
@@ -1118,27 +1149,31 @@ impl ApplicationHandler for ViewerApp {
                 let dy = position.y - state.mouse_pos.y;
                 state.mouse_pos = position;
 
-                if state.mouse_pressed[0] {
-                    state.camera.rotate(dx, dy);
-                    state.animation.stop();
-                }
-                if state.mouse_pressed[1] {
-                    state.camera.pan(dx, dy);
-                    state.animation.stop();
-                }
-                if state.mouse_pressed[2] {
-                    state.camera.zoom(dy * 0.005);
-                    state.animation.stop();
+                if !state.egui_ctx.wants_pointer_input() {
+                    if state.mouse_pressed[0] {
+                        state.camera.rotate(dx, dy);
+                        state.animation.stop();
+                    }
+                    if state.mouse_pressed[1] {
+                        state.camera.pan(dx, dy);
+                        state.animation.stop();
+                    }
+                    if state.mouse_pressed[2] {
+                        state.camera.zoom(dy * 0.005);
+                        state.animation.stop();
+                    }
                 }
 
                 state.gizmo_renderer.set_hovered(&state.device, None);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let zoom_factor = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
-                };
-                state.camera.zoom(zoom_factor * 0.1);
+                if !state.egui_ctx.wants_pointer_input() {
+                    let zoom_factor = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y as f64,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
+                    };
+                    state.camera.zoom(zoom_factor * 0.1);
+                }
             }
             WindowEvent::RedrawRequested => {
                 Self::check_repl_commands(&self.repl_rx, state);
@@ -1203,25 +1238,19 @@ impl ViewerApp {
                 // Toggle clicked shape in/out of selection
                 if state.selected_ids.contains(&result.shape_id) {
                     state.selected_ids.remove(&result.shape_id);
-                    viewer_tx
-                        .send(ViewerToRepl::SelectionChanged)
-                        .ok();
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                     LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(2, Ordering::SeqCst);
                 } else {
                     state.selected_ids.insert(result.shape_id);
-                    viewer_tx
-                        .send(ViewerToRepl::SelectionChanged)
-                        .ok();
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                     LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
                 }
             } else if shift {
                 // Additive — insert if not already present
                 if state.selected_ids.insert(result.shape_id) {
-                    viewer_tx
-                        .send(ViewerToRepl::SelectionChanged)
-                        .ok();
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                     LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
                 }
@@ -1229,9 +1258,7 @@ impl ViewerApp {
                 // Plain click — replace selection
                 state.selected_ids.clear();
                 state.selected_ids.insert(result.shape_id);
-                viewer_tx
-                    .send(ViewerToRepl::SelectionChanged)
-                    .ok();
+                viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                 LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
                 LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
             }
@@ -1242,9 +1269,7 @@ impl ViewerApp {
                 let was_selected = !state.selected_ids.is_empty();
                 state.selected_ids.clear();
                 if was_selected {
-                    viewer_tx
-                        .send(ViewerToRepl::SelectionChanged)
-                        .ok();
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                     LAST_SELECTION.store(u64::MAX, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(3, Ordering::SeqCst);
                 }
@@ -1494,6 +1519,69 @@ impl ViewerApp {
             pass.set_viewport(gx as f32, gy as f32, gs as f32, gs as f32, 0.0, 1.0);
             pass.set_scissor_rect(gx, gy, gs, gs);
             state.gizmo_renderer.render(&mut pass);
+        }
+
+        // Egui overlay pass
+        {
+            let raw_input = state.egui_state.take_egui_input(&state.window);
+            let full_output = state.egui_ctx.run(raw_input, |ctx| {
+                state.stats.ui(ctx, &state.camera, &state.selected_ids, dt);
+            });
+
+            let pixels_per_point = state.window.scale_factor() as f32;
+            let paint_jobs = state
+                .egui_ctx
+                .tessellate(full_output.shapes, pixels_per_point);
+
+            for (id, delta) in &full_output.textures_delta.set {
+                state
+                    .egui_renderer
+                    .update_texture(&state.device, &state.queue, *id, delta);
+            }
+            for id in &full_output.textures_delta.free {
+                state.egui_renderer.free_texture(id);
+            }
+
+            let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                size_in_pixels: [state.size.width, state.size.height],
+                pixels_per_point,
+            };
+
+            let _ = state.egui_renderer.update_buffers(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                &paint_jobs,
+                &screen_descriptor,
+            );
+
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("egui pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // egui-wgpu requires RenderPass<'static> but our pass borrows view
+            // which is a local. The pass is consumed immediately before view drops,
+            // so this is safe.
+            #[allow(deprecated)]
+            let pass_ref = unsafe {
+                std::mem::transmute::<&mut wgpu::RenderPass<'_>, &mut wgpu::RenderPass<'static>>(
+                    &mut pass,
+                )
+            };
+            state
+                .egui_renderer
+                .render(pass_ref, &paint_jobs, &screen_descriptor);
         }
 
         state.queue.submit(Some(encoder.finish()));

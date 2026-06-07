@@ -96,8 +96,9 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <h3>on-select</h3>
 <div class="usage">(on-select callback)</div>
 <div class="desc">
-<p>Register a Janet function to be called when a shape is selected in the viewer. The function receives the selected shape's ID as an integer, or nil when deselected.</p>
-<p>Pass nil to unregister the callback.</p>
+<p>Register a Janet function to be called when a shape is selected in the viewer. The function receives the same value as (poll-selection): a shape ID (integer), :deselected, or [:deselected id]. Pass nil to unregister the callback.</p>
+<p>Example:
+  (on-select (fn [event] (print "selection: " event)))</p>
 </div>
 </article>
 <article id="poll-selection">
@@ -107,7 +108,8 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <p>Check for a pending selection event from the viewer.</p>
 <p>If a callback was registered via (on-select), it will be invoked automatically with the result.</p>
 </div>
-<div class="returns">Returns nil if no event, the shape ID (integer) if a shape was selected, or :deselected if the selection was cleared.</div>
+<div class="returns">Returns nil if no event, the shape ID (integer) if a shape was selected, a tuple [:deselected id] if a shape was toggled off,
+ or :deselected if the entire selection was cleared.</div>
 </article>
 </section>
 <section id="io">

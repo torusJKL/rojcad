@@ -9,6 +9,7 @@ pub mod app;
 pub mod camera;
 pub mod gizmo;
 pub mod pick;
+pub mod stats;
 
 /// Messages from the viewer thread back to the REPL thread.
 #[derive(Debug, Clone)]

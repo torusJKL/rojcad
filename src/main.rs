@@ -56,7 +56,7 @@ use opencascade::primitives::{Face, Shape};
 use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     PROJECTION_PERSPECTIVE, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES,
-    ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
+    SHOW_STATS_OVERLAY, ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1483,7 +1483,9 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
 pub unsafe extern "C" fn rust_poll_selection(action: *mut u8) -> u64 {
     let id = LAST_SELECTION.swap(0, Ordering::SeqCst);
     if !action.is_null() {
-        unsafe { *action = LAST_SELECTION_ACTION.swap(0, Ordering::SeqCst); }
+        unsafe {
+            *action = LAST_SELECTION_ACTION.swap(0, Ordering::SeqCst);
+        }
     }
     id
 }
@@ -1585,6 +1587,27 @@ pub unsafe extern "C" fn rust_projection_perspective_showing() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_projection_perspective_set(value: c_int) {
     PROJECTION_PERSPECTIVE.store(value != 0, Ordering::SeqCst);
+}
+
+// ── Stats overlay toggle ───────────────────────────────────────────────────
+
+/// Toggle stats overlay. Returns new state (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_toggle() -> c_int {
+    let old = SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query stats overlay visibility (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_showing() -> c_int {
+    c_int::from(SHOW_STATS_OVERLAY.load(Ordering::SeqCst))
+}
+
+/// Set stats overlay visibility (0 = hidden, non-zero = visible).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_set(value: c_int) {
+    SHOW_STATS_OVERLAY.store(value != 0, Ordering::SeqCst);
 }
 
 // ── View fit ───────────────────────────────────────────────────────────────────

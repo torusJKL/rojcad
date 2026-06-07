@@ -36,6 +36,9 @@ pub static SHOW_BACK_EDGES: AtomicBool = AtomicBool::new(false);
 /// Viewer thread syncs from this each frame.
 pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
 
+/// Stats overlay visibility toggle.
+pub static SHOW_STATS_OVERLAY: AtomicBool = AtomicBool::new(false);
+
 /// Commands sent from the REPL thread to the viewer thread.
 /// The viewer polls these each frame via an mpsc receiver.
 pub enum ReplToViewer {
