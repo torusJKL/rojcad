@@ -631,6 +631,7 @@
 
 (def poll-viewer (fn []
   (while true
+    (if (quit-requested) (os/exit 0))
     (def event (poll-selection))
     (if (not= event nil)
       (if (= :tuple (type event))

@@ -55,8 +55,9 @@ use opencascade::primitives::{Face, Shape};
 
 use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    PROJECTION_PERSPECTIVE, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES,
-    SHOW_STATS_OVERLAY, ShapeData, global_shape_registry, init_edge_color_defaults, pack_color,
+    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, global_shape_registry,
+    init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1488,6 +1489,13 @@ pub unsafe extern "C" fn rust_poll_selection(action: *mut u8) -> u64 {
         }
     }
     id
+}
+
+/// Check if the application should quit (Ctrl+Q or window close).
+/// Returns 1 if quit was requested, 0 otherwise. One-shot — resets the flag.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_quit_requested() -> c_int {
+    c_int::from(QUIT_REQUESTED.swap(false, Ordering::SeqCst))
 }
 
 /// Sender for REPL→Viewer commands (fit-to-bounds, etc.).

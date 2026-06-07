@@ -39,6 +39,9 @@ pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
 /// Stats overlay visibility toggle.
 pub static SHOW_STATS_OVERLAY: AtomicBool = AtomicBool::new(false);
 
+/// Set to true when the viewer requests the application to quit (Ctrl+Q or window close).
+pub static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+
 /// Commands sent from the REPL thread to the viewer thread.
 /// The viewer polls these each frame via an mpsc receiver.
 pub enum ReplToViewer {

@@ -100,6 +100,9 @@ extern int rust_shape_get_visible(void *data);
 /* Selection */
 extern uint64_t rust_poll_selection(uint8_t *action);
 
+/* Quit request */
+extern int rust_quit_requested(void);
+
 /* Edge visibility toggles */
 extern int rust_edge_toggle_inactive(void);
 extern int rust_edge_toggle_active(void);
@@ -1051,6 +1054,18 @@ JANET_FN(cad_poll_selection,
     }
 
     return event;
+}
+
+JANET_FN(cad_quit_requested,
+         "(quit-requested)",
+         "Check if the application should quit.\n\n"
+         "Returns true if Ctrl+Q was pressed or the window was closed.\n"
+         "Used by boot.janet to exit the event loop.\n\n"
+         "This is a one-shot check -- returns true only once per quit request.")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    return rust_quit_requested() ? janet_wrap_true() : janet_wrap_false();
 }
 
 JANET_FN(cad_edge_toggle_inactive,
@@ -2243,6 +2258,7 @@ void cad_register_functions(JanetTable *env) {
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
         {"on-select",              cad_on_select,              cad_on_select_docstring_},
         {"poll-selection",         cad_poll_selection,         cad_poll_selection_docstring_},
+        {"quit-requested",         cad_quit_requested,         cad_quit_requested_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},
         {"edge-inactive-show?",    cad_edge_inactive_showing,  cad_edge_inactive_showing_docstring_},

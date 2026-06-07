@@ -13,15 +13,15 @@ use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, ModifiersState, NamedKey},
+    keyboard::{Key, ModifiersState},
     window::{Window, WindowId},
 };
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    MeshData, PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, ReplToViewer, SHOW_ACTIVE_EDGES,
-    SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeId, global_shape_registry,
-    unpack_color,
+    MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
+    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeId,
+    global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -1026,6 +1026,7 @@ impl ApplicationHandler for ViewerApp {
 
         match event {
             WindowEvent::CloseRequested => {
+                QUIT_REQUESTED.store(true, Ordering::SeqCst);
                 let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
                 self.running.store(false, Ordering::SeqCst);
                 event_loop.exit();
@@ -1071,11 +1072,6 @@ impl ApplicationHandler for ViewerApp {
                     },
                 ..
             } => match key {
-                Key::Named(NamedKey::Escape) => {
-                    let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
-                    self.running.store(false, Ordering::SeqCst);
-                    event_loop.exit();
-                }
                 Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
                     PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
                 }
@@ -1113,6 +1109,12 @@ impl ApplicationHandler for ViewerApp {
                         && (c == "s" || c == "S") =>
                 {
                     SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                }
+                Key::Character(c) if state.modifiers.control_key() && (c == "q" || c == "Q") => {
+                    QUIT_REQUESTED.store(true, Ordering::SeqCst);
+                    let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
+                    self.running.store(false, Ordering::SeqCst);
+                    event_loop.exit();
                 }
                 _ => {}
             },
