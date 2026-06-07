@@ -112,6 +112,13 @@ extern void rust_edge_set_thickness(double value);
 extern void rust_edge_set_color_inactive(double r, double g, double b);
 extern void rust_edge_set_color_active(double r, double g, double b);
 
+extern int rust_back_edges_toggle(void);
+extern int rust_back_edges_showing(void);
+extern void rust_back_edges_set(int value);
+extern int rust_projection_perspective_toggle(void);
+extern int rust_projection_perspective_showing(void);
+extern void rust_projection_perspective_set(int value);
+
 /* 2D primitives */
 extern int rust_init_rect(void *dest, double w, double d, int is_wire,
                             const char *plane, double ax, double ay, double az, int eager);
@@ -1069,6 +1076,81 @@ JANET_FN(cad_edge_active_showing,
     (void)argv;
     int result = rust_edge_active_showing();
     return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_hidden_toggle,
+         "(edge-hidden-toggle)",
+         "Toggle visibility of hidden (occluded) edges. "
+         "Returns true if hidden edges are now visible, false if hidden.\n\n"
+         "Example: (edge-hidden-toggle)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_back_edges_toggle();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_hidden_showing,
+         "(edge-hidden-show?)",
+         "Return true if hidden (occluded) edges are currently visible, "
+         "false if hidden.")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_back_edges_showing();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_edge_hidden,
+         "(edge-hidden &opt value)",
+         "Get or set visibility of hidden (occluded) edges.\n\n"
+         "Called with no arguments, returns true if hidden edges are shown, "
+         "false if hidden.\n"
+         "Called with one boolean argument, sets the visibility.\n\n"
+         "Example: (edge-hidden)        — query\n"
+         "         (edge-hidden true)    — show hidden edges\n"
+         "         (edge-hidden false)   — hide hidden edges")
+{
+    janet_arity(argc, 0, 1);
+    if (argc == 0) {
+        int result = rust_back_edges_showing();
+        return result ? janet_wrap_true() : janet_wrap_false();
+    }
+    int val = janet_truthy(argv[0]);
+    rust_back_edges_set(val);
+    return janet_wrap_true();
+}
+
+JANET_FN(cad_projection_toggle,
+         "(projection-toggle)",
+         "Toggle camera projection between perspective and orthographic. "
+         "Returns true if now in perspective mode, false if orthographic.\n\n"
+         "Example: (projection-toggle)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_projection_perspective_toggle();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_projection_perspective,
+         "(projection-perspective &opt value)",
+         "Get or set the camera projection mode.\n\n"
+         "Called with no arguments, returns true if perspective mode is active, "
+         "false if orthographic.\n"
+         "Called with one boolean argument, sets the mode.\n\n"
+         "Example: (projection-perspective)        — query\n"
+         "         (projection-perspective true)    — perspective\n"
+         "         (projection-perspective false)   — orthographic")
+{
+    janet_arity(argc, 0, 1);
+    if (argc == 0) {
+        int result = rust_projection_perspective_showing();
+        return result ? janet_wrap_true() : janet_wrap_false();
+    }
+    int val = janet_truthy(argv[0]);
+    rust_projection_perspective_set(val);
+    return janet_wrap_true();
 }
 
 JANET_FN(cad_edge_thickness,
@@ -2043,6 +2125,11 @@ void cad_register_functions(JanetTable *env) {
         {"edge-thickness",         cad_edge_thickness,         cad_edge_thickness_docstring_},
         {"edge-color-inactive",    cad_edge_color_inactive,    cad_edge_color_inactive_docstring_},
         {"edge-color-active",      cad_edge_color_active,      cad_edge_color_active_docstring_},
+        {"edge-hidden-toggle",     cad_edge_hidden_toggle,     cad_edge_hidden_toggle_docstring_},
+        {"edge-hidden-show?",      cad_edge_hidden_showing,    cad_edge_hidden_showing_docstring_},
+        {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
+        {"projection-toggle",      cad_projection_toggle,      cad_projection_toggle_docstring_},
+        {"projection-perspective", cad_projection_perspective, cad_projection_perspective_docstring_},
 
         /* 2D primitives */
         {"rect",                   cad_rect,                   cad_rect_docstring_},

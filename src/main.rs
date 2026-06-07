@@ -52,8 +52,9 @@ use glam::DVec3;
 use opencascade::primitives::{Face, Shape};
 
 use types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES,
-    SHOW_INACTIVE_EDGES, ShapeData, init_edge_color_defaults, pack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, PROJECTION_PERSPECTIVE,
+    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeData, init_edge_color_defaults,
+    pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1531,6 +1532,48 @@ pub unsafe extern "C" fn rust_edge_set_color_inactive(r: c_double, g: c_double, 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_edge_set_color_active(r: c_double, g: c_double, b: c_double) {
     ACTIVE_EDGE_COLOR.store(pack_color(r, g, b), Ordering::SeqCst);
+}
+
+// ── Back (hidden) edges visibility ────────────────────────────────────────────
+
+/// Toggle back edge visibility. Returns new state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_toggle() -> c_int {
+    let old = SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query back edge visibility state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_showing() -> c_int {
+    c_int::from(SHOW_BACK_EDGES.load(Ordering::SeqCst))
+}
+
+/// Set back edge visibility (0 = hidden, non-zero = showing).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_set(value: c_int) {
+    SHOW_BACK_EDGES.store(value != 0, Ordering::SeqCst);
+}
+
+// ── Projection mode toggle ────────────────────────────────────────────────────
+
+/// Toggle projection mode. Returns new state (1 = perspective, 0 = orthographic).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_toggle() -> c_int {
+    let old = PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query projection mode (1 = perspective, 0 = orthographic).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_showing() -> c_int {
+    c_int::from(PROJECTION_PERSPECTIVE.load(Ordering::SeqCst))
+}
+
+/// Set projection mode (0 = orthographic, non-zero = perspective).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_set(value: c_int) {
+    PROJECTION_PERSPECTIVE.store(value != 0, Ordering::SeqCst);
 }
 
 // ── C bridge registration forward declaration ────────────────────────────────

@@ -16,8 +16,8 @@ use winit::{
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, MeshData,
-    REGISTRY_GENERATION, SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry,
-    unpack_color,
+    PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -731,7 +731,6 @@ pub struct ViewerState {
     gizmo_viewport_size: u32,
     gizmo_margin: u32,
     selected_id: Option<ShapeId>,
-    show_back_edges: bool,
     mouse_pressed: [bool; 3],
     mouse_pos: PhysicalPosition<f64>,
     last_generation: u64,
@@ -912,7 +911,6 @@ impl ApplicationHandler for ViewerApp {
             gizmo_viewport_size,
             gizmo_margin,
             selected_id: None,
-            show_back_edges: true,
             mouse_pressed: [false; 3],
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             last_generation: 0,
@@ -987,10 +985,10 @@ impl ApplicationHandler for ViewerApp {
                     event_loop.exit();
                 }
                 Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
-                    state.camera.toggle_projection();
+                    PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c) if c == "x" || c == "X" => {
-                    state.show_back_edges = !state.show_back_edges;
+                    SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c) if state.modifiers.control_key() && c == "1" => {
                     let idx = state
@@ -1132,6 +1130,12 @@ impl ViewerApp {
     }
 
     fn render(state: &mut ViewerState) {
+        // Sync projection mode from atomic (controlled by Janet or keyboard)
+        let target_perspective = PROJECTION_PERSPECTIVE.load(Ordering::Relaxed);
+        if target_perspective != state.camera.perspective {
+            state.camera.toggle_projection();
+        }
+
         // Update camera animation
         let now = std::time::Instant::now();
         let dt = (now - state.last_time).as_secs_f64();
@@ -1281,7 +1285,7 @@ impl ViewerApp {
                 state.inactive_num_instances,
                 &state.active_instance_buffer,
                 state.active_num_instances,
-                state.show_back_edges,
+                SHOW_BACK_EDGES.load(Ordering::Relaxed),
             );
         }
 

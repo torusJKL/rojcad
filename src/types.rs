@@ -23,6 +23,13 @@ pub static LAST_SELECTION: AtomicU64 = AtomicU64::new(0);
 pub static SHOW_INACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
 pub static SHOW_ACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
 
+/// Hidden (occluded) edge visibility — toggled via Janet or X key.
+pub static SHOW_BACK_EDGES: AtomicBool = AtomicBool::new(false);
+
+/// Camera projection mode. true = perspective, false = orthographic.
+/// Viewer thread syncs from this each frame.
+pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
+
 /// Edge thickness in NDC units (controlled from Janet).
 pub static EDGE_THICKNESS: AtomicU64 = AtomicU64::new(f64::to_bits(0.001));
 
