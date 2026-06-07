@@ -145,6 +145,14 @@ extern void rust_help_overlay_set(int value);
 extern void rust_view_fit_shapes(void **shapes, int count, int reset);
 extern void rust_view_fit_all(int include_hidden, int reset);
 
+/* Window size / fullscreen / maximized */
+extern void rust_window_set_size(uint32_t width, uint32_t height);
+extern void rust_window_size_query(uint32_t *out_width, uint32_t *out_height);
+extern void rust_window_set_fullscreen(int fs);
+extern int  rust_window_fullscreen_query(void);
+extern void rust_window_set_maximized(int mx);
+extern int  rust_window_maximized_query(void);
+
 /* 2D primitives */
 extern int rust_init_rect(void *dest, double w, double d, int is_wire,
                             const char *plane, double ax, double ay, double az, int eager);
@@ -1267,6 +1275,89 @@ JANET_FN(cad_help_set,
     return janet_wrap_true();
 }
 
+JANET_FN(cad_window_size,
+         "(window-size width height)",
+         "Resize the viewer window to the given logical pixel dimensions.\n\n"
+         "Both width and height must be positive integers.\n\n"
+         "Example:\n"
+         "  (window-size 800 600)    ; resize to 800x600")
+{
+    janet_arity(argc, 2, 2);
+    int32_t w = janet_getinteger(argv, 0);
+    int32_t h = janet_getinteger(argv, 1);
+    rust_window_set_size((uint32_t)(w > 0 ? w : 0), (uint32_t)(h > 0 ? h : 0));
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_window_size_query,
+         "(window-size?)",
+         "Return the current viewer window dimensions as a tuple "
+         "[width height] in logical pixels.\n\n"
+         "Example:\n"
+         "  (window-size?)    ; e.g., returns [1024 768]")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    uint32_t w = 0, h = 0;
+    rust_window_size_query(&w, &h);
+    Janet result[2];
+    result[0] = janet_wrap_integer((int32_t)w);
+    result[1] = janet_wrap_integer((int32_t)h);
+    return janet_wrap_tuple(result);
+}
+
+JANET_FN(cad_window_fullscreen,
+         "(window-fullscreen value)",
+         "Enter or exit fullscreen mode.\n\n"
+         "Pass true to enter borderless fullscreen, false to return to windowed mode.\n\n"
+         "Examples:\n"
+         "  (window-fullscreen true)   ; enter fullscreen\n"
+         "  (window-fullscreen false)  ; exit fullscreen")
+{
+    janet_arity(argc, 1, 1);
+    int fs = janet_truthy(argv[0]);
+    rust_window_set_fullscreen(fs);
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_window_fullscreen_query,
+         "(window-fullscreen?)",
+         "Return true if the viewer is in fullscreen mode, false otherwise.\n\n"
+         "Example:\n"
+         "  (window-fullscreen?)   ; returns true or false")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_window_fullscreen_query();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(cad_window_maximized,
+         "(window-maximized value)",
+         "Enter or exit maximized state.\n\n"
+         "Pass true to maximize, false to restore to windowed.\n\n"
+         "Examples:\n"
+         "  (window-maximized true)   ; maximize\n"
+         "  (window-maximized false)  ; restore")
+{
+    janet_arity(argc, 1, 1);
+    int mx = janet_truthy(argv[0]);
+    rust_window_set_maximized(mx);
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_window_maximized_query,
+         "(window-maximized?)",
+         "Return true if the viewer window is maximized, false otherwise.\n\n"
+         "Example:\n"
+         "  (window-maximized?)   ; returns true or false")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    int result = rust_window_maximized_query();
+    return result ? janet_wrap_true() : janet_wrap_false();
+}
+
 JANET_FN(cad_view_fit,
          "(view-fit shape & shapes ; reset)",
          "Fit camera to the bounding box of one or more shapes.\n\n"
@@ -2376,6 +2467,12 @@ static const char *cad_fn_categories[][2] = {
     {"edge-hidden",            "edge-styling"},
     {"projection-toggle",      "view"},
     {"projection-perspective", "view"},
+    {"window-size",            "view"},
+    {"window-size?",           "view"},
+    {"window-fullscreen",      "view"},
+    {"window-fullscreen?",     "view"},
+    {"window-maximized",       "view"},
+    {"window-maximized?",      "view"},
     {NULL, NULL}
 };
 
@@ -2439,6 +2536,18 @@ void cad_register_functions(JanetTable *env) {
         {"window-help-toggle",     cad_help_toggle,            cad_help_toggle_docstring_},
         {"window-help-show?",      cad_help_showing,           cad_help_showing_docstring_},
         {"window-help-show",       cad_help_set,               cad_help_set_docstring_},
+
+        /* Window size */
+        {"window-size",            cad_window_size,            cad_window_size_docstring_},
+        {"window-size?",           cad_window_size_query,      cad_window_size_query_docstring_},
+
+        /* Window fullscreen */
+        {"window-fullscreen",      cad_window_fullscreen,      cad_window_fullscreen_docstring_},
+        {"window-fullscreen?",     cad_window_fullscreen_query,cad_window_fullscreen_query_docstring_},
+
+        /* Window maximized */
+        {"window-maximized",       cad_window_maximized,       cad_window_maximized_docstring_},
+        {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
 
         /* View fit */
         {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},

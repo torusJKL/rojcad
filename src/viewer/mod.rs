@@ -12,6 +12,14 @@ pub mod help;
 pub mod pick;
 pub mod stats;
 
+/// Configuration for initial viewer window setup (size and maximized state).
+#[derive(Debug, Clone, Copy)]
+pub struct ViewerConfig {
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
 /// Messages from the viewer thread back to the REPL thread.
 #[derive(Debug, Clone)]
 pub enum ViewerToRepl {
@@ -43,9 +51,10 @@ impl Drop for ViewerHandle {
 /// Spawn the viewer on a background thread.
 ///
 /// Takes a `Receiver<ReplToViewer>` for one-shot commands (e.g., fit-to-bounds)
-/// from the REPL thread to the viewer thread.
+/// from the REPL thread to the viewer thread, and a `ViewerConfig` for initial
+/// window setup.
 /// Returns a `ViewerHandle` for graceful shutdown.
-pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>) -> ViewerHandle {
+pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>, config: ViewerConfig) -> ViewerHandle {
     let (viewer_tx, _viewer_rx) = mpsc::channel::<ViewerToRepl>();
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
@@ -53,7 +62,7 @@ pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>) -> ViewerHandle {
     let handle = thread::Builder::new()
         .name("wgpu-viewer".into())
         .spawn(move || {
-            app::run_viewer(viewer_tx, repl_rx, running_clone);
+            app::run_viewer(viewer_tx, repl_rx, running_clone, config);
         })
         .expect("failed to spawn viewer thread");
 

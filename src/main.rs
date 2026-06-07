@@ -28,6 +28,18 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 
+use crate::types::{
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
+    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, WINDOW_FULLSCREEN,
+    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, init_edge_color_defaults,
+    pack_color, register_shape_pointer,
+};
+use crate::viewer::ViewerConfig;
+
+use glam::DVec3;
+use opencascade::primitives::{Face, Shape};
+
 // ── Thread-local error buffer for propagating CAD errors to C bridge ─────
 
 std::thread_local! {
@@ -49,16 +61,6 @@ pub unsafe extern "C" fn rust_take_last_error() -> *mut c_char {
     let msg = take_last_error();
     CString::new(msg).unwrap().into_raw()
 }
-
-use glam::DVec3;
-use opencascade::primitives::{Face, Shape};
-
-use types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
-    SHOW_INACTIVE_EDGES, SHOW_HELP_OVERLAY, SHOW_STATS_OVERLAY, ShapeData, global_shape_registry,
-    init_edge_color_defaults, pack_color, register_shape_pointer,
-};
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
 
@@ -1546,7 +1548,9 @@ pub unsafe extern "C" fn rust_get_selected_shape_ids(count_out: *mut usize) -> *
     let ptr = ids.as_ptr() as *mut u64;
     std::mem::forget(ids);
     if !count_out.is_null() {
-        unsafe { *count_out = count; }
+        unsafe {
+            *count_out = count;
+        }
     }
     ptr
 }
@@ -1570,7 +1574,9 @@ pub unsafe extern "C" fn rust_get_registered_shape_ids(
     let ptr = ids.as_ptr() as *mut u64;
     std::mem::forget(ids);
     if !count_out.is_null() {
-        unsafe { *count_out = count; }
+        unsafe {
+            *count_out = count;
+        }
     }
     ptr
 }
@@ -1586,7 +1592,9 @@ pub unsafe extern "C" fn rust_get_shape_pointer(id: u64) -> *mut c_void {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_free_u64_array(ptr: *mut u64, count: usize) {
     if !ptr.is_null() {
-        unsafe { drop(Vec::from_raw_parts(ptr, count, count)); }
+        unsafe {
+            drop(Vec::from_raw_parts(ptr, count, count));
+        }
     }
 }
 
@@ -1848,6 +1856,59 @@ pub unsafe extern "C" fn rust_view_fit_all(include_hidden: bool, reset: bool) {
     }
 }
 
+// ── Window size / fullscreen FFI ─────────────────────────────────────────────
+
+/// Set viewer window size from Janet. Sets atomics optimistically then sends
+/// a command via the REPL→Viewer channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_size(width: u32, height: u32) {
+    WINDOW_WIDTH.store(width, Ordering::SeqCst);
+    WINDOW_HEIGHT.store(height, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetWindowSize { width, height });
+    }
+}
+
+/// Query current viewer window size. Returns [width, height] written to
+/// the provided out-parameters.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_size_query(out_width: *mut u32, out_height: *mut u32) {
+    unsafe {
+        *out_width = WINDOW_WIDTH.load(Ordering::SeqCst);
+        *out_height = WINDOW_HEIGHT.load(Ordering::SeqCst);
+    }
+}
+
+/// Set fullscreen mode from Janet. Sets the atomic then sends a command.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_fullscreen(fs: bool) {
+    WINDOW_FULLSCREEN.store(fs, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetFullscreen(fs));
+    }
+}
+
+/// Query current fullscreen state. Returns 1 if fullscreen, 0 if not.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_fullscreen_query() -> c_int {
+    c_int::from(WINDOW_FULLSCREEN.load(Ordering::SeqCst))
+}
+
+/// Set maximized state from Janet. Sets the atomic then sends a command.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_maximized(mx: bool) {
+    WINDOW_MAXIMIZED.store(mx, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetMaximized(mx));
+    }
+}
+
+/// Query current maximized state. Returns 1 if maximized, 0 if not.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_maximized_query() -> c_int {
+    c_int::from(WINDOW_MAXIMIZED.load(Ordering::SeqCst))
+}
+
 // ── C bridge registration forward declaration ────────────────────────────────
 
 unsafe extern "C" {
@@ -1907,11 +1968,59 @@ fn parse_eval_args() -> Vec<String> {
     exprs
 }
 
+fn parse_size_args() -> (Option<u32>, Option<u32>) {
+    let mut width: Option<u32> = None;
+    let mut height: Option<u32> = None;
+    let mut args = std::env::args().peekable();
+    while let Some(arg) = args.next() {
+        if let Some(w) = arg.strip_prefix("--width=") {
+            width = Some(w.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid width '{}'", w);
+                std::process::exit(1);
+            }));
+        }
+        if arg == "--width" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --width requires a value");
+                std::process::exit(1);
+            });
+            width = Some(next.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid width '{}'", next);
+                std::process::exit(1);
+            }));
+        }
+        if let Some(h) = arg.strip_prefix("--height=") {
+            height = Some(h.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid height '{}'", h);
+                std::process::exit(1);
+            }));
+        }
+        if arg == "--height" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --height requires a value");
+                std::process::exit(1);
+            });
+            height = Some(next.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid height '{}'", next);
+                std::process::exit(1);
+            }));
+        }
+    }
+    (width, height)
+}
+
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
     let port: u16 = parse_port_arg().unwrap_or(9365);
     let eval_exprs: Vec<String> = parse_eval_args();
+    let (cli_width, cli_height) = parse_size_args();
+    let maximized = cli_width.is_none() && cli_height.is_none();
+    let viewer_config = ViewerConfig {
+        width: cli_width.unwrap_or(1024),
+        height: cli_height.unwrap_or(768),
+        maximized,
+    };
 
     // Initialize edge style defaults
     init_edge_color_defaults();
@@ -1971,7 +2080,7 @@ fn main() {
     // Start viewer thread unless --headless flag is present
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let _viewer_handle = if !headless {
-        Some(viewer::spawn_viewer(repl_rx))
+        Some(viewer::spawn_viewer(repl_rx, viewer_config))
     } else {
         None
     };

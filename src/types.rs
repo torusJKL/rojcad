@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use glam::DVec3;
@@ -46,6 +46,18 @@ pub static SHOW_HELP_OVERLAY: AtomicBool = AtomicBool::new(true);
 /// Set to true when the viewer requests the application to quit (Ctrl+Q or window close).
 pub static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// Current viewer window width in logical pixels. Updated by viewer on resize.
+pub static WINDOW_WIDTH: AtomicU32 = AtomicU32::new(1024);
+
+/// Current viewer window height in logical pixels. Updated by viewer on resize.
+pub static WINDOW_HEIGHT: AtomicU32 = AtomicU32::new(768);
+
+/// Whether the viewer window is currently in fullscreen mode.
+pub static WINDOW_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+
+/// Whether the viewer window is currently maximized.
+pub static WINDOW_MAXIMIZED: AtomicBool = AtomicBool::new(false);
+
 /// Commands sent from the REPL thread to the viewer thread.
 /// The viewer polls these each frame via an mpsc receiver.
 pub enum ReplToViewer {
@@ -61,6 +73,12 @@ pub enum ReplToViewer {
         pitch: f64,
         distance: Option<f64>,
     },
+    /// Resize the viewer window to the given logical dimensions.
+    SetWindowSize { width: u32, height: u32 },
+    /// Enter or exit fullscreen mode.
+    SetFullscreen(bool),
+    /// Enter or exit maximized state.
+    SetMaximized(bool),
 }
 
 /// Edge thickness in NDC units (controlled from Janet).

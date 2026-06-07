@@ -10,27 +10,28 @@ use wgpu::{self, util::DeviceExt};
 use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::{
     application::ApplicationHandler,
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, ModifiersState, NamedKey},
-    window::{Window, WindowId},
+    window::{Fullscreen, Window, WindowId},
 };
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
     MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
     SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES,
-    SHOW_STATS_OVERLAY, ShapeId, global_shape_registry, unpack_color,
+    SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH,
+    global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
-use super::pick::pick_shape;
 use super::help::Help;
+use super::pick::pick_shape;
 use super::stats::Stats;
 
-use super::ViewerToRepl;
+use super::{ViewerConfig, ViewerToRepl};
 
 const GIZMO_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const CLICK_THRESHOLD: f64 = 3.0;
@@ -815,6 +816,7 @@ struct ViewerApp {
     viewer_tx: Sender<ViewerToRepl>,
     repl_rx: Receiver<ReplToViewer>,
     running: Arc<AtomicBool>,
+    config: ViewerConfig,
     state: Option<ViewerState>,
 }
 
@@ -823,6 +825,7 @@ pub fn run_viewer(
     viewer_tx: Sender<ViewerToRepl>,
     repl_rx: Receiver<ReplToViewer>,
     running: Arc<AtomicBool>,
+    config: ViewerConfig,
 ) {
     let mut builder = EventLoop::builder();
     #[cfg(target_os = "linux")]
@@ -833,6 +836,7 @@ pub fn run_viewer(
         viewer_tx,
         repl_rx,
         running,
+        config,
         state: None,
     };
 
@@ -872,14 +876,23 @@ impl ApplicationHandler for ViewerApp {
             return;
         }
 
-        let window_attrs = Window::default_attributes()
+        let logical_size = LogicalSize::new(self.config.width as f64, self.config.height as f64);
+        let mut window_attrs = Window::default_attributes()
             .with_title("rojcad — 3D Viewer")
-            .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
+            .with_inner_size(logical_size);
+        if self.config.maximized {
+            window_attrs = window_attrs.with_maximized(true);
+        }
         let window = Arc::new(
             event_loop
                 .create_window(window_attrs)
                 .expect("failed to create window"),
         );
+
+        // Initialize atomics from config so queries work before first frame
+        WINDOW_WIDTH.store(self.config.width, Ordering::SeqCst);
+        WINDOW_HEIGHT.store(self.config.height, Ordering::SeqCst);
+        WINDOW_FULLSCREEN.store(false, Ordering::SeqCst);
 
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -1036,6 +1049,8 @@ impl ApplicationHandler for ViewerApp {
             }
             WindowEvent::Resized(new_size) => {
                 state.size = new_size;
+                WINDOW_WIDTH.store(new_size.width, Ordering::SeqCst);
+                WINDOW_HEIGHT.store(new_size.height, Ordering::SeqCst);
                 state.surface_config.width = new_size.width.max(1);
                 state.surface_config.height = new_size.height.max(1);
                 state
@@ -1119,8 +1134,7 @@ impl ApplicationHandler for ViewerApp {
                     SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c)
-                    if !state.egui_ctx.wants_keyboard_input()
-                        && (c == "h" || c == "H") =>
+                    if !state.egui_ctx.wants_keyboard_input() && (c == "h" || c == "H") =>
                 {
                     SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
                 }
@@ -1325,6 +1339,24 @@ impl ViewerApp {
                         state.camera.pitch,
                         pitch,
                     ));
+                }
+                ReplToViewer::SetWindowSize { width, height } => {
+                    let logical = LogicalSize::new(width as f64, height as f64);
+                    let _ = state.window.request_inner_size(logical);
+                }
+                ReplToViewer::SetFullscreen(fs) => {
+                    if fs && let Some(monitor) = state.window.current_monitor() {
+                        state
+                            .window
+                            .set_fullscreen(Some(Fullscreen::Borderless(Some(monitor))));
+                    } else if !fs {
+                        state.window.set_fullscreen(None);
+                    }
+                    WINDOW_FULLSCREEN.store(fs, Ordering::SeqCst);
+                }
+                ReplToViewer::SetMaximized(mx) => {
+                    state.window.set_maximized(mx);
+                    WINDOW_MAXIMIZED.store(mx, Ordering::SeqCst);
                 }
             }
         }

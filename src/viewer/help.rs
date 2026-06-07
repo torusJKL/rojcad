@@ -27,16 +27,36 @@ impl Help {
                     .num_columns(2)
                     .spacing([16.0, 2.0])
                     .show(ui, |ui| {
-                        ui.monospace("Esc");         ui.label("Close this help");                     ui.end_row();
-                        ui.monospace("h");           ui.label("Toggle this help");                    ui.end_row();
-                        ui.monospace("p / o");       ui.label("Toggle perspective / orthographic");   ui.end_row();
-                        ui.monospace("x");           ui.label("Toggle back edges");                   ui.end_row();
-                        ui.monospace("Ctrl+1");      ui.label("Front / Back view");                   ui.end_row();
-                        ui.monospace("Ctrl+3");      ui.label("Right / Left view");                   ui.end_row();
-                        ui.monospace("Ctrl+7");      ui.label("Top / Bottom view");                   ui.end_row();
-                        ui.monospace("Ctrl+Shift+"); ui.label("Toggle stats overlay");                ui.end_row();
-                        ui.monospace("  Alt+S");     ui.label("");                                    ui.end_row();
-                        ui.monospace("Ctrl+Q");      ui.label("Quit application");                    ui.end_row();
+                        ui.monospace("Esc");
+                        ui.label("Close this help");
+                        ui.end_row();
+                        ui.monospace("h");
+                        ui.label("Toggle this help");
+                        ui.end_row();
+                        ui.monospace("p / o");
+                        ui.label("Toggle perspective / orthographic");
+                        ui.end_row();
+                        ui.monospace("x");
+                        ui.label("Toggle back edges");
+                        ui.end_row();
+                        ui.monospace("Ctrl+1");
+                        ui.label("Front / Back view");
+                        ui.end_row();
+                        ui.monospace("Ctrl+3");
+                        ui.label("Right / Left view");
+                        ui.end_row();
+                        ui.monospace("Ctrl+7");
+                        ui.label("Top / Bottom view");
+                        ui.end_row();
+                        ui.monospace("Ctrl+Shift+");
+                        ui.label("Toggle stats overlay");
+                        ui.end_row();
+                        ui.monospace("  Alt+S");
+                        ui.label("");
+                        ui.end_row();
+                        ui.monospace("Ctrl+Q");
+                        ui.label("Quit application");
+                        ui.end_row();
                     });
 
                 ui.add_space(8.0);
@@ -47,12 +67,24 @@ impl Help {
                     .num_columns(2)
                     .spacing([16.0, 2.0])
                     .show(ui, |ui| {
-                        ui.monospace("(doc 'sym)");    ui.label("Show docs for a function");               ui.end_row();
-                        ui.monospace("(apropos p)");   ui.label("Search functions by pattern");            ui.end_row();
-                        ui.monospace("(group)");       ui.label("List all function groups");               ui.end_row();
-                        ui.monospace("(group \"n\")"); ui.label("List functions in a group");              ui.end_row();
-                        ui.monospace("(cad-fns)");     ui.label("List all rojcad functions");              ui.end_row();
-                        ui.monospace("(all-fns)");     ui.label("List all available functions");           ui.end_row();
+                        ui.monospace("(doc 'sym)");
+                        ui.label("Show docs for a function");
+                        ui.end_row();
+                        ui.monospace("(apropos p)");
+                        ui.label("Search functions by pattern");
+                        ui.end_row();
+                        ui.monospace("(group)");
+                        ui.label("List all function groups");
+                        ui.end_row();
+                        ui.monospace("(group \"n\")");
+                        ui.label("List functions in a group");
+                        ui.end_row();
+                        ui.monospace("(cad-fns)");
+                        ui.label("List all rojcad functions");
+                        ui.end_row();
+                        ui.monospace("(all-fns)");
+                        ui.label("List all available functions");
+                        ui.end_row();
                     });
                 ui.label("Full API docs generated with (dump-docs).");
 
@@ -72,9 +104,21 @@ impl Help {
                     .num_columns(2)
                     .spacing([16.0, 2.0])
                     .show(ui, |ui| {
-                        ui.monospace("--headless");  ui.label("Run without 3D viewer");                 ui.end_row();
-                        ui.monospace("--port <N>");  ui.label("Set REPL port (default 9365)");          ui.end_row();
-                        ui.monospace("--eval <E>");  ui.label("Run Janet code on startup then exit");   ui.end_row();
+                        ui.monospace("--headless");
+                        ui.label("Run without 3D viewer");
+                        ui.end_row();
+                        ui.monospace("--port <N>");
+                        ui.label("Set REPL port (default 9365)");
+                        ui.end_row();
+                        ui.monospace("--eval <E>");
+                        ui.label("Run Janet code on startup then exit");
+                        ui.end_row();
+                        ui.monospace("--width <PX>");
+                        ui.label("Window width (implies windowed, default maximized)");
+                        ui.end_row();
+                        ui.monospace("--height <PX>");
+                        ui.label("Window height (implies windowed, default maximized)");
+                        ui.end_row();
                     });
             });
 
