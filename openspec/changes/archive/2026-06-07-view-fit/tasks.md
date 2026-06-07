@@ -51,5 +51,5 @@
 
 - [x] 7.1 Run `just fmt` and `just check` to verify compilation
 - [x] 7.2 Run unit tests
-- [ ] 7.3 Manual smoke test: launch viewer, create a shape, call `(view-fit my-shape)`, verify camera animates to frame it
-- [ ] 7.4 Manual test: `(view-fit)`, `(view-fit :reset ...)`, `(view-fit-all)`, `(view-fit-all :hidden :reset)`, `(view-fit)` no args (expect panic)
+- [x] 7.3 Manual smoke test: launch viewer, create a shape, call `(view-fit my-shape)`, verify camera animates to frame it
+- [x] 7.4 Manual test: `(view-fit)`, `(view-fit :reset ...)`, `(view-fit-all)`, `(view-fit-all :hidden :reset)`, `(view-fit)` no args (expect panic)

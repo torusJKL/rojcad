@@ -48,8 +48,8 @@
 
 ## 9. Font path resolution fallback
 
-- [ ] 9.1 Modify `FontData::from_path()` to try direct path first, then filename lookup in system font dirs, then font name lookup
-- [ ] 9.2 Add unit tests for path resolution: bare filename, font name, and failure cases
+- [x] 9.1 Modify `FontData::from_path()` to try direct path first, then filename lookup in system font dirs, then font name lookup
+- [x] 9.2 Add unit tests for path resolution: bare filename, font name, and failure cases
 
 ## 10. Tests
 

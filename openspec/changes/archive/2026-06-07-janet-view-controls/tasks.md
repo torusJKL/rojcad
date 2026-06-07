@@ -25,4 +25,4 @@
 
 - [x] 4.1 Run `just check` (fast compile check) to find any errors
 - [x] 4.2 Run `just build` to produce a debug build
-- [ ] 4.3 Verify keyboard shortcuts (X, O/P) still work when viewer is running (manual — needs display)
+- [x] 4.3 Verify keyboard shortcuts (X, O/P) still work when viewer is running (manual — needs display)

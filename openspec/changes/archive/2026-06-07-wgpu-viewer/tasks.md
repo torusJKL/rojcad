@@ -80,11 +80,11 @@
 ## 11. Testing and Verification
 
 - [x] 11.1 Run `cargo build` and fix any compilation errors
-- [ ] 11.2 Run `cargo build --release` and verify viewer window opens on startup
-- [ ] 11.3 Run `cargo run --release -- --headless` and verify headless mode works with no window
-- [ ] 11.4 Connect `nc 127.0.0.1 9000`, create shapes, verify they appear in the viewer
-- [ ] 11.5 Test orbit/pan/zoom camera controls in the viewer
-- [ ] 11.6 Test shape selection by clicking on shapes in the viewport
-- [ ] 11.7 Test back-edge toggle (`X` key) and projection toggle (`P`/`O`)
-- [ ] 11.8 Test `(hide s)` / `(show s)` and verify viewer updates instantly
+- [x] 11.2 Run `cargo build --release` and verify viewer window opens on startup
+- [x] 11.3 Run `cargo run --release -- --headless` and verify headless mode works with no window
+- [x] 11.4 Connect `nc 127.0.0.1 9365`, create shapes, verify they appear in the viewer
+- [x] 11.5 Test orbit/pan/zoom camera controls in the viewer
+- [x] 11.6 Test shape selection by clicking on shapes in the viewport
+- [x] 11.7 Test back-edge toggle (`X` key) and projection toggle (`P`/`O`)
+- [x] 11.8 Test `(hide s)` / `(show s)` and verify viewer updates instantly
 - [x] 11.9 Run existing unit tests: `cargo test` — verify nothing is broken

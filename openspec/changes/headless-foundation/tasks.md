@@ -76,7 +76,7 @@
 - [x] 10.7 Test STL export: create shape, write .stl, verify file exists and is non-empty
 - [x] 10.8 Test visibility flag: create shape, verify visible?, hide, verify not visible?, show, verify visible?
 - [ ] 10.9 Test type checking: pass wrong types to each function, verify Janet errors
-- [ ] 10.10 Test TCP REPL: spawn binary, connect with nc, submit expressions, verify responses (integration test)
+- [x] 10.10 Test TCP REPL: spawn binary, connect with nc, submit expressions, verify responses (integration test)
 
 ## 11. Documentation
 
