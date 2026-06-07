@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=rojcad
+Comment=Headless parametric CAD system with Janet DSL
+Exec=rojcad
+Icon=rojcad
+Terminal=true
+Type=Application
+Categories=Graphics;3DGraphics;Science;Engineering;

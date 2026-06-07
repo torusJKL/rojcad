@@ -38,6 +38,8 @@ The TCP REPL listens on port **9365** by default (override with `--port <PORT>` 
 | Lint | `just lint` (clippy with `-D warnings`) |
 | Format | `just fmt` / `just fmt-check` |
 | Generate Janet API docs | `just doc-janet` |
+| Package as AppImage | `just appimage` |
+| Package as tarball | `just tarball` |
 | Full fresh build | `just full-build` |
 | Clean (including cargo cache) | `just clean-all` |
 
@@ -57,6 +59,9 @@ The TCP REPL listens on port **9365** by default (override with `--port <PORT>` 
 - All tests are `#[cfg(test)]` inline in `src/cad.rs` (no separate test files).
 - Export tests write to `/tmp/test_rojcad_*.step` / `.stl`.
 - Janet-level operations are tested indirectly only — no automated Janet integration tests.
+
+## Pre-commit
+- Run `just fmt` before every commit to ensure only well-formatted files are committed.
 
 ## Style
 - Make methods private unless they must be public.

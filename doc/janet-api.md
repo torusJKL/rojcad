@@ -265,6 +265,12 @@ Keywords: :eager (tessellate immediately).
 
 ## Queries
 
+### `face?`
+
+**Usage:** `(face? shape)`
+
+Return true if the shape is a Face.
+
 ### `shape-type`
 
 **Usage:** `(shape-type shape)`
@@ -273,11 +279,23 @@ Keywords: :eager (tessellate immediately).
 
 **Return the OCCT topological type of a shape as a keyword. Returns :solid, :face, :edge, :wire, :shell, :vertex, :compound, :compound-solid, or :shape.**
 
+### `solid?`
+
+**Usage:** `(solid? shape)`
+
+Return true if the shape is a Solid.
+
 ### `visible?`
 
 **Usage:** `(visible? shape)`
 
 Return true if the shape's visible flag is set, false otherwise.
+
+### `wire?`
+
+**Usage:** `(wire? shape)`
+
+Return true if the shape is a Wire.
 
 ## Edge Styling
 

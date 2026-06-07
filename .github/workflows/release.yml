@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libvulkan1
+
+      - name: Extract opencascade-rs commit
+        id: occt
+        run: |
+          COMMIT=$(grep -A2 '^name = "opencascade-sys"' Cargo.lock \
+            | grep 'source = ' | sed 's/.*#//; s/"//g')
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            target/release/build/opencascade-sys-*
+            target/release/.fingerprint/opencascade-sys-*
+          key: occt-${{ steps.occt.outputs.commit }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: just appimage
+      - run: just tarball
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -68,8 +68,11 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#cut">cut</a></li>
 <li class="fn"><a href="#fuse">fuse</a></li>
 <li class="cat"><a href="#queries">Queries</a></li>
+<li class="fn"><a href="#face?">face?</a></li>
 <li class="fn"><a href="#shape-type">shape-type</a></li>
+<li class="fn"><a href="#solid?">solid?</a></li>
 <li class="fn"><a href="#visible?">visible?</a></li>
+<li class="fn"><a href="#wire?">wire?</a></li>
 <li class="cat"><a href="#edge-styling">Edge Styling</a></li>
 <li class="fn"><a href="#edge-active-show?">edge-active-show?</a></li>
 <li class="fn"><a href="#edge-color-active">edge-color-active</a></li>
@@ -330,6 +333,13 @@ Keywords: :eager (tessellate immediately).</p>
 </section>
 <section id="queries">
 <h2>Queries</h2>
+<article id="face?">
+<h3>face?</h3>
+<div class="usage">(face? shape)</div>
+<div class="desc">
+<p>Return true if the shape is a Face.</p>
+</div>
+</article>
 <article id="shape-type">
 <h3>shape-type</h3>
 <div class="usage">(shape-type shape)</div>
@@ -337,11 +347,25 @@ Keywords: :eager (tessellate immediately).</p>
 </div>
 <div class="returns">Return the OCCT topological type of a shape as a keyword. Returns :solid, :face, :edge, :wire, :shell, :vertex, :compound, :compound-solid, or :shape.</div>
 </article>
+<article id="solid?">
+<h3>solid?</h3>
+<div class="usage">(solid? shape)</div>
+<div class="desc">
+<p>Return true if the shape is a Solid.</p>
+</div>
+</article>
 <article id="visible?">
 <h3>visible?</h3>
 <div class="usage">(visible? shape)</div>
 <div class="desc">
 <p>Return true if the shape's visible flag is set, false otherwise.</p>
+</div>
+</article>
+<article id="wire?">
+<h3>wire?</h3>
+<div class="usage">(wire? shape)</div>
+<div class="desc">
+<p>Return true if the shape is a Wire.</p>
 </div>
 </article>
 </section>
