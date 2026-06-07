@@ -24,7 +24,9 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 
 // ── Thread-local error buffer for propagating CAD errors to C bridge ─────
 
@@ -53,8 +55,8 @@ use opencascade::primitives::{Face, Shape};
 
 use types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, PROJECTION_PERSPECTIVE,
-    SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeData, init_edge_color_defaults,
-    pack_color,
+    ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_INACTIVE_EDGES, ShapeData,
+    global_shape_registry, init_edge_color_defaults, pack_color,
 };
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -1480,6 +1482,9 @@ pub unsafe extern "C" fn rust_poll_selection() -> u64 {
     LAST_SELECTION.swap(0, Ordering::SeqCst)
 }
 
+/// Sender for REPL→Viewer commands (fit-to-bounds, etc.).
+static REPL_TO_VIEWER: OnceLock<mpsc::Sender<ReplToViewer>> = OnceLock::new();
+
 // ── Edge visibility toggles ────────────────────────────────────────────────────
 
 /// Toggle inactive edge visibility. Returns new state (1 = showing, 0 = hidden).
@@ -1574,6 +1579,79 @@ pub unsafe extern "C" fn rust_projection_perspective_showing() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_projection_perspective_set(value: c_int) {
     PROJECTION_PERSPECTIVE.store(value != 0, Ordering::SeqCst);
+}
+
+// ── View fit ───────────────────────────────────────────────────────────────────
+
+/// Fit camera to bounding box union of explicitly provided shapes.
+/// `reset` — if true, reset to default isometric angle; otherwise keep current angle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_fit_shapes(shapes: *mut *mut c_void, count: c_int, reset: bool) {
+    let shape_ptrs = unsafe { std::slice::from_raw_parts(shapes, count as usize) };
+    let shape_refs: Vec<&ShapeData> = shape_ptrs
+        .iter()
+        .map(|&p| unsafe { &*(p as *const ShapeData) })
+        .collect();
+
+    if let Some((center, radius)) = cad::compute_union_bounds(&shape_refs) {
+        if let Some(tx) = REPL_TO_VIEWER.get() {
+            let _ = tx.send(ReplToViewer::FitToBounds {
+                center,
+                radius,
+                animate: true,
+                keep_angle: !reset, // invert: reset=false → keep angle (default)
+            });
+        }
+    }
+}
+
+/// Fit camera to bounding box union of all shapes (visible by default,
+/// or all including hidden if `include_hidden` is true).
+/// `reset` — if true, reset to default isometric angle; otherwise keep current angle.
+/// If no shapes are found, always reset to default position.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_fit_all(include_hidden: bool, reset: bool) {
+    let registry = global_shape_registry();
+    let entries = if include_hidden {
+        registry.all_shapes()
+    } else {
+        registry.visible_shapes()
+    };
+
+    let mut min = DVec3::splat(f64::MAX);
+    let mut max = DVec3::splat(f64::MIN);
+    let mut has_vertices = false;
+
+    for entry in &entries {
+        if let Some(ref mesh) = entry.mesh {
+            for v in &mesh.vertices {
+                let p = DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+                min = min.min(p);
+                max = max.max(p);
+                has_vertices = true;
+            }
+        }
+    }
+
+    let (center, radius, final_keep) = if has_vertices {
+        (
+            (min + max) * 0.5,
+            (max - min).length() * 0.5 * 1.3,
+            !reset, // invert: reset=false → keep angle (default)
+        )
+    } else {
+        // No shapes found: always reset to default camera position
+        (DVec3::ZERO, 50.0, false)
+    };
+
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::FitToBounds {
+            center,
+            radius,
+            animate: true,
+            keep_angle: final_keep,
+        });
+    }
 }
 
 // ── C bridge registration forward declaration ────────────────────────────────
@@ -1692,10 +1770,14 @@ fn main() {
         }
     }
 
+    // Create channel for REPL→Viewer commands
+    let (repl_tx, repl_rx) = mpsc::channel::<ReplToViewer>();
+    let _ = REPL_TO_VIEWER.set(repl_tx);
+
     // Start viewer thread unless --headless flag is present
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let _viewer_handle = if !headless {
-        Some(viewer::spawn_viewer())
+        Some(viewer::spawn_viewer(repl_rx))
     } else {
         None
     };

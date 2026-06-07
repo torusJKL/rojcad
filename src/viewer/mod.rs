@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Receiver};
 use std::thread::{self, JoinHandle};
+
+use crate::types::ReplToViewer;
 
 pub mod app;
 pub mod camera;
@@ -38,8 +40,11 @@ impl Drop for ViewerHandle {
 }
 
 /// Spawn the viewer on a background thread.
-/// Returns a `ViewerHandle` that the REPL thread can use to receive selection events.
-pub fn spawn_viewer() -> ViewerHandle {
+///
+/// Takes a `Receiver<ReplToViewer>` for one-shot commands (e.g., fit-to-bounds)
+/// from the REPL thread to the viewer thread.
+/// Returns a `ViewerHandle` for graceful shutdown.
+pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>) -> ViewerHandle {
     let (viewer_tx, _viewer_rx) = mpsc::channel::<ViewerToRepl>();
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
@@ -47,7 +52,7 @@ pub fn spawn_viewer() -> ViewerHandle {
     let handle = thread::Builder::new()
         .name("wgpu-viewer".into())
         .spawn(move || {
-            app::run_viewer(viewer_tx, running_clone);
+            app::run_viewer(viewer_tx, repl_rx, running_clone);
         })
         .expect("failed to spawn viewer thread");
 

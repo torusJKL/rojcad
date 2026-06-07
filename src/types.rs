@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
+use glam::DVec3;
+
 /// Global generation counter for change tracking.
 /// Incremented on every ShapeRegistry write.
 /// The viewer reads this to detect changes since last frame.
@@ -29,6 +31,18 @@ pub static SHOW_BACK_EDGES: AtomicBool = AtomicBool::new(false);
 /// Camera projection mode. true = perspective, false = orthographic.
 /// Viewer thread syncs from this each frame.
 pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
+
+/// Commands sent from the REPL thread to the viewer thread.
+/// The viewer polls these each frame via an mpsc receiver.
+pub enum ReplToViewer {
+    /// Fit the camera to frame a bounding sphere.
+    FitToBounds {
+        center: DVec3,
+        radius: f64,
+        animate: bool,
+        keep_angle: bool,
+    },
+}
 
 /// Edge thickness in NDC units (controlled from Janet).
 pub static EDGE_THICKNESS: AtomicU64 = AtomicU64::new(f64::to_bits(0.001));
@@ -123,6 +137,20 @@ impl ShapeRegistry {
         let mut map = self.inner.write().expect("shape registry lock poisoned");
         map.remove(&shape_id);
         REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Return a snapshot of all registered shapes (visible and hidden).
+    pub fn all_shapes(&self) -> Vec<ShapeEntry> {
+        let map = self.inner.read().expect("shape registry lock poisoned");
+        map.values()
+            .map(|e| ShapeEntry {
+                shape_id: e.shape_id,
+                mesh: e.mesh.clone(),
+                edge_polylines: e.edge_polylines.clone(),
+                visible: e.visible,
+                color: e.color,
+            })
+            .collect()
     }
 
     /// Return a snapshot of all currently visible shapes with their data.

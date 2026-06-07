@@ -119,6 +119,10 @@ extern int rust_projection_perspective_toggle(void);
 extern int rust_projection_perspective_showing(void);
 extern void rust_projection_perspective_set(int value);
 
+/* View fit */
+extern void rust_view_fit_shapes(void **shapes, int count, int reset);
+extern void rust_view_fit_all(int include_hidden, int reset);
+
 /* 2D primitives */
 extern int rust_init_rect(void *dest, double w, double d, int is_wire,
                             const char *plane, double ax, double ay, double az, int eager);
@@ -1153,6 +1157,86 @@ JANET_FN(cad_projection_perspective,
     return janet_wrap_true();
 }
 
+JANET_FN(cad_view_fit,
+         "(view-fit shape & shapes ; reset)",
+         "Fit camera to the bounding box of one or more shapes.\n\n"
+         "Animates the 3D camera over 0.5s to frame the union bounding\n"
+         "box of the given shapes. The current orbit angle is preserved.\n\n"
+         "Use :reset to return to the default isometric angle\n"
+         "(yaw=0, pitch=0.4).\n\n"
+         "Examples:\n"
+         "  (view-fit my-shape)\n"
+         "  (view-fit box1 cylinder2)\n"
+         "  (view-fit :reset part1 part2)")
+{
+    int shape_count = 0;
+    int reset = 0;
+
+    for (int32_t i = 0; i < argc; i++) {
+        if (janet_checktype(argv[i], JANET_KEYWORD)) {
+            const uint8_t *kw = janet_unwrap_keyword(argv[i]);
+            if (strcmp((const char *)kw, "reset") == 0) {
+                reset = 1;
+            }
+        } else {
+            shape_count++;
+        }
+    }
+
+    if (shape_count < 1) {
+        janet_panic("expected at least one shape");
+    }
+
+    void **shape_ptrs = janet_malloc((size_t)shape_count * sizeof(void *));
+    if (!shape_ptrs) {
+        janet_panic("out of memory");
+    }
+
+    int32_t idx = 0;
+    for (int32_t i = 0; i < argc; i++) {
+        if (!janet_checktype(argv[i], JANET_KEYWORD)) {
+            shape_ptrs[idx++] = janet_getabstract(argv, i, &rojcad_shape_type);
+        }
+    }
+
+    rust_view_fit_shapes(shape_ptrs, shape_count, reset);
+    janet_free(shape_ptrs);
+    return janet_wrap_nil();
+}
+
+JANET_FN(cad_view_fit_all,
+         "(view-fit-all ; hidden ; reset)",
+         "Fit camera to the bounding box of shapes.\n\n"
+         "By default only visible shapes are framed. "
+         "Use :hidden to include hidden shapes as well.\n"
+         "Animates the 3D camera over 0.5s to frame the union bounding box.\n"
+         "The current orbit angle is preserved.\n"
+         "If no shapes are found, resets the camera to default position.\n\n"
+         "Keywords:\n"
+         "  :hidden  — include hidden shapes in the bounding box\n"
+         "  :reset   — return to the default isometric angle\n\n"
+         "Examples:\n"
+         "  (view-fit-all)\n"
+         "  (view-fit-all :reset)\n"
+         "  (view-fit-all :hidden)\n"
+         "  (view-fit-all :hidden :reset)")
+{
+    int reset = 0;
+    int include_hidden = 0;
+    for (int32_t i = 0; i < argc; i++) {
+        if (janet_checktype(argv[i], JANET_KEYWORD)) {
+            const uint8_t *kw = janet_unwrap_keyword(argv[i]);
+            if (strcmp((const char *)kw, "reset") == 0) {
+                reset = 1;
+            } else if (strcmp((const char *)kw, "hidden") == 0) {
+                include_hidden = 1;
+            }
+        }
+    }
+    rust_view_fit_all(include_hidden, reset);
+    return janet_wrap_nil();
+}
+
 JANET_FN(cad_edge_thickness,
          "(edge-thickness &opt value)",
          "Get or set the edge line thickness in NDC units.\n\n"
@@ -2075,6 +2159,8 @@ static const char *cad_fn_categories[][2] = {
     {"wire?", "queries"},
     {"face?", "queries"},
     {"solid?", "queries"},
+    {"view-fit", "view"},
+    {"view-fit-all", "view"},
     {"text", "text"},
     {"text3d", "text"},
     {"list-fonts", "text"},
@@ -2130,6 +2216,10 @@ void cad_register_functions(JanetTable *env) {
         {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
         {"projection-toggle",      cad_projection_toggle,      cad_projection_toggle_docstring_},
         {"projection-perspective", cad_projection_perspective, cad_projection_perspective_docstring_},
+
+        /* View fit */
+        {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},
+        {"view-fit-all",           cad_view_fit_all,           cad_view_fit_all_docstring_},
 
         /* 2D primitives */
         {"rect",                   cad_rect,                   cad_rect_docstring_},

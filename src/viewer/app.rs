@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
+
+use glam::DVec3;
 
 use wgpu::{self, util::DeviceExt};
 #[cfg(target_os = "linux")]
@@ -16,7 +18,7 @@ use winit::{
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, MeshData,
-    PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    PROJECTION_PERSPECTIVE, REGISTRY_GENERATION, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
     SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry, unpack_color,
 };
 
@@ -105,6 +107,61 @@ impl CameraAnimation {
 
     fn stop(&mut self) {
         self.active = false;
+    }
+}
+
+// ── FitAnimation ─────────────────────────────────────────────────────────────
+
+/// Smoothly animates camera target, radius, yaw, and pitch for fit-to-shape.
+struct FitAnimation {
+    start_target: DVec3,
+    end_target: DVec3,
+    start_radius: f64,
+    end_radius: f64,
+    start_yaw: f64,
+    end_yaw: f64,
+    start_pitch: f64,
+    end_pitch: f64,
+    elapsed: f64,
+    duration: f64,
+}
+
+impl FitAnimation {
+    fn new(
+        start_target: DVec3,
+        end_target: DVec3,
+        start_radius: f64,
+        end_radius: f64,
+        start_yaw: f64,
+        end_yaw: f64,
+        start_pitch: f64,
+        end_pitch: f64,
+    ) -> Self {
+        Self {
+            start_target,
+            end_target,
+            start_radius,
+            end_radius,
+            start_yaw,
+            end_yaw,
+            start_pitch,
+            end_pitch,
+            elapsed: 0.0,
+            duration: ANIMATION_DURATION,
+        }
+    }
+
+    fn update(&mut self, camera: &mut OrbitCamera, dt: f64) -> bool {
+        self.elapsed += dt;
+        let t = (self.elapsed / self.duration).clamp(0.0, 1.0);
+        let e = ease_in_out(t);
+
+        camera.target = self.start_target.lerp(self.end_target, e);
+        camera.radius = self.start_radius + (self.end_radius - self.start_radius) * e;
+        camera.yaw = self.start_yaw + (self.end_yaw - self.start_yaw) * e;
+        camera.pitch = self.start_pitch + (self.end_pitch - self.start_pitch) * e;
+
+        t >= 1.0
     }
 }
 
@@ -735,6 +792,7 @@ pub struct ViewerState {
     mouse_pos: PhysicalPosition<f64>,
     last_generation: u64,
     animation: CameraAnimation,
+    fit_animation: Option<FitAnimation>,
     last_time: std::time::Instant,
     keyboard_view: Option<usize>,
     modifiers: ModifiersState,
@@ -744,12 +802,17 @@ pub struct ViewerState {
 
 struct ViewerApp {
     viewer_tx: Sender<ViewerToRepl>,
+    repl_rx: Receiver<ReplToViewer>,
     running: Arc<AtomicBool>,
     state: Option<ViewerState>,
 }
 
 /// Main entry point for the viewer thread.
-pub fn run_viewer(viewer_tx: Sender<ViewerToRepl>, running: Arc<AtomicBool>) {
+pub fn run_viewer(
+    viewer_tx: Sender<ViewerToRepl>,
+    repl_rx: Receiver<ReplToViewer>,
+    running: Arc<AtomicBool>,
+) {
     let mut builder = EventLoop::builder();
     #[cfg(target_os = "linux")]
     builder.with_any_thread(true);
@@ -757,6 +820,7 @@ pub fn run_viewer(viewer_tx: Sender<ViewerToRepl>, running: Arc<AtomicBool>) {
 
     let mut app = ViewerApp {
         viewer_tx,
+        repl_rx,
         running,
         state: None,
     };
@@ -915,6 +979,7 @@ impl ApplicationHandler for ViewerApp {
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             last_generation: 0,
             animation: CameraAnimation::new(),
+            fit_animation: None,
             last_time: std::time::Instant::now(),
             keyboard_view: None,
             modifiers: ModifiersState::default(),
@@ -1062,6 +1127,7 @@ impl ApplicationHandler for ViewerApp {
                 state.camera.zoom(zoom_factor * 0.1);
             }
             WindowEvent::RedrawRequested => {
+                Self::check_repl_commands(&self.repl_rx, state);
                 Self::render(state);
             }
             _ => {}
@@ -1129,6 +1195,51 @@ impl ViewerApp {
         }
     }
 
+    fn check_repl_commands(rx: &Receiver<ReplToViewer>, state: &mut ViewerState) {
+        while let Ok(cmd) = rx.try_recv() {
+            match cmd {
+                ReplToViewer::FitToBounds {
+                    center,
+                    radius,
+                    animate: _,
+                    keep_angle,
+                } => {
+                    Self::fit_to_bounds(state, center, radius, keep_angle);
+                }
+            }
+        }
+    }
+
+    fn fit_to_bounds(state: &mut ViewerState, center: DVec3, radius: f64, keep_angle: bool) {
+        let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
+        let margin = 1.3;
+
+        let target_radius = if state.camera.perspective {
+            let tan_half_fov = (state.camera.fov_y * 0.5).tan();
+            let d_height = radius / tan_half_fov;
+            let d_width = radius / (tan_half_fov * aspect);
+            d_height.max(d_width) * margin
+        } else {
+            let from_height = 2.0 * radius;
+            let from_width = 2.0 * radius / aspect;
+            from_height.max(from_width) * margin
+        };
+
+        let end_yaw = if keep_angle { state.camera.yaw } else { 0.0 };
+        let end_pitch = if keep_angle { state.camera.pitch } else { 0.4 };
+
+        state.fit_animation = Some(FitAnimation::new(
+            state.camera.target,
+            center,
+            state.camera.radius,
+            target_radius,
+            state.camera.yaw,
+            end_yaw,
+            state.camera.pitch,
+            end_pitch,
+        ));
+    }
+
     fn render(state: &mut ViewerState) {
         // Sync projection mode from atomic (controlled by Janet or keyboard)
         let target_perspective = PROJECTION_PERSPECTIVE.load(Ordering::Relaxed);
@@ -1136,11 +1247,16 @@ impl ViewerApp {
             state.camera.toggle_projection();
         }
 
-        // Update camera animation
+        // Update camera animations
         let now = std::time::Instant::now();
         let dt = (now - state.last_time).as_secs_f64();
         state.last_time = now;
         state.animation.update(&mut state.camera, dt);
+        if let Some(ref mut fit) = state.fit_animation {
+            if fit.update(&mut state.camera, dt) {
+                state.fit_animation = None;
+            }
+        }
 
         // Update camera uniforms
         let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
