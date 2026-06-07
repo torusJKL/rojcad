@@ -52,6 +52,21 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#read-step">read-step</a></li>
 <li class="fn"><a href="#write-step">write-step</a></li>
 <li class="fn"><a href="#write-stl">write-stl</a></li>
+<li class="cat"><a href="#view">View</a></li>
+<li class="fn"><a href="#stats-overlay">stats-overlay</a></li>
+<li class="fn"><a href="#view-angle">view-angle</a></li>
+<li class="fn"><a href="#view-back">view-back</a></li>
+<li class="fn"><a href="#view-bottom">view-bottom</a></li>
+<li class="fn"><a href="#view-fit">view-fit</a></li>
+<li class="fn"><a href="#view-fit-all">view-fit-all</a></li>
+<li class="fn"><a href="#view-front">view-front</a></li>
+<li class="fn"><a href="#view-iso">view-iso</a></li>
+<li class="fn"><a href="#view-left">view-left</a></li>
+<li class="fn"><a href="#view-right">view-right</a></li>
+<li class="fn"><a href="#view-top">view-top</a></li>
+<li class="fn"><a href="#window-help-show">window-help-show</a></li>
+<li class="fn"><a href="#window-help-show?">window-help-show?</a></li>
+<li class="fn"><a href="#window-help-toggle">window-help-toggle</a></li>
 <li class="cat"><a href="#primitives">Primitives</a></li>
 <li class="fn"><a href="#box">box</a></li>
 <li class="fn"><a href="#cone">cone</a></li>
@@ -138,6 +153,191 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <div class="desc">
 </div>
 <div class="returns">Export a shape to an STL file at the given path. Returns nil on success, signals an error on failure.</div>
+</article>
+</section>
+<section id="view">
+<h2>View</h2>
+<article id="stats-overlay">
+<h3>stats-overlay</h3>
+<div class="usage">(stats-overlay &amp;opt value)</div>
+<div class="desc">
+<p>Get or set the stats overlay visibility.</p>
+<p>Called with no arguments, returns true if the overlay is visible, false if hidden.
+Called with one boolean argument, sets the visibility.</p>
+<p>Example: (stats-overlay)        — query
+         (stats-overlay true)    — show overlay
+         (stats-overlay false)   — hide overlay</p>
+<p>The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.</p>
+</div>
+</article>
+<article id="view-angle">
+<h3>view-angle</h3>
+<div class="usage">(view-angle yaw pitch ; distance)</div>
+<div class="desc">
+<p>Set camera to arbitrary yaw/pitch angles (radians).</p>
+<p>Animates the 3D camera over 0.5s to the given orientation.
+Yaw and pitch are in radians. An optional third argument sets
+the camera distance (zoom); omitted preserves the current distance.</p>
+</div>
+<div class="examples">
+<pre><code>(view-angle <span class="tok-n">0</span> <span class="tok-n">1.57</span>)      — top view (yaw=<span class="tok-n">0</span>, pitch=~<span class="tok-n">90</span>°)
+(view-angle <span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">100</span>)     — look along +X at distance <span class="tok-n">100</span></code></pre>
+</div>
+</article>
+<article id="view-back">
+<h3>view-back</h3>
+<div class="usage">(view-back ; distance)</div>
+<div class="desc">
+<p>Set camera to back view (looking along -Z toward origin).
+Yaw=-π/2, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-back)
+(view-back <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="view-bottom">
+<h3>view-bottom</h3>
+<div class="usage">(view-bottom ; distance)</div>
+<div class="desc">
+<p>Set camera to bottom view (looking along -Y toward origin).
+Yaw=0, Pitch=-π/2. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-bottom)
+(view-bottom <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="view-fit">
+<h3>view-fit</h3>
+<div class="usage">(view-fit shape &amp; shapes ; reset)</div>
+<div class="desc">
+<p>Fit camera to the bounding box of one or more shapes.</p>
+<p>Animates the 3D camera over 0.5s to frame the union bounding
+box of the given shapes. The current orbit angle is preserved.</p>
+<p>Use :reset to return to the default isometric angle
+(yaw=0, pitch=0.4).</p>
+</div>
+<div class="examples">
+<pre><code>(view-fit my-shape)
+(view-fit box1 cylinder2)
+(view-fit <span class="tok-k">:reset</span> part1 part2)</code></pre>
+</div>
+</article>
+<article id="view-fit-all">
+<h3>view-fit-all</h3>
+<div class="usage">(view-fit-all ; hidden ; reset)</div>
+<div class="desc">
+<p>Fit camera to the bounding box of shapes.</p>
+<p>By default only visible shapes are framed. Use :hidden to include hidden shapes as well.
+Animates the 3D camera over 0.5s to frame the union bounding box.
+The current orbit angle is preserved.
+If no shapes are found, resets the camera to default position.</p>
+<p>Keywords:
+  :hidden  — include hidden shapes in the bounding box
+  :reset   — return to the default isometric angle</p>
+</div>
+<div class="examples">
+<pre><code>(view-fit-all)
+(view-fit-all <span class="tok-k">:reset</span>)
+(view-fit-all <span class="tok-k">:hidden</span>)
+(view-fit-all <span class="tok-k">:hidden</span> <span class="tok-k">:reset</span>)</code></pre>
+</div>
+</article>
+<article id="view-front">
+<h3>view-front</h3>
+<div class="usage">(view-front ; distance)</div>
+<div class="desc">
+<p>Set camera to front view (looking along +Z toward origin).
+Yaw=π/2, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-front)
+(view-front <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="view-iso">
+<h3>view-iso</h3>
+<div class="usage">(view-iso ; distance)</div>
+<div class="desc">
+<p>Set camera to isometric view (looking from (1,1,1) direction).
+Yaw=π/4, Pitch=asin(1/√3) ≈ 0.615 rad. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-iso)
+(view-iso <span class="tok-n">150</span>)</code></pre>
+</div>
+</article>
+<article id="view-left">
+<h3>view-left</h3>
+<div class="usage">(view-left ; distance)</div>
+<div class="desc">
+<p>Set camera to left view (looking along -X toward origin).
+Yaw=π, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-left)
+(view-left <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="view-right">
+<h3>view-right</h3>
+<div class="usage">(view-right ; distance)</div>
+<div class="desc">
+<p>Set camera to right view (looking along +X toward origin).
+Yaw=0, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-right)
+(view-right <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="view-top">
+<h3>view-top</h3>
+<div class="usage">(view-top ; distance)</div>
+<div class="desc">
+<p>Set camera to top view (looking along +Y toward origin).
+Yaw=0, Pitch=π/2. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.</p>
+</div>
+<div class="examples">
+<pre><code>(view-top)
+(view-top <span class="tok-n">200</span>)</code></pre>
+</div>
+</article>
+<article id="window-help-show">
+<h3>window-help-show</h3>
+<div class="usage">(window-help-show &amp;opt value)</div>
+<div class="desc">
+<p>Get or set the help window visibility.</p>
+<p>Called with no arguments, returns true if visible, false if hidden.
+Called with one boolean argument, sets the visibility.</p>
+<p>Example: (window-help-show)        — query
+         (window-help-show true)    — show
+         (window-help-show false)   — hide</p>
+</div>
+</article>
+<article id="window-help-show?">
+<h3>window-help-show?</h3>
+<div class="usage">(window-help-show?)</div>
+<div class="desc">
+<p>Return true if the help window is currently visible, false if hidden.</p>
+<p>Example: (window-help-show?)</p>
+</div>
+</article>
+<article id="window-help-toggle">
+<h3>window-help-toggle</h3>
+<div class="usage">(window-help-toggle)</div>
+<div class="desc">
+<p>Example: (window-help-toggle)</p>
+</div>
+<div class="returns">Toggle the help window visibility. Returns true if now visible, false if hidden.</div>
 </article>
 </section>
 <section id="primitives">

@@ -54,6 +54,12 @@ pub enum ReplToViewer {
         radius: f64,
         keep_angle: bool,
     },
+    /// Set camera to specific yaw/pitch angles, optionally with a distance.
+    SetViewAngles {
+        yaw: f64,
+        pitch: f64,
+        distance: Option<f64>,
+    },
 }
 
 /// Edge thickness in NDC units (controlled from Janet).

@@ -52,6 +52,208 @@ Example:
 
 **Export a shape to an STL file at the given path. Returns nil on success, signals an error on failure.**
 
+## View
+
+### `stats-overlay`
+
+**Usage:** `(stats-overlay &opt value)`
+
+Get or set the stats overlay visibility.
+
+Called with no arguments, returns true if the overlay is visible, false if hidden.
+Called with one boolean argument, sets the visibility.
+
+Example: (stats-overlay)        — query
+         (stats-overlay true)    — show overlay
+         (stats-overlay false)   — hide overlay
+
+The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.
+
+### `view-angle`
+
+**Usage:** `(view-angle yaw pitch ; distance)`
+
+Set camera to arbitrary yaw/pitch angles (radians).
+
+Animates the 3D camera over 0.5s to the given orientation.
+Yaw and pitch are in radians. An optional third argument sets
+the camera distance (zoom); omitted preserves the current distance.
+
+**Examples:**
+```janet
+(view-angle 0 1.57)      — top view (yaw=0, pitch=~90°)
+(view-angle 0 0 100)     — look along +X at distance 100
+```
+
+### `view-back`
+
+**Usage:** `(view-back ; distance)`
+
+Set camera to back view (looking along -Z toward origin).
+Yaw=-π/2, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-back)
+(view-back 200)
+```
+
+### `view-bottom`
+
+**Usage:** `(view-bottom ; distance)`
+
+Set camera to bottom view (looking along -Y toward origin).
+Yaw=0, Pitch=-π/2. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-bottom)
+(view-bottom 200)
+```
+
+### `view-fit`
+
+**Usage:** `(view-fit shape & shapes ; reset)`
+
+Fit camera to the bounding box of one or more shapes.
+
+Animates the 3D camera over 0.5s to frame the union bounding
+box of the given shapes. The current orbit angle is preserved.
+
+Use :reset to return to the default isometric angle
+(yaw=0, pitch=0.4).
+
+**Examples:**
+```janet
+(view-fit my-shape)
+(view-fit box1 cylinder2)
+(view-fit :reset part1 part2)
+```
+
+### `view-fit-all`
+
+**Usage:** `(view-fit-all ; hidden ; reset)`
+
+Fit camera to the bounding box of shapes.
+
+By default only visible shapes are framed. Use :hidden to include hidden shapes as well.
+Animates the 3D camera over 0.5s to frame the union bounding box.
+The current orbit angle is preserved.
+If no shapes are found, resets the camera to default position.
+
+Keywords:
+  :hidden  — include hidden shapes in the bounding box
+  :reset   — return to the default isometric angle
+
+**Examples:**
+```janet
+(view-fit-all)
+(view-fit-all :reset)
+(view-fit-all :hidden)
+(view-fit-all :hidden :reset)
+```
+
+### `view-front`
+
+**Usage:** `(view-front ; distance)`
+
+Set camera to front view (looking along +Z toward origin).
+Yaw=π/2, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-front)
+(view-front 200)
+```
+
+### `view-iso`
+
+**Usage:** `(view-iso ; distance)`
+
+Set camera to isometric view (looking from (1,1,1) direction).
+Yaw=π/4, Pitch=asin(1/√3) ≈ 0.615 rad. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-iso)
+(view-iso 150)
+```
+
+### `view-left`
+
+**Usage:** `(view-left ; distance)`
+
+Set camera to left view (looking along -X toward origin).
+Yaw=π, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-left)
+(view-left 200)
+```
+
+### `view-right`
+
+**Usage:** `(view-right ; distance)`
+
+Set camera to right view (looking along +X toward origin).
+Yaw=0, Pitch=0. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-right)
+(view-right 200)
+```
+
+### `view-top`
+
+**Usage:** `(view-top ; distance)`
+
+Set camera to top view (looking along +Y toward origin).
+Yaw=0, Pitch=π/2. Animates over 0.5s.
+Optional distance sets zoom level; omitted preserves current.
+
+**Examples:**
+```janet
+(view-top)
+(view-top 200)
+```
+
+### `window-help-show`
+
+**Usage:** `(window-help-show &opt value)`
+
+Get or set the help window visibility.
+
+Called with no arguments, returns true if visible, false if hidden.
+Called with one boolean argument, sets the visibility.
+
+Example: (window-help-show)        — query
+         (window-help-show true)    — show
+         (window-help-show false)   — hide
+
+### `window-help-show?`
+
+**Usage:** `(window-help-show?)`
+
+Return true if the help window is currently visible, false if hidden.
+
+Example: (window-help-show?)
+
+### `window-help-toggle`
+
+**Usage:** `(window-help-toggle)`
+
+Example: (window-help-toggle)
+
+**Toggle the help window visibility. Returns true if now visible, false if hidden.**
+
 ## Primitives
 
 ### `box`

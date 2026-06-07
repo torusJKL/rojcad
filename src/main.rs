@@ -1597,6 +1597,27 @@ pub unsafe extern "C" fn rust_projection_perspective_set(value: c_int) {
     PROJECTION_PERSPECTIVE.store(value != 0, Ordering::SeqCst);
 }
 
+// ── View angle ──────────────────────────────────────────────────────────────
+
+/// Set camera to specific yaw/pitch angles, optionally with a distance.
+/// If has_distance is false, the current camera radius is preserved.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_set_angles(
+    yaw: f64,
+    pitch: f64,
+    has_distance: bool,
+    distance: f64,
+) {
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let dist = if has_distance { Some(distance) } else { None };
+        let _ = tx.send(ReplToViewer::SetViewAngles {
+            yaw,
+            pitch,
+            distance: dist,
+        });
+    }
+}
+
 // ── Stats overlay toggle ───────────────────────────────────────────────────
 
 /// Toggle stats overlay. Returns new state (1 = visible, 0 = hidden).

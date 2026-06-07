@@ -130,6 +130,9 @@ extern void rust_stats_overlay_set(int value);
 /* Help overlay */
 extern int rust_help_overlay_toggle(void);
 extern int rust_help_overlay_showing(void);
+
+/* View angle */
+extern void rust_view_set_angles(double yaw, double pitch, int has_distance, double distance);
 extern void rust_help_overlay_set(int value);
 
 /* View fit */
@@ -1338,6 +1341,24 @@ JANET_FN(cad_view_fit_all,
     return janet_wrap_nil();
 }
 
+JANET_FN(cad_view_angle,
+         "(view-angle yaw pitch ; distance)",
+         "Set camera to arbitrary yaw/pitch angles (radians).\n\n"
+         "Animates the 3D camera over 0.5s to the given orientation.\n"
+         "Yaw and pitch are in radians. An optional third argument sets\n"
+         "the camera distance (zoom); omitted preserves the current distance.\n\n"
+         "Examples:\n"
+         "  (view-angle 0 1.57)      — top view (yaw=0, pitch=~90°)\n"
+         "  (view-angle 0 0 100)     — look along +X at distance 100")
+{
+    janet_arity(argc, 2, 3);
+    double yaw = janet_getnumber(argv, 0);
+    double pitch = janet_getnumber(argv, 1);
+    double dist = (argc > 2) ? janet_getnumber(argv, 2) : 0.0;
+    rust_view_set_angles(yaw, pitch, argc > 2, dist);
+    return janet_wrap_nil();
+}
+
 JANET_FN(cad_edge_thickness,
          "(edge-thickness &opt value)",
          "Get or set the edge line thickness in NDC units.\n\n"
@@ -2262,6 +2283,7 @@ static const char *cad_fn_categories[][2] = {
     {"solid?", "queries"},
     {"view-fit", "view"},
     {"view-fit-all", "view"},
+    {"view-angle", "view"},
     {"stats-overlay", "view"},
     {"window-help-toggle", "view"},
     {"window-help-show?", "view"},
@@ -2334,6 +2356,9 @@ void cad_register_functions(JanetTable *env) {
         /* View fit */
         {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},
         {"view-fit-all",           cad_view_fit_all,           cad_view_fit_all_docstring_},
+
+        /* View angle (low-level primitive) */
+        {"view-angle",             cad_view_angle,             cad_view_angle_docstring_},
 
         /* 2D primitives */
         {"rect",                   cad_rect,                   cad_rect_docstring_},

@@ -265,7 +265,8 @@
    "registry" "Registry"
    "io" "I/O"
    "selection" "Selection"
-   "edge-styling" "Edge Styling"})
+   "edge-styling" "Edge Styling"
+   "view" "View"})
 
 (def group (fn [&opt category]
   (if category
@@ -628,6 +629,124 @@
       (do (eprint "rojcad: failed to listen on " addr ":" port) (os/exit 1)))))
 
 (eprint "◆ rojcad ready — connect via: nc " addr " " port)
+
+# ── View angle presets ──────────────────────────────────────
+
+(def view-front
+  (fn [&opt distance]
+    (if distance
+      (view-angle (/ math/pi 2) 0 distance)
+      (view-angle (/ math/pi 2) 0))))
+
+(def view-back
+  (fn [&opt distance]
+    (if distance
+      (view-angle (- (/ math/pi 2)) 0 distance)
+      (view-angle (- (/ math/pi 2)) 0))))
+
+(def view-right
+  (fn [&opt distance]
+    (if distance
+      (view-angle 0 0 distance)
+      (view-angle 0 0))))
+
+(def view-left
+  (fn [&opt distance]
+    (if distance
+      (view-angle math/pi 0 distance)
+      (view-angle math/pi 0))))
+
+(def view-top
+  (fn [&opt distance]
+    (if distance
+      (view-angle 0 (/ math/pi 2) distance)
+      (view-angle 0 (/ math/pi 2)))))
+
+(def view-bottom
+  (fn [&opt distance]
+    (if distance
+      (view-angle 0 (- (/ math/pi 2)) distance)
+      (view-angle 0 (- (/ math/pi 2))))))
+
+(def view-iso
+  (fn [&opt distance]
+    (if distance
+      (view-angle (/ math/pi 4) (math/asin (/ 1 (math/sqrt 3))) distance)
+      (view-angle (/ math/pi 4) (math/asin (/ 1 (math/sqrt 3)))))))
+
+# Set metadata and docstrings for discoverability
+(put (get core-env 'view-angle) :source "rojcad")
+(put (get core-env 'view-angle) :category "view")
+(put (get core-env 'view-front) :source "rojcad")
+(put (get core-env 'view-front) :category "view")
+(put (get core-env 'view-front) :doc
+  (string "(view-front ; distance)\n\n"
+          "Set camera to front view (looking along +Z toward origin).\n"
+          "Yaw=π/2, Pitch=0. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-front)\n"
+          "  (view-front 200)"))
+(put (get core-env 'view-back) :source "rojcad")
+(put (get core-env 'view-back) :category "view")
+(put (get core-env 'view-back) :doc
+  (string "(view-back ; distance)\n\n"
+          "Set camera to back view (looking along -Z toward origin).\n"
+          "Yaw=-π/2, Pitch=0. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-back)\n"
+          "  (view-back 200)"))
+(put (get core-env 'view-right) :source "rojcad")
+(put (get core-env 'view-right) :category "view")
+(put (get core-env 'view-right) :doc
+  (string "(view-right ; distance)\n\n"
+          "Set camera to right view (looking along +X toward origin).\n"
+          "Yaw=0, Pitch=0. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-right)\n"
+          "  (view-right 200)"))
+(put (get core-env 'view-left) :source "rojcad")
+(put (get core-env 'view-left) :category "view")
+(put (get core-env 'view-left) :doc
+  (string "(view-left ; distance)\n\n"
+          "Set camera to left view (looking along -X toward origin).\n"
+          "Yaw=π, Pitch=0. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-left)\n"
+          "  (view-left 200)"))
+(put (get core-env 'view-top) :source "rojcad")
+(put (get core-env 'view-top) :category "view")
+(put (get core-env 'view-top) :doc
+  (string "(view-top ; distance)\n\n"
+          "Set camera to top view (looking along +Y toward origin).\n"
+          "Yaw=0, Pitch=π/2. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-top)\n"
+          "  (view-top 200)"))
+(put (get core-env 'view-bottom) :source "rojcad")
+(put (get core-env 'view-bottom) :category "view")
+(put (get core-env 'view-bottom) :doc
+  (string "(view-bottom ; distance)\n\n"
+          "Set camera to bottom view (looking along -Y toward origin).\n"
+          "Yaw=0, Pitch=-π/2. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-bottom)\n"
+          "  (view-bottom 200)"))
+(put (get core-env 'view-iso) :source "rojcad")
+(put (get core-env 'view-iso) :category "view")
+(put (get core-env 'view-iso) :doc
+  (string "(view-iso ; distance)\n\n"
+          "Set camera to isometric view (looking from (1,1,1) direction).\n"
+          "Yaw=π/4, Pitch=asin(1/√3) ≈ 0.615 rad. Animates over 0.5s.\n"
+          "Optional distance sets zoom level; omitted preserves current.\n\n"
+          "Examples:\n"
+          "  (view-iso)\n"
+          "  (view-iso 150)"))
 
 (def poll-viewer (fn []
   (while true

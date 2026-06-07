@@ -1304,6 +1304,23 @@ impl ViewerApp {
                 } => {
                     Self::fit_to_bounds(state, center, radius, keep_angle);
                 }
+                ReplToViewer::SetViewAngles {
+                    yaw,
+                    pitch,
+                    distance,
+                } => {
+                    let target_radius = distance.unwrap_or(state.camera.radius);
+                    state.fit_animation = Some(FitAnimation::new(
+                        state.camera.target,
+                        state.camera.target,
+                        state.camera.radius,
+                        target_radius,
+                        state.camera.yaw,
+                        yaw,
+                        state.camera.pitch,
+                        pitch,
+                    ));
+                }
             }
         }
     }
