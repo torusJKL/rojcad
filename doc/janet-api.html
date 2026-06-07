@@ -45,6 +45,10 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <nav id="sidebar">
 <h2>Categories</h2>
 <ul>
+<li class="cat"><a href="#operations">Operations</a></li>
+<li class="fn"><a href="#extrude">extrude</a></li>
+<li class="fn"><a href="#extrude-polygon">extrude-polygon</a></li>
+<li class="fn"><a href="#revolve">revolve</a></li>
 <li class="cat"><a href="#selection">Selection</a></li>
 <li class="fn"><a href="#on-select">on-select</a></li>
 <li class="fn"><a href="#poll-selection">poll-selection</a></li>
@@ -53,6 +57,9 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#write-step">write-step</a></li>
 <li class="fn"><a href="#write-stl">write-stl</a></li>
 <li class="cat"><a href="#view">View</a></li>
+<li class="fn"><a href="#projection-perspective">projection-perspective</a></li>
+<li class="fn"><a href="#projection-toggle">projection-toggle</a></li>
+<li class="fn"><a href="#quit-requested">quit-requested</a></li>
 <li class="fn"><a href="#stats-overlay">stats-overlay</a></li>
 <li class="fn"><a href="#view-angle">view-angle</a></li>
 <li class="fn"><a href="#view-back">view-back</a></li>
@@ -73,11 +80,34 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#cylinder">cylinder</a></li>
 <li class="fn"><a href="#sphere">sphere</a></li>
 <li class="fn"><a href="#torus">torus</a></li>
+<li class="cat"><a href="#sketch">Sketch</a></li>
+<li class="fn"><a href="#arc-to">arc-to</a></li>
+<li class="fn"><a href="#build-wire">build-wire</a></li>
+<li class="fn"><a href="#close-sketch">close-sketch</a></li>
+<li class="fn"><a href="#line-dx">line-dx</a></li>
+<li class="fn"><a href="#line-dx-dy">line-dx-dy</a></li>
+<li class="fn"><a href="#line-dy">line-dy</a></li>
+<li class="fn"><a href="#line-to">line-to</a></li>
+<li class="fn"><a href="#move-to">move-to</a></li>
+<li class="fn"><a href="#sketch">sketch</a></li>
+<li class="cat"><a href="#2d-primitives">2D Primitives</a></li>
+<li class="fn"><a href="#circle">circle</a></li>
+<li class="fn"><a href="#polygon">polygon</a></li>
+<li class="fn"><a href="#rect">rect</a></li>
+<li class="cat"><a href="#text">Text</a></li>
+<li class="fn"><a href="#list-fonts">list-fonts</a></li>
+<li class="fn"><a href="#text">text</a></li>
+<li class="fn"><a href="#text3d">text3d</a></li>
 <li class="cat"><a href="#registry">Registry</a></li>
 <li class="fn"><a href="#hide">hide</a></li>
 <li class="fn"><a href="#purge">purge</a></li>
 <li class="fn"><a href="#registry-remove">registry-remove</a></li>
 <li class="fn"><a href="#show">show</a></li>
+<li class="cat"><a href="#wire-operations">Wire Operations</a></li>
+<li class="fn"><a href="#wire-chamfer">wire-chamfer</a></li>
+<li class="fn"><a href="#wire-fillet">wire-fillet</a></li>
+<li class="fn"><a href="#wire-offset">wire-offset</a></li>
+<li class="fn"><a href="#wire-to-face">wire-to-face</a></li>
 <li class="cat"><a href="#booleans">Booleans</a></li>
 <li class="fn"><a href="#common">common</a></li>
 <li class="fn"><a href="#cut">cut</a></li>
@@ -94,6 +124,9 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#edge-active-show?">edge-active-show?</a></li>
 <li class="fn"><a href="#edge-color-active">edge-color-active</a></li>
 <li class="fn"><a href="#edge-color-inactive">edge-color-inactive</a></li>
+<li class="fn"><a href="#edge-hidden">edge-hidden</a></li>
+<li class="fn"><a href="#edge-hidden-show?">edge-hidden-show?</a></li>
+<li class="fn"><a href="#edge-hidden-toggle">edge-hidden-toggle</a></li>
 <li class="fn"><a href="#edge-inactive-show?">edge-inactive-show?</a></li>
 <li class="fn"><a href="#edge-thickness">edge-thickness</a></li>
 <li class="fn"><a href="#edge-toggle-active">edge-toggle-active</a></li>
@@ -107,6 +140,61 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </nav>
 <main>
 <h1>rojcad Janet API Reference</h1>
+<section id="operations">
+<h2>Operations</h2>
+<article id="extrude">
+<h3>extrude</h3>
+<div class="usage">(extrude shape &amp;keys :h :z :x :y :dir :both :eager :hide)</div>
+<div class="desc">
+<p>Extrude a Face into a Solid.</p>
+<p>Keywords: :h (height, required), :z/:x/:y (cardinal axis),
+         :dir [dx dy dz] (custom direction),
+         :both (extrude both sides),
+         :eager (tessellate immediately), :hide (skip auto-show).</p>
+<p>Default direction is the face normal.</p>
+</div>
+<div class="examples">
+<pre><code>(extrude face <span class="tok-k">:h</span> <span class="tok-n">20</span>)               — along face normal
+(extrude face <span class="tok-k">:h</span> <span class="tok-n">20</span> <span class="tok-k">:z</span>)            — along Z axis
+(extrude face <span class="tok-k">:h</span> <span class="tok-n">10</span> <span class="tok-k">:both</span>)         — both sides
+(extrude face <span class="tok-k">:h</span> <span class="tok-n">5</span> <span class="tok-k">:dir</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">-1</span>])  — custom direction</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (SOLID).</div>
+</article>
+<article id="extrude-polygon">
+<h3>extrude-polygon</h3>
+<div class="usage">(extrude-polygon points height &amp;keys :h :plane :at :eager :hide)</div>
+<div class="desc">
+<p>Create a Solid by extruding a polygon from points.</p>
+<p>Positional: (extrude-polygon points height)
+Points is an array of [x y] tuples.
+Keywords: :h (height), :plane (workplane, default :xy),
+         :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).</p>
+</div>
+<div class="examples">
+<pre><code>(extrude-polygon [[<span class="tok-n">0</span> <span class="tok-n">0</span>][<span class="tok-n">10</span> <span class="tok-n">0</span>][<span class="tok-n">10</span> <span class="tok-n">10</span>][<span class="tok-n">0</span> <span class="tok-n">10</span>]] <span class="tok-n">20</span>)
+(extrude-polygon [[<span class="tok-n">0</span> <span class="tok-n">0</span>][<span class="tok-n">10</span> <span class="tok-n">0</span>][<span class="tok-n">10</span> <span class="tok-n">10</span>]] <span class="tok-k">:h</span> <span class="tok-n">5</span>)</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (SOLID).</div>
+</article>
+<article id="revolve">
+<h3>revolve</h3>
+<div class="usage">(revolve shape &amp;keys :a :ar :c :dir :eager :hide)</div>
+<div class="desc">
+<p>Revolve a Face into a Solid.</p>
+<p>Angle via :a (degrees) or :ar (radians).
+Axis via :c (point [x y z], default [0 0 0]) and :dir (direction, default [0 0 1]).
+Keywords: :eager (tessellate immediately), :hide (skip auto-show).</p>
+</div>
+<div class="examples">
+<pre><code>(revolve face <span class="tok-k">:a</span> <span class="tok-n">360</span>)                     — full revolution about Z
+(revolve face <span class="tok-k">:a</span> <span class="tok-n">180</span>)                     — half revolution
+(revolve face <span class="tok-k">:a</span> <span class="tok-n">180</span> <span class="tok-k">:c</span> [<span class="tok-n">0</span> <span class="tok-n">0</span> <span class="tok-n">0</span>] <span class="tok-k">:dir</span> [<span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">0</span>]) — about Y axis</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (SOLID).</div>
+</article>
+</section>
 <section id="selection">
 <h2>Selection</h2>
 <article id="on-select">
@@ -159,6 +247,36 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </section>
 <section id="view">
 <h2>View</h2>
+<article id="projection-perspective">
+<h3>projection-perspective</h3>
+<div class="usage">(projection-perspective &amp;opt value)</div>
+<div class="desc">
+<p>Get or set the camera projection mode.</p>
+<p>Called with no arguments, returns true if perspective mode is active, false if orthographic.
+Called with one boolean argument, sets the mode.</p>
+<p>Example: (projection-perspective)        — query
+         (projection-perspective true)    — perspective
+         (projection-perspective false)   — orthographic</p>
+</div>
+</article>
+<article id="projection-toggle">
+<h3>projection-toggle</h3>
+<div class="usage">(projection-toggle)</div>
+<div class="desc">
+<p>Example: (projection-toggle)</p>
+</div>
+<div class="returns">Toggle camera projection between perspective and orthographic. Returns true if now in perspective mode, false if orthographic.</div>
+</article>
+<article id="quit-requested">
+<h3>quit-requested</h3>
+<div class="usage">(quit-requested)</div>
+<div class="desc">
+<p>Check if the application should quit.</p>
+<p>This is a one-shot check -- returns true only once per quit request.</p>
+</div>
+<div class="returns">Returns true if Ctrl+Q was pressed or the window was closed.
+Used by boot.janet to exit the event loop.</div>
+</article>
 <article id="stats-overlay">
 <h3>stats-overlay</h3>
 <div class="usage">(stats-overlay &amp;opt value)</div>
@@ -450,6 +568,186 @@ Keywords: :rr (ring radius), :tr (tube radius),
 <div class="returns">Returns a rojcad/shape abstract value.</div>
 </article>
 </section>
+<section id="sketch">
+<h2>Sketch</h2>
+<article id="arc-to">
+<h3>arc-to</h3>
+<div class="usage">(arc-to sketch x2 y2 x3 y3)</div>
+<div class="desc">
+</div>
+<div class="returns">Draw a circular arc from current cursor through (x2, y2) to (x3, y3). Returns a new sketch.</div>
+</article>
+<article id="build-wire">
+<h3>build-wire</h3>
+<div class="usage">(build-wire sketch &amp;keys :eager :hide)</div>
+<div class="desc">
+<p>Return the sketch as an unclosed Wire. Does not close the loop.</p>
+<p>Keywords: :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (WIRE).</div>
+</article>
+<article id="close-sketch">
+<h3>close-sketch</h3>
+<div class="usage">(close-sketch sketch &amp;keys :eager :hide)</div>
+<div class="desc">
+<p>Close the sketch and return a Face. Adds a closing edge if needed.</p>
+<p>Keywords: :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (FACE).</div>
+</article>
+<article id="line-dx">
+<h3>line-dx</h3>
+<div class="usage">(line-dx sketch dx)</div>
+<div class="desc">
+</div>
+<div class="returns">Draw a horizontal line by dx units. Returns a new sketch.</div>
+</article>
+<article id="line-dx-dy">
+<h3>line-dx-dy</h3>
+<div class="usage">(line-dx-dy sketch dx dy)</div>
+<div class="desc">
+</div>
+<div class="returns">Draw a line by (dx, dy) offset. Returns a new sketch.</div>
+</article>
+<article id="line-dy">
+<h3>line-dy</h3>
+<div class="usage">(line-dy sketch dy)</div>
+<div class="desc">
+</div>
+<div class="returns">Draw a vertical line by dy units. Returns a new sketch.</div>
+</article>
+<article id="line-to">
+<h3>line-to</h3>
+<div class="usage">(line-to sketch x y)</div>
+<div class="desc">
+</div>
+<div class="returns">Draw a line from the current cursor to (x, y). Returns a new sketch.</div>
+</article>
+<article id="move-to">
+<h3>move-to</h3>
+<div class="usage">(move-to sketch x y)</div>
+<div class="desc">
+</div>
+<div class="returns">Move the sketch cursor to (x, y) without drawing. Returns a new sketch.</div>
+</article>
+<article id="sketch">
+<h3>sketch</h3>
+<div class="usage">(sketch &amp;keys :plane :at)</div>
+<div class="desc">
+<p>Create a new sketch on a workplane.</p>
+<p>Keywords: :plane (workplane, default :xy), :at (position [x y z]).</p>
+</div>
+<div class="examples">
+<pre><code>(sketch)                              — XY plane at origin
+(sketch <span class="tok-k">:plane</span> <span class="tok-k">:xz</span> <span class="tok-k">:at</span> [<span class="tok-n">10</span> <span class="tok-n">0</span> <span class="tok-n">5</span>])      — XZ plane at [<span class="tok-n">10</span>, <span class="tok-n">0</span>, <span class="tok-n">5</span>]
+Combine with -&amp;gt; for threading<span class="tok-k">:</span>
+(-&amp;gt; (sketch) (line-to <span class="tok-n">10</span> <span class="tok-n">0</span>) (line-to <span class="tok-n">10</span> <span class="tok-n">10</span>) (close-sketch))</code></pre>
+</div>
+<div class="returns">Returns a rojcad/sketch abstract value. Each sketch operation returns
+a new sketch — no mutation.</div>
+</article>
+</section>
+<section id="2d-primitives">
+<h2>2D Primitives</h2>
+<article id="circle">
+<h3>circle</h3>
+<div class="usage">(circle radius &amp;keys :r :wire :plane :at :eager :hide)</div>
+<div class="desc">
+<p>Create a circle.</p>
+<p>Positional: (circle radius)
+Keywords: :r (radius), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).</p>
+</div>
+<div class="examples">
+<pre><code>(circle <span class="tok-n">5</span>)                       — on XY plane
+(circle <span class="tok-k">:r</span> <span class="tok-n">5</span> <span class="tok-k">:wire</span>)              — circle wire
+(circle <span class="tok-k">:r</span> <span class="tok-n">5</span> <span class="tok-k">:plane</span> <span class="tok-k">:xz</span>)         — on XZ plane</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="polygon">
+<h3>polygon</h3>
+<div class="usage">(polygon &amp;keys :pts :wire :plane :at :eager :hide)</div>
+<div class="desc">
+<p>Create a polygon from a list of 2D points.</p>
+<p>Keywords: :pts (array of [x y] tuples), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).</p>
+</div>
+<div class="examples">
+<pre><code>(polygon <span class="tok-k">:pts</span> [[<span class="tok-n">0</span> <span class="tok-n">0</span>] [<span class="tok-n">10</span> <span class="tok-n">0</span>] [<span class="tok-n">10</span> <span class="tok-n">10</span>] [<span class="tok-n">0</span> <span class="tok-n">10</span>]])  — square on XY
+(polygon <span class="tok-k">:pts</span> [[<span class="tok-n">0</span> <span class="tok-n">0</span>] [<span class="tok-n">10</span> <span class="tok-n">0</span>] [<span class="tok-n">10</span> <span class="tok-n">10</span>]] <span class="tok-k">:wire</span>)    — L-shaped wire</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="rect">
+<h3>rect</h3>
+<div class="usage">(rect width depth &amp;keys :w :d :h :wire :plane :at :eager :hide)</div>
+<div class="desc">
+<p>Create a rectangle.</p>
+<p>Positional: (rect w d)
+Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).</p>
+</div>
+<div class="examples">
+<pre><code>(rect <span class="tok-n">10</span> <span class="tok-n">20</span>)                     — on XY plane
+(rect <span class="tok-k">:w</span> <span class="tok-n">10</span> <span class="tok-k">:d</span> <span class="tok-n">20</span> <span class="tok-k">:wire</span>)         — rect wire
+(rect <span class="tok-k">:w</span> <span class="tok-n">10</span> <span class="tok-k">:h</span> <span class="tok-n">20</span>)               — <span class="tok-k">:h</span> alias for <span class="tok-k">:d</span>
+(rect <span class="tok-k">:w</span> <span class="tok-n">10</span> <span class="tok-k">:d</span> <span class="tok-n">20</span> <span class="tok-k">:plane</span> <span class="tok-k">:xz</span> <span class="tok-k">:at</span> [<span class="tok-n">5</span> <span class="tok-n">0</span> <span class="tok-n">0</span>]) — on XZ plane</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (FACE by default, WIRE with :wire).</div>
+</article>
+</section>
+<section id="text">
+<h2>Text</h2>
+<article id="list-fonts">
+<h3>list-fonts</h3>
+<div class="usage">(list-fonts)</div>
+<div class="desc">
+<p>List available system fonts.</p>
+<p>Scans standard OS font directories and returns an array of
+[name path aspect] tuples for each discovered TTF/OTF font.
+Aspect is :regular, :bold, :italic, or :bold-italic.</p>
+</div>
+<div class="examples">
+<pre><code>(list-fonts)  — all system fonts
+(keep [name path] (list-fonts)) — just names and paths</code></pre>
+</div>
+<div class="returns">Returns an array of tuples.</div>
+</article>
+<article id="text">
+<h3>text</h3>
+<div class="usage">(text string font-path size &amp;keys :depth :plane :at :eager :hide)</div>
+<div class="desc">
+<p>Create a 2D or 3D text shape from a TrueType/OpenType font.</p>
+<p>Positional: (text "Hello" "DejaVuSans.ttf" 10)
+Keywords: :depth (extrude 3D text), :plane ("xy"/"xz"/"yz"...),
+         :at (position [x y z]), :eager, :hide.</p>
+<p>Without :depth returns a Face. With :depth returns an extruded Solid.</p>
+</div>
+<div class="examples">
+<pre><code>(text <span class="tok-s">"Hi"</span> <span class="tok-s">"font.ttf"</span> <span class="tok-n">10</span>)              — <span class="tok-n">2</span>D text face
+(text <span class="tok-s">"Hi"</span> <span class="tok-s">"font.ttf"</span> <span class="tok-n">10</span> <span class="tok-k">:depth</span> <span class="tok-n">5</span>)     — <span class="tok-n">3</span>D extruded text
+(text <span class="tok-s">"Hi"</span> <span class="tok-s">"font.ttf"</span> <span class="tok-n">10</span> <span class="tok-k">:plane</span> <span class="tok-s">"xz"</span>) — on XZ plane
+(text <span class="tok-s">"Hi"</span> <span class="tok-s">"font.ttf"</span> <span class="tok-n">10</span> <span class="tok-k">:at</span> [<span class="tok-n">5</span> <span class="tok-n">0</span> <span class="tok-n">0</span>])  — positioned</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="text3d">
+<h3>text3d</h3>
+<div class="usage">(text3d string font-path size depth &amp;keys :plane :at :both :eager :hide)</div>
+<div class="desc">
+<p>Create a 3D extruded text shape.</p>
+<p>Positional: (text3d "Hello" "DejaVuSans.ttf" 10 5)
+Keywords: :plane ("xy"/"xz"/"yz"...), :at (position [x y z]),
+         :both (extrude symetrically), :eager, :hide.</p>
+<p>Equivalent to (text ... :depth depth).</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+</section>
 <section id="registry">
 <h2>Registry</h2>
 <article id="hide">
@@ -503,6 +801,45 @@ Calling show on an already-visible shape is a no-op.</p>
 (show b)         — second call is a no-op (already visible)</code></pre>
 </div>
 <div class="returns">Returns nil.</div>
+</article>
+</section>
+<section id="wire-operations">
+<h2>Wire Operations</h2>
+<article id="wire-chamfer">
+<h3>wire-chamfer</h3>
+<div class="usage">(wire-chamfer wire &amp;keys :d :eager :hide)</div>
+<div class="desc">
+<p>Bevel all vertices of a closed Wire by a distance.</p>
+<p>Keywords: :d (distance, required), :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (WIRE).</div>
+</article>
+<article id="wire-fillet">
+<h3>wire-fillet</h3>
+<div class="usage">(wire-fillet wire &amp;keys :r :eager :hide)</div>
+<div class="desc">
+<p>Round all vertices of a closed Wire by a radius.</p>
+<p>Keywords: :r (radius, required), :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (WIRE).</div>
+</article>
+<article id="wire-offset">
+<h3>wire-offset</h3>
+<div class="usage">(wire-offset wire &amp;keys :d :eager :hide)</div>
+<div class="desc">
+<p>Create a parallel offset of a closed Wire by a distance.</p>
+<p>Keywords: :d (distance, required), :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (WIRE).</div>
+</article>
+<article id="wire-to-face">
+<h3>wire-to-face</h3>
+<div class="usage">(wire-to-face wire &amp;keys :eager :hide)</div>
+<div class="desc">
+<p>Convert a Wire shape into a Face by filling its boundary.</p>
+<p>Keywords: :eager, :hide</p>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value (FACE).</div>
 </article>
 </section>
 <section id="booleans">
@@ -634,6 +971,33 @@ Called with three numeric arguments (r g b), sets the color.</p>
 <p>Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey
          (edge-color-inactive)               — query</p>
 </div>
+</article>
+<article id="edge-hidden">
+<h3>edge-hidden</h3>
+<div class="usage">(edge-hidden &amp;opt value)</div>
+<div class="desc">
+<p>Get or set visibility of hidden (occluded) edges.</p>
+<p>Called with no arguments, returns true if hidden edges are shown, false if hidden.
+Called with one boolean argument, sets the visibility.</p>
+<p>Example: (edge-hidden)        — query
+         (edge-hidden true)    — show hidden edges
+         (edge-hidden false)   — hide hidden edges</p>
+</div>
+</article>
+<article id="edge-hidden-show?">
+<h3>edge-hidden-show?</h3>
+<div class="usage">(edge-hidden-show?)</div>
+<div class="desc">
+<p>Return true if hidden (occluded) edges are currently visible, false if hidden.</p>
+</div>
+</article>
+<article id="edge-hidden-toggle">
+<h3>edge-hidden-toggle</h3>
+<div class="usage">(edge-hidden-toggle)</div>
+<div class="desc">
+<p>Example: (edge-hidden-toggle)</p>
+</div>
+<div class="returns">Toggle visibility of hidden (occluded) edges. Returns true if hidden edges are now visible, false if hidden.</div>
 </article>
 <article id="edge-inactive-show?">
 <h3>edge-inactive-show?</h3>

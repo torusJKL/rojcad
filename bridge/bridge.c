@@ -2369,6 +2369,13 @@ static const char *cad_fn_categories[][2] = {
     {"list-fonts", "text"},
     {"selected-shapes", "queries"},
     {"list-shapes", "queries"},
+
+    {"quit-requested",         "view"},
+    {"edge-hidden-toggle",     "edge-styling"},
+    {"edge-hidden-show?",      "edge-styling"},
+    {"edge-hidden",            "edge-styling"},
+    {"projection-toggle",      "view"},
+    {"projection-perspective", "view"},
     {NULL, NULL}
 };
 

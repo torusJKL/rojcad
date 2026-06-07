@@ -1,5 +1,69 @@
 # rojcad Janet API Reference
 
+## Operations
+
+### `extrude`
+
+**Usage:** `(extrude shape &keys :h :z :x :y :dir :both :eager :hide)`
+
+Extrude a Face into a Solid.
+
+Keywords: :h (height, required), :z/:x/:y (cardinal axis),
+         :dir [dx dy dz] (custom direction),
+         :both (extrude both sides),
+         :eager (tessellate immediately), :hide (skip auto-show).
+
+Default direction is the face normal.
+
+**Examples:**
+```janet
+(extrude face :h 20)               — along face normal
+(extrude face :h 20 :z)            — along Z axis
+(extrude face :h 10 :both)         — both sides
+(extrude face :h 5 :dir [0 0 -1])  — custom direction
+```
+
+**Returns a rojcad/shape abstract value (SOLID).**
+
+### `extrude-polygon`
+
+**Usage:** `(extrude-polygon points height &keys :h :plane :at :eager :hide)`
+
+Create a Solid by extruding a polygon from points.
+
+Positional: (extrude-polygon points height)
+Points is an array of [x y] tuples.
+Keywords: :h (height), :plane (workplane, default :xy),
+         :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).
+
+**Examples:**
+```janet
+(extrude-polygon [[0 0][10 0][10 10][0 10]] 20)
+(extrude-polygon [[0 0][10 0][10 10]] :h 5)
+```
+
+**Returns a rojcad/shape abstract value (SOLID).**
+
+### `revolve`
+
+**Usage:** `(revolve shape &keys :a :ar :c :dir :eager :hide)`
+
+Revolve a Face into a Solid.
+
+Angle via :a (degrees) or :ar (radians).
+Axis via :c (point [x y z], default [0 0 0]) and :dir (direction, default [0 0 1]).
+Keywords: :eager (tessellate immediately), :hide (skip auto-show).
+
+**Examples:**
+```janet
+(revolve face :a 360)                     — full revolution about Z
+(revolve face :a 180)                     — half revolution
+(revolve face :a 180 :c [0 0 0] :dir [0 1 0]) — about Y axis
+```
+
+**Returns a rojcad/shape abstract value (SOLID).**
+
 ## Selection
 
 ### `on-select`
@@ -53,6 +117,38 @@ Example:
 **Export a shape to an STL file at the given path. Returns nil on success, signals an error on failure.**
 
 ## View
+
+### `projection-perspective`
+
+**Usage:** `(projection-perspective &opt value)`
+
+Get or set the camera projection mode.
+
+Called with no arguments, returns true if perspective mode is active, false if orthographic.
+Called with one boolean argument, sets the mode.
+
+Example: (projection-perspective)        — query
+         (projection-perspective true)    — perspective
+         (projection-perspective false)   — orthographic
+
+### `projection-toggle`
+
+**Usage:** `(projection-toggle)`
+
+Example: (projection-toggle)
+
+**Toggle camera projection between perspective and orthographic. Returns true if now in perspective mode, false if orthographic.**
+
+### `quit-requested`
+
+**Usage:** `(quit-requested)`
+
+Check if the application should quit.
+
+This is a one-shot check -- returns true only once per quit request.
+
+**Returns true if Ctrl+Q was pressed or the window was closed.
+Used by boot.janet to exit the event loop.**
 
 ### `stats-overlay`
 
@@ -376,6 +472,212 @@ Keywords: :rr (ring radius), :tr (tube radius),
 
 **Returns a rojcad/shape abstract value.**
 
+## Sketch
+
+### `arc-to`
+
+**Usage:** `(arc-to sketch x2 y2 x3 y3)`
+
+
+
+**Draw a circular arc from current cursor through (x2, y2) to (x3, y3). Returns a new sketch.**
+
+### `build-wire`
+
+**Usage:** `(build-wire sketch &keys :eager :hide)`
+
+Return the sketch as an unclosed Wire. Does not close the loop.
+
+Keywords: :eager, :hide
+
+**Returns a rojcad/shape abstract value (WIRE).**
+
+### `close-sketch`
+
+**Usage:** `(close-sketch sketch &keys :eager :hide)`
+
+Close the sketch and return a Face. Adds a closing edge if needed.
+
+Keywords: :eager, :hide
+
+**Returns a rojcad/shape abstract value (FACE).**
+
+### `line-dx`
+
+**Usage:** `(line-dx sketch dx)`
+
+
+
+**Draw a horizontal line by dx units. Returns a new sketch.**
+
+### `line-dx-dy`
+
+**Usage:** `(line-dx-dy sketch dx dy)`
+
+
+
+**Draw a line by (dx, dy) offset. Returns a new sketch.**
+
+### `line-dy`
+
+**Usage:** `(line-dy sketch dy)`
+
+
+
+**Draw a vertical line by dy units. Returns a new sketch.**
+
+### `line-to`
+
+**Usage:** `(line-to sketch x y)`
+
+
+
+**Draw a line from the current cursor to (x, y). Returns a new sketch.**
+
+### `move-to`
+
+**Usage:** `(move-to sketch x y)`
+
+
+
+**Move the sketch cursor to (x, y) without drawing. Returns a new sketch.**
+
+### `sketch`
+
+**Usage:** `(sketch &keys :plane :at)`
+
+Create a new sketch on a workplane.
+
+Keywords: :plane (workplane, default :xy), :at (position [x y z]).
+
+**Examples:**
+```janet
+(sketch)                              — XY plane at origin
+(sketch :plane :xz :at [10 0 5])      — XZ plane at [10, 0, 5]
+Combine with -> for threading:
+(-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))
+```
+
+**Returns a rojcad/sketch abstract value. Each sketch operation returns
+a new sketch — no mutation.**
+
+## 2D Primitives
+
+### `circle`
+
+**Usage:** `(circle radius &keys :r :wire :plane :at :eager :hide)`
+
+Create a circle.
+
+Positional: (circle radius)
+Keywords: :r (radius), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).
+
+**Examples:**
+```janet
+(circle 5)                       — on XY plane
+(circle :r 5 :wire)              — circle wire
+(circle :r 5 :plane :xz)         — on XZ plane
+```
+
+**Returns a rojcad/shape abstract value.**
+
+### `polygon`
+
+**Usage:** `(polygon &keys :pts :wire :plane :at :eager :hide)`
+
+Create a polygon from a list of 2D points.
+
+Keywords: :pts (array of [x y] tuples), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).
+
+**Examples:**
+```janet
+(polygon :pts [[0 0] [10 0] [10 10] [0 10]])  — square on XY
+(polygon :pts [[0 0] [10 0] [10 10]] :wire)    — L-shaped wire
+```
+
+**Returns a rojcad/shape abstract value.**
+
+### `rect`
+
+**Usage:** `(rect width depth &keys :w :d :h :wire :plane :at :eager :hide)`
+
+Create a rectangle.
+
+Positional: (rect w d)
+Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),
+         :plane (workplane, default :xy), :at (position [x y z]),
+         :eager (tessellate immediately), :hide (skip auto-show).
+
+**Examples:**
+```janet
+(rect 10 20)                     — on XY plane
+(rect :w 10 :d 20 :wire)         — rect wire
+(rect :w 10 :h 20)               — :h alias for :d
+(rect :w 10 :d 20 :plane :xz :at [5 0 0]) — on XZ plane
+```
+
+**Returns a rojcad/shape abstract value (FACE by default, WIRE with :wire).**
+
+## Text
+
+### `list-fonts`
+
+**Usage:** `(list-fonts)`
+
+List available system fonts.
+
+Scans standard OS font directories and returns an array of
+[name path aspect] tuples for each discovered TTF/OTF font.
+Aspect is :regular, :bold, :italic, or :bold-italic.
+
+**Examples:**
+```janet
+(list-fonts)  — all system fonts
+(keep [name path] (list-fonts)) — just names and paths
+```
+
+**Returns an array of tuples.**
+
+### `text`
+
+**Usage:** `(text string font-path size &keys :depth :plane :at :eager :hide)`
+
+Create a 2D or 3D text shape from a TrueType/OpenType font.
+
+Positional: (text "Hello" "DejaVuSans.ttf" 10)
+Keywords: :depth (extrude 3D text), :plane ("xy"/"xz"/"yz"...),
+         :at (position [x y z]), :eager, :hide.
+
+Without :depth returns a Face. With :depth returns an extruded Solid.
+
+**Examples:**
+```janet
+(text "Hi" "font.ttf" 10)              — 2D text face
+(text "Hi" "font.ttf" 10 :depth 5)     — 3D extruded text
+(text "Hi" "font.ttf" 10 :plane "xz") — on XZ plane
+(text "Hi" "font.ttf" 10 :at [5 0 0])  — positioned
+```
+
+**Returns a rojcad/shape abstract value.**
+
+### `text3d`
+
+**Usage:** `(text3d string font-path size depth &keys :plane :at :both :eager :hide)`
+
+Create a 3D extruded text shape.
+
+Positional: (text3d "Hello" "DejaVuSans.ttf" 10 5)
+Keywords: :plane ("xy"/"xz"/"yz"...), :at (position [x y z]),
+         :both (extrude symetrically), :eager, :hide.
+
+Equivalent to (text ... :depth depth).
+
+**Returns a rojcad/shape abstract value.**
+
 ## Registry
 
 ### `hide`
@@ -437,6 +739,48 @@ Calling show on an already-visible shape is a no-op.
 ```
 
 **Returns nil.**
+
+## Wire Operations
+
+### `wire-chamfer`
+
+**Usage:** `(wire-chamfer wire &keys :d :eager :hide)`
+
+Bevel all vertices of a closed Wire by a distance.
+
+Keywords: :d (distance, required), :eager, :hide
+
+**Returns a rojcad/shape abstract value (WIRE).**
+
+### `wire-fillet`
+
+**Usage:** `(wire-fillet wire &keys :r :eager :hide)`
+
+Round all vertices of a closed Wire by a radius.
+
+Keywords: :r (radius, required), :eager, :hide
+
+**Returns a rojcad/shape abstract value (WIRE).**
+
+### `wire-offset`
+
+**Usage:** `(wire-offset wire &keys :d :eager :hide)`
+
+Create a parallel offset of a closed Wire by a distance.
+
+Keywords: :d (distance, required), :eager, :hide
+
+**Returns a rojcad/shape abstract value (WIRE).**
+
+### `wire-to-face`
+
+**Usage:** `(wire-to-face wire &keys :eager :hide)`
+
+Convert a Wire shape into a Face by filling its boundary.
+
+Keywords: :eager, :hide
+
+**Returns a rojcad/shape abstract value (FACE).**
 
 ## Booleans
 
@@ -569,6 +913,33 @@ Called with three numeric arguments (r g b), sets the color.
 
 Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey
          (edge-color-inactive)               — query
+
+### `edge-hidden`
+
+**Usage:** `(edge-hidden &opt value)`
+
+Get or set visibility of hidden (occluded) edges.
+
+Called with no arguments, returns true if hidden edges are shown, false if hidden.
+Called with one boolean argument, sets the visibility.
+
+Example: (edge-hidden)        — query
+         (edge-hidden true)    — show hidden edges
+         (edge-hidden false)   — hide hidden edges
+
+### `edge-hidden-show?`
+
+**Usage:** `(edge-hidden-show?)`
+
+Return true if hidden (occluded) edges are currently visible, false if hidden.
+
+### `edge-hidden-toggle`
+
+**Usage:** `(edge-hidden-toggle)`
+
+Example: (edge-hidden-toggle)
+
+**Toggle visibility of hidden (occluded) edges. Returns true if hidden edges are now visible, false if hidden.**
 
 ### `edge-inactive-show?`
 
