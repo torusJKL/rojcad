@@ -225,6 +225,173 @@
   (if (not hide) (show shape))
   shape)})
 
+# ── Complex wrappers (box, cylinder, torus) ─────────────────────────
+
+(var _init_box (get core-env '_bx))
+(if (= :table (type _init_box)) (set _init_box (get _init_box :value)))
+(var _init_cube (get core-env '_cb))
+(if (= :table (type _init_cube)) (set _init_cube (get _init_cube :value)))
+(var _init_box_from_corners (get core-env '_bfc))
+(if (= :table (type _init_box_from_corners)) (set _init_box_from_corners (get _init_box_from_corners :value)))
+(put core-env 'box @{:value (fn [& args]
+  (var cx nil) (var cy nil) (var cz nil)
+  (var pl nil) (var ph nil)
+  (var eager false) (var hide false)
+  (var pos-arr @[]) (var pos-count 0)
+  (var kw-w nil) (var kw-d nil) (var kw-h nil)
+  (var i 0) (def n (length args))
+  (while (< i n)
+    (if (= :keyword (type (args i)))
+      (do (def kw (args i))
+        (if (= kw :eager) (set eager true))
+        (if (= kw :hide) (set hide true))
+        (if (= kw :c) (do (def v (args (+ i 1))) (set cx (v 0)) (set cy (v 1)) (set cz (v 2)) (set i (+ i 1))))
+        (if (= kw :w) (do (set kw-w (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :d) (do (set kw-d (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :h) (do (set kw-h (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :pl) (do (set pl (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :ph) (do (set ph (args (+ i 1))) (set i (+ i 1))))
+        (set i (+ i 1)))
+      (do
+        (array/push pos-arr (args i))
+        (set pos-count (+ pos-count 1))
+        (set i (+ i 1)))))
+  (def shape
+    (if pl
+      (if ph
+        (_init_box_from_corners (pl 0) (pl 1) (pl 2) (ph 0) (ph 1) (ph 2)
+          (if eager 1 0) (if hide 1 0))
+        (error "box: :pl and :ph must both be provided"))
+      (if ph
+        (error "box: :pl and :ph must both be provided")
+        (if kw-w
+          (if kw-d
+            (if kw-h
+              (_init_box kw-w kw-d kw-h
+                (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
+                (if eager 1 0) (if hide 1 0))
+              (error "box: specify :w, :d, :h together"))
+            (error "box: specify :w, :d, :h together"))
+          (if (= pos-count 1)
+            (_init_cube (pos-arr 0)
+              (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
+              (if eager 1 0) (if hide 1 0))
+            (if (>= pos-count 3)
+              (_init_box (pos-arr 0) (pos-arr 1) (pos-arr 2)
+                (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
+                (if eager 1 0) (if hide 1 0))
+              (error "box: expected 1 or 3 positional args or keywords :w :d :h or :pl :ph")))))))
+  (if (not hide) (show shape))
+  shape)}) 
+(put (get core-env 'box) :doc
+  "(box &keys :w :d :h :c :pl :ph :eager :hide)\n\nCreate a box or cube.\n\nPositional: (box w d h) or (box size) for a cube.\nKeywords: :w :d :h (dimensions), :c (center [x y z]),\n         :pl :ph (opposite corners [x y z]).\n         :eager (tessellate immediately).\n         :hide (skip automatic show on def).\n\nExamples:\n  (box 10 20 30)           — box at origin\n  (box 10 20 30 :c [5 5 5]) — centered box\n  (box 5)                  — 5x5x5 cube\n  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n  (box :w 10 :d 20 :h 30) — keyword style\n  (box 10 :eager)          — eager tessellation\n  (box 10 :hide)           — create without showing\n\nReturns a rojcad/shape abstract value.")
+(put (get core-env 'box) :source "rojcad")
+(put (get core-env 'box) :category "primitives")
+
+(var _init_cylinder (get core-env '_cy))
+(if (= :table (type _init_cylinder)) (set _init_cylinder (get _init_cylinder :value)))
+(var _init_cylinder_from_points (get core-env '_cyfp))
+(if (= :table (type _init_cylinder_from_points)) (set _init_cylinder_from_points (get _init_cylinder_from_points :value)))
+(var _init_cylinder_point_dir (get core-env '_cydir))
+(if (= :table (type _init_cylinder_point_dir)) (set _init_cylinder_point_dir (get _init_cylinder_point_dir :value)))
+(put core-env 'cylinder @{:value (fn [& args]
+  (var cx nil) (var cy nil) (var cz nil)
+  (var fp nil) (var tp nil) (var dir nil)
+  (var r nil) (var h nil)
+  (var eager false) (var hide false)
+  (var pos-arr @[]) (var pos-count 0)
+  (var i 0) (def n (length args))
+  (while (< i n)
+    (if (= :keyword (type (args i)))
+      (do (def kw (args i))
+        (if (= kw :eager) (set eager true))
+        (if (= kw :hide) (set hide true))
+        (if (= kw :c) (do (def v (args (+ i 1))) (set cx (v 0)) (set cy (v 1)) (set cz (v 2)) (set i (+ i 1))))
+        (if (= kw :r) (do (set r (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :h) (do (set h (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :dir) (do (set dir (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :fp) (do (set fp (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :tp) (do (set tp (args (+ i 1))) (set i (+ i 1))))
+        (set i (+ i 1)))
+      (do
+        (array/push pos-arr (args i))
+        (set pos-count (+ pos-count 1))
+        (set i (+ i 1)))))
+  (if fp
+    (if tp
+      (do
+        (if (= nil r) (error "cylinder: :r (radius) is required with :fp/:tp"))
+        (def shape (_init_cylinder_from_points (fp 0) (fp 1) (fp 2) (tp 0) (tp 1) (tp 2) r
+                     (if eager 1 0) (if hide 1 0)))
+        (if (not hide) (show shape))
+        shape)
+      (error "cylinder: :fp and :tp must both be provided"))
+    (if tp
+      (error "cylinder: :fp and :tp must both be provided")
+      (do
+        (if (= nil r) (set r (if (> pos-count 0) (pos-arr 0) (error "cylinder: radius required"))))
+        (if (= nil h) (set h (if (> pos-count 1) (pos-arr 1) (error "cylinder: height required"))))
+        (def shape
+          (if dir
+            (do
+              (def ox (if (not= nil cx) cx 0.0))
+              (def oy (if (not= nil cy) cy 0.0))
+              (def oz (if (not= nil cz) cz 0.0))
+              (_init_cylinder_point_dir ox oy oz r (dir 0) (dir 1) (dir 2) h
+                (if eager 1 0) (if hide 1 0)))
+            (_init_cylinder r h
+              (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
+              (if eager 1 0) (if hide 1 0))))
+        (if (not hide) (show shape))
+        shape))))})
+(put (get core-env 'cylinder) :doc
+  "(cylinder &keys :r :h :c :dir :fp :tp :eager :hide)\n\nCreate a cylinder.\n\nPositional: (cylinder radius height) — along Z axis, base at Z=0\nKeywords: :r (radius), :h (height), :c (center [x y z]),\n         :dir (direction [dx dy dz]),\n         :fp (from-point [x y z]), :tp (to-point [x y z]).\n         :eager (tessellate immediately).\n\nExamples:\n  (cylinder 5 10)                       — simple\n  (cylinder 5 10 :c [0 0 5])            — centered\n  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n  (cylinder :r 5 :h 10)                 — keyword style\n  (cylinder 5 10 :eager)                — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+(put (get core-env 'cylinder) :source "rojcad")
+(put (get core-env 'cylinder) :category "primitives")
+
+(var _init_torus (get core-env '_tr))
+(if (= :table (type _init_torus)) (set _init_torus (get _init_torus :value)))
+(put core-env 'torus @{:value (fn [& args]
+  (var cx nil) (var cy nil) (var cz nil)
+  (var dir nil) (var rr nil) (var tr nil)
+  (var a nil) (var as nil) (var ae nil)
+  (var eager false) (var hide false)
+  (var pos-arr @[]) (var pos-count 0)
+  (var i 0) (def n (length args))
+  (while (< i n)
+    (if (= :keyword (type (args i)))
+      (do (def kw (args i))
+        (if (= kw :eager) (set eager true))
+        (if (= kw :hide) (set hide true))
+        (if (= kw :c) (do (def v (args (+ i 1))) (set cx (v 0)) (set cy (v 1)) (set cz (v 2)) (set i (+ i 1))))
+        (if (= kw :rr) (do (set rr (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :tr) (do (set tr (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :dir) (do (set dir (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :a) (do (set a (* (args (+ i 1)) (/ math/pi 180))) (set i (+ i 1))))
+        (if (= kw :ar) (do (set a (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :as) (do (set as (* (args (+ i 1)) (/ math/pi 180))) (set i (+ i 1))))
+        (if (= kw :asr) (do (set as (args (+ i 1))) (set i (+ i 1))))
+        (if (= kw :ae) (do (set ae (* (args (+ i 1)) (/ math/pi 180))) (set i (+ i 1))))
+        (if (= kw :aer) (do (set ae (args (+ i 1))) (set i (+ i 1))))
+        (set i (+ i 1)))
+      (do
+        (array/push pos-arr (args i))
+        (set pos-count (+ pos-count 1))
+        (set i (+ i 1)))))
+  (if (= nil rr) (set rr (if (> pos-count 0) (pos-arr 0) (error "torus: ring radius required"))))
+  (if (= nil tr) (set tr (if (> pos-count 1) (pos-arr 1) (error "torus: tube radius required"))))
+  (def shape (_init_torus rr tr
+               (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
+               (if dir (dir 0) math/nan) (if dir (dir 1) math/nan) (if dir (dir 2) math/nan)
+               (if (not= nil a) a math/nan) (if (not= nil as) as math/nan) (if (not= nil ae) ae math/nan)
+               (if eager 1 0) (if hide 1 0)))
+  (if (not hide) (show shape))
+  shape)}) 
+(put (get core-env 'torus) :doc
+  "(torus &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager :hide)\n\nCreate a torus.\n\nPositional: (torus rr tr)\nKeywords: :rr (ring radius), :tr (tube radius),\n         :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians, partial),\n         :as (start angle degrees), :asr (start angle radians),\n         :ae (end angle degrees), :aer (end angle radians),\n         :dir (axis direction [dx dy dz]),\n         :eager (tessellate immediately).\n\nExamples:\n  (torus 20 10)                    — full torus\n  (torus 20 10 :c [0 0 5])         — repositioned\n  (torus 20 10 :a 180)             — half torus\n  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n  (torus 20 10 :eager)             — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+(put (get core-env 'torus) :source "rojcad")
+(put (get core-env 'torus) :category "primitives")
+
 (def _extrude ((get core-env 'extrude) :value))
 (put core-env 'extrude @{:value (fn [shape & args]
   (var height nil) (var dx math/nan) (var dy math/nan) (var dz math/nan)

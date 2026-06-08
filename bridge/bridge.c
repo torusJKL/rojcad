@@ -371,88 +371,70 @@ static void *alloc_shape(void) {
  * JANET_FN_D(CNAME, USAGE, DOCSTRING), which creates a static docstring
  * combining USAGE and DOCSTRING separated by "\n\n". */
 
-JANET_FN(cad_box,
-         "(box width depth height &keys :w :d :h :c :pl :ph :eager :hide)",
-         "Create a box or cube.\n\n"
-         "Positional: (box w d h) or (box size) for a cube.\n"
-         "Keywords: :w :d :h (dimensions), :c (center [x y z]),\n"
-         "         :pl :ph (opposite corners [x y z]).\n"
-         "         :eager (tessellate immediately).\n"
-         "         :hide (skip automatic show on def).\n\n"
-         "Examples:\n"
-         "  (box 10 20 30)           — box at origin\n"
-         "  (box 10 20 30 :c [5 5 5]) — centered box\n"
-         "  (box 5)                  — 5x5x5 cube\n"
-         "  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n"
-         "  (box :w 10 :d 20 :h 30) — keyword style\n"
-         "  (box 10 :eager)          — eager tessellation\n"
-         "  (box 10 :hide)           — create without showing\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_box,
+         "(_mkbox w d h cx cy cz eager hide)",
+         "Create a box. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
 {
-    double cx, cy, cz, pl[3], ph[3];
-    int has_c, has_pl, has_ph;
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 8, 8);
+    double w = janet_getnumber(argv, 0);
+    double d = janet_getnumber(argv, 1);
+    double h = janet_getnumber(argv, 2);
+    double cx = janet_getnumber(argv, 3);
+    double cy = janet_getnumber(argv, 4);
+    double cz = janet_getnumber(argv, 5);
+    int eager_val = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
-    /* Count positional args (stop at first keyword) */
-    int pos_count = 0;
-    for (int i = 0; i < argc; i++) {
-        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
-        pos_count++;
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_box(shape, w, d, h,
+                   isnan(cx) ? NULL : &cx,
+                   isnan(cy) ? NULL : &cy,
+                   isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
 
-    has_pl = kw_array_3(argv, argc, "pl", &pl[0], &pl[1], &pl[2]);
-    has_ph = kw_array_3(argv, argc, "ph", &ph[0], &ph[1], &ph[2]);
+JANET_FN(_cad_init_cube,
+         "(_mkcube size cx cy cz eager hide)",
+         "Create a cube. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
+{
+    janet_arity(argc, 6, 6);
+    double size = janet_getnumber(argv, 0);
+    double cx = janet_getnumber(argv, 1);
+    double cy = janet_getnumber(argv, 2);
+    double cz = janet_getnumber(argv, 3);
+    int eager_val = janet_truthy(argv[4]);
+    int hide_val = janet_truthy(argv[5]);
 
-    if (has_pl || has_ph) {
-        if (!has_pl || !has_ph) {
-            janet_panic("box: :pl and :ph must both be provided");
-        }
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cube(shape, size,
+                   isnan(cx) ? NULL : &cx,
+                   isnan(cy) ? NULL : &cy,
+                   isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
 
-    double w = 0, d = 0, h = 0;
-    int has_w, has_d, has_h;
-    has_w = kw_double(argv, argc, "w", &w);
-    has_d = kw_double(argv, argc, "d", &d);
-    has_h = kw_double(argv, argc, "h", &h);
-    has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
+JANET_FN(_cad_init_box_from_corners,
+         "(_mkbox_from_corners x1 y1 z1 x2 y2 z2 eager hide)",
+         "Create a box from opposite corners. (thin primitive)\n\nAll args positional.")
+{
+    janet_arity(argc, 8, 8);
+    double x1 = janet_getnumber(argv, 0);
+    double y1 = janet_getnumber(argv, 1);
+    double z1 = janet_getnumber(argv, 2);
+    double x2 = janet_getnumber(argv, 3);
+    double y2 = janet_getnumber(argv, 4);
+    double z2 = janet_getnumber(argv, 5);
+    int eager_val = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
-    if (has_w && has_d && has_h) {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    if (has_w || has_d || has_h) {
-        janet_panic("box: specify :w, :d, :h together, or use positional args");
-    }
-
-    if (pos_count == 1) {
-        double size = janet_unwrap_number(argv[0]);
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cube(shape, size,
-                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    if (pos_count >= 3) {
-        w = janet_unwrap_number(argv[0]);
-        d = janet_unwrap_number(argv[1]);
-        h = janet_unwrap_number(argv[2]);
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    janet_panicf("box: expected 1 or 3 positional arguments, got %d", argc);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_box_from_corners(shape, x1, y1, z1, x2, y2, z2, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
 JANET_FN(_cad_sphere,
@@ -480,73 +462,70 @@ JANET_FN(_cad_sphere,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_cylinder,
-         "(cylinder radius height &keys :r :h :c :dir :fp :tp :eager)",
-         "Create a cylinder.\n\n"
-         "Positional: (cylinder radius height) — along Z axis, base at Z=0\n"
-         "Keywords: :r (radius), :h (height), :c (center [x y z]),\n"
-         "         :dir (direction [dx dy dz]),\n"
-         "         :fp (from-point [x y z]), :tp (to-point [x y z]).\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (cylinder 5 10)                       — simple\n"
-         "  (cylinder 5 10 :c [0 0 5])            — centered\n"
-         "  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n"
-         "  (cylinder :r 5 :h 10)                 — keyword style\n"
-         "  (cylinder 5 10 :eager)                — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_cylinder,
+         "(_init-cylinder r h cx cy cz eager hide)",
+         "Create a cylinder. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
 {
-    double cx, cy, cz, dir[3], fp[3], tp[3];
-    int has_c, has_dir, has_fp, has_tp;
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 7, 7);
+    double r = janet_getnumber(argv, 0);
+    double h = janet_getnumber(argv, 1);
+    double cx = janet_getnumber(argv, 2);
+    double cy = janet_getnumber(argv, 3);
+    double cz = janet_getnumber(argv, 4);
+    int eager_val = janet_truthy(argv[5]);
+    int hide_val = janet_truthy(argv[6]);
 
-    has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
-    has_fp = kw_array_3(argv, argc, "fp", &fp[0], &fp[1], &fp[2]);
-    has_tp = kw_array_3(argv, argc, "tp", &tp[0], &tp[1], &tp[2]);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder(shape, r, h,
+                       isnan(cx) ? NULL : &cx,
+                       isnan(cy) ? NULL : &cy,
+                       isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
 
-    /* Check for from-point / to-point mode */
-    if (has_fp || has_tp) {
-        if (!has_fp || !has_tp) {
-            janet_panic("cylinder: :fp and :tp must both be provided");
-        }
-        double r;
-        if (!kw_double(argv, argc, "r", &r)) {
-            janet_panic("cylinder: :r (radius) is required with :fp/:tp");
-        }
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+JANET_FN(_cad_init_cylinder_from_points,
+         "(_init-cylinder-from-points x1 y1 z1 x2 y2 z2 r eager hide)",
+         "Create a cylinder between two points. (thin primitive)\n\nAll args positional.")
+{
+    janet_arity(argc, 9, 9);
+    double x1 = janet_getnumber(argv, 0);
+    double y1 = janet_getnumber(argv, 1);
+    double z1 = janet_getnumber(argv, 2);
+    double x2 = janet_getnumber(argv, 3);
+    double y2 = janet_getnumber(argv, 4);
+    double z2 = janet_getnumber(argv, 5);
+    double r = janet_getnumber(argv, 6);
+    int eager_val = janet_truthy(argv[7]);
+    int hide_val = janet_truthy(argv[8]);
 
-    double radius, height;
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder_from_points(shape, x1, y1, z1, x2, y2, z2, r, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
 
-    /* Get radius and height: try keywords first, then positional */
-    if (!kw_double(argv, argc, "r", &radius)) {
-        if (argc < 1) janet_panic("cylinder: radius is required");
-        radius = janet_unwrap_number(argv[0]);
-    }
-    if (!kw_double(argv, argc, "h", &height)) {
-        if (argc < 2) janet_panic("cylinder: height is required");
-        height = janet_unwrap_number(argv[1]);
-    }
+JANET_FN(_cad_init_cylinder_point_dir,
+         "(_init-cylinder-point-dir px py pz r dx dy dz h eager hide)",
+         "Create a cylinder at point with direction. (thin primitive)\n\nAll args positional.")
+{
+    janet_arity(argc, 10, 10);
+    double px = janet_getnumber(argv, 0);
+    double py = janet_getnumber(argv, 1);
+    double pz = janet_getnumber(argv, 2);
+    double r = janet_getnumber(argv, 3);
+    double dx = janet_getnumber(argv, 4);
+    double dy = janet_getnumber(argv, 5);
+    double dz = janet_getnumber(argv, 6);
+    double h = janet_getnumber(argv, 7);
+    int eager_val = janet_truthy(argv[8]);
+    int hide_val = janet_truthy(argv[9]);
 
-    if (has_dir) {
-        double ox = has_c ? cx : 0.0, oy = has_c ? cy : 0.0, oz = has_c ? cz : 0.0;
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder(shape, radius, height,
-                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder_point_dir(shape, px, py, pz, r, dx, dy, dz, h, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
 JANET_FN(_cad_cone,
@@ -576,81 +555,39 @@ JANET_FN(_cad_cone,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_torus,
-         "(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager)",
-         "Create a torus.\n\n"
-         "Positional: (torus rr tr)\n"
-         "Keywords: :rr (ring radius), :tr (tube radius),\n"
-         "         :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians, partial),\n"
-         "         :as (start angle degrees), :asr (start angle radians),\n"
-         "         :ae (end angle degrees), :aer (end angle radians),\n"
-         "         :dir (axis direction [dx dy dz]),\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (torus 20 10)                    — full torus\n"
-         "  (torus 20 10 :c [0 0 5])         — repositioned\n"
-         "  (torus 20 10 :a 180)             — half torus\n"
-         "  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n"
-         "  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n"
-         "  (torus 20 10 :eager)             — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_torus,
+         "(_init-torus rr tr cx cy cz zx zy zz angle a_start a_end eager hide)",
+         "Create a torus. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz/dir/angle/range.")
 {
-    double cx, cy, cz, dir[3], angle, a_start, a_end;
-    int eager = has_eager(argv, argc);
-    int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    int has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
-    int has_a = kw_double(argv, argc, "a", &angle);
-    if (has_a) {
-        angle *= (M_PI / 180.0);
-    } else {
-        has_a = kw_double(argv, argc, "ar", &angle);
-    }
-    int has_as = kw_double(argv, argc, "as", &a_start);
-    if (has_as) {
-        a_start *= (M_PI / 180.0);
-    } else {
-        has_as = kw_double(argv, argc, "asr", &a_start);
-    }
-    int has_ae = kw_double(argv, argc, "ae", &a_end);
-    if (has_ae) {
-        a_end *= (M_PI / 180.0);
-    } else {
-        has_ae = kw_double(argv, argc, "aer", &a_end);
-    }
+    janet_arity(argc, 13, 13);
+    double rr = janet_getnumber(argv, 0);
+    double tr = janet_getnumber(argv, 1);
+    double cx = janet_getnumber(argv, 2);
+    double cy = janet_getnumber(argv, 3);
+    double cz = janet_getnumber(argv, 4);
+    double zx = janet_getnumber(argv, 5);
+    double zy = janet_getnumber(argv, 6);
+    double zz = janet_getnumber(argv, 7);
+    double angle = janet_getnumber(argv, 8);
+    double a_start = janet_getnumber(argv, 9);
+    double a_end = janet_getnumber(argv, 10);
+    int eager_val = janet_truthy(argv[11]);
+    int hide_val = janet_truthy(argv[12]);
 
-    double rr = 0, tr = 0;
-    int has_rr, has_tr;
-
-    has_rr = kw_double(argv, argc, "rr", &rr);
-    has_tr = kw_double(argv, argc, "tr", &tr);
-
-    if (has_rr && has_tr) {
-        goto create;
-    }
-    if (has_rr || has_tr) {
-        janet_panic("torus: :rr and :tr must be provided together");
-    }
-
-    /* Positional mode */
-    if (argc < 2) janet_panic("torus: ring-radius and tube-radius are required");
-    rr = janet_unwrap_number(argv[0]);
-    tr = janet_unwrap_number(argv[1]);
-
-create:
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_torus(shape, rr, tr,
-                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                        has_dir ? &dir[0] : NULL,
-                        has_dir ? &dir[1] : NULL,
-                        has_dir ? &dir[2] : NULL,
-                        has_a ? &angle : NULL,
-                        has_as ? &a_start : NULL,
-                        has_ae ? &a_end : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_torus(shape, rr, tr,
+                    isnan(cx) ? NULL : &cx,
+                    isnan(cy) ? NULL : &cy,
+                    isnan(cz) ? NULL : &cz,
+                    isnan(zx) ? NULL : &zx,
+                    isnan(zy) ? NULL : &zy,
+                    isnan(zz) ? NULL : &zz,
+                    isnan(angle) ? NULL : &angle,
+                    isnan(a_start) ? NULL : &a_start,
+                    isnan(a_end) ? NULL : &a_end, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
 JANET_FN(_cad_cut,
@@ -1953,9 +1890,6 @@ JANET_FN(_cad_get_shape_by_id,
 /* ── CAD function metadata ────────────────────────────────────────────────── */
 
 static const char *cad_fn_categories[][2] = {
-    {"box", "primitives"},
-    {"cylinder", "primitives"},
-    {"torus", "primitives"},
     {"shape-type", "queries"},
     {"visible?", "queries"},
     {"purge", "registry"},
@@ -2003,13 +1937,19 @@ void cad_register_functions(JanetTable *env) {
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
     JanetReg cfuns[] = {
-        {"box",                    cad_box,                    cad_box_docstring_},
         {"_sphere",                _cad_sphere,                _cad_sphere_docstring_},
         {"sphere",                 _cad_sphere,                _cad_sphere_docstring_},
-        {"cylinder",               cad_cylinder,               cad_cylinder_docstring_},
         {"_cone",                  _cad_cone,                  _cad_cone_docstring_},
+        {"_bx",                    _cad_init_box,              _cad_init_box_docstring_},
+        {"_cb",                    _cad_init_cube,             _cad_init_cube_docstring_},
+        {"_bfc",                   _cad_init_box_from_corners, _cad_init_box_from_corners_docstring_},
+        {"_cy",                    _cad_init_cylinder,         _cad_init_cylinder_docstring_},
+        {"_cyfp",                  _cad_init_cylinder_from_points, _cad_init_cylinder_from_points_docstring_},
+        {"_cydir",                 _cad_init_cylinder_point_dir, _cad_init_cylinder_point_dir_docstring_},
+        {"_tr",                    _cad_init_torus,            _cad_init_torus_docstring_},
         {"cone",                   _cad_cone,                  _cad_cone_docstring_},
-        {"torus",                  cad_torus,                  cad_torus_docstring_},
+        {"cylinder",               _cad_init_cylinder,         _cad_init_cylinder_docstring_},
+        {"torus",                  _cad_init_torus,            _cad_init_torus_docstring_},
         {"_cut",                   _cad_cut,                   _cad_cut_docstring_},
         {"cut",                    _cad_cut,                   _cad_cut_docstring_},
         {"_common",                _cad_common,                _cad_common_docstring_},
