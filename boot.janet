@@ -161,6 +161,107 @@
         (set result (_fuse result last-b)))))
   result))
 
+# ── Thin C-primitive wrappers ───────────────────────────────────────────────
+# Each wrapper saves the C JANET_FN then replaces the binding with a Janet
+# function. This preserves the C docstring/metadata while keeping the
+# binding ready for future Janet-level overrides.
+
+# Edge visibility toggles and queries
+
+(def _edge-toggle-inactive ((get core-env 'edge-toggle-inactive) :value))
+(put (get core-env 'edge-toggle-inactive) :value
+  (fn [] (_edge-toggle-inactive)))
+
+(def _edge-toggle-active ((get core-env 'edge-toggle-active) :value))
+(put (get core-env 'edge-toggle-active) :value
+  (fn [] (_edge-toggle-active)))
+
+(def _edge-inactive-show? ((get core-env 'edge-inactive-show?) :value))
+(put (get core-env 'edge-inactive-show?) :value
+  (fn [] (_edge-inactive-show?)))
+
+(def _edge-active-show? ((get core-env 'edge-active-show?) :value))
+(put (get core-env 'edge-active-show?) :value
+  (fn [] (_edge-active-show?)))
+
+(def _edge-hidden-toggle ((get core-env 'edge-hidden-toggle) :value))
+(put (get core-env 'edge-hidden-toggle) :value
+  (fn [] (_edge-hidden-toggle)))
+
+(def _edge-hidden-show? ((get core-env 'edge-hidden-show?) :value))
+(put (get core-env 'edge-hidden-show?) :value
+  (fn [] (_edge-hidden-show?)))
+
+(def _edge-hidden ((get core-env 'edge-hidden) :value))
+(put (get core-env 'edge-hidden) :value
+  (fn [&opt value]
+    (if (not= nil value)
+      (_edge-hidden value)
+      (_edge-hidden))))
+
+# Projection and overlay toggles
+
+(def _projection-toggle ((get core-env 'projection-toggle) :value))
+(put (get core-env 'projection-toggle) :value
+  (fn [] (_projection-toggle)))
+
+(def _projection-perspective ((get core-env 'projection-perspective) :value))
+(put (get core-env 'projection-perspective) :value
+  (fn [&opt value]
+    (if (not= nil value)
+      (_projection-perspective value)
+      (_projection-perspective))))
+
+(def _stats-overlay ((get core-env 'stats-overlay) :value))
+(put (get core-env 'stats-overlay) :value
+  (fn [&opt value]
+    (if (not= nil value)
+      (_stats-overlay value)
+      (_stats-overlay))))
+
+# Help overlay
+
+(def _window-help-toggle ((get core-env 'window-help-toggle) :value))
+(put (get core-env 'window-help-toggle) :value
+  (fn [] (_window-help-toggle)))
+
+(def _window-help-show? ((get core-env 'window-help-show?) :value))
+(put (get core-env 'window-help-show?) :value
+  (fn [] (_window-help-show?)))
+
+(def _window-help-show ((get core-env 'window-help-show) :value))
+(put (get core-env 'window-help-show) :value
+  (fn [&opt value]
+    (if (not= nil value)
+      (_window-help-show value)
+      (_window-help-show))))
+
+# Window state
+
+(def _window-size ((get core-env 'window-size) :value))
+(put (get core-env 'window-size) :value
+  (fn [width height] (_window-size width height)))
+
+(def _window-size? ((get core-env 'window-size?) :value))
+(put (get core-env 'window-size?) :value
+  (fn [] (_window-size?)))
+
+(def _window-fullscreen ((get core-env 'window-fullscreen) :value))
+(put (get core-env 'window-fullscreen) :value
+  (fn [value] (_window-fullscreen value)))
+
+(def _window-fullscreen? ((get core-env 'window-fullscreen?) :value))
+(put (get core-env 'window-fullscreen?) :value
+  (fn [] (_window-fullscreen?)))
+
+(def _window-maximized ((get core-env 'window-maximized) :value))
+(put (get core-env 'window-maximized) :value
+  (fn [value] (_window-maximized value)))
+
+(def _window-maximized? ((get core-env 'window-maximized?) :value))
+(put (get core-env 'window-maximized?) :value
+  (fn [] (_window-maximized?)))
+
 # ── Display helper (array-aware string conversion) ─────────────────────────
 
 (def display-val (fn [x]
