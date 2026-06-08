@@ -179,7 +179,7 @@ typedef int Clib;
 #define load_clib(name) ((void) name, 0)
 #define symbol_clib(lib, sym) ((void) lib, (void) sym, NULL)
 const char *error_clib(void);
-#define free_clib(c) ((void) (c), 0)
+#define free_clib(c) ((void)(c))
 #elif defined(JANET_WINDOWS)
 #include <windows.h>
 typedef HINSTANCE Clib;

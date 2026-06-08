@@ -2278,6 +2278,7 @@ JANET_FN(cad_list_fonts,
          "Returns an array of tuples.")
 {
     janet_arity(argc, 0, 0);
+    (void)argv;
 
     int count = 0;
     char **list = rust_list_fonts(&count);

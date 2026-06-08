@@ -698,22 +698,20 @@ mod tests {
     #[test]
     fn test_hole_detection_outer_largest() {
         let data = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-        if let Some(font_data) = data.ok().and_then(|d| FontData::from_bytes(d).ok()) {
-            let face = font_data.face();
-            if let Some(gid) = face.glyph_index('A') {
-                if let Some(contours) = glyph_outlines(&font_data, gid) {
-                    let (outer_idx, hole_idxs) = split_outer_holes(&contours);
-                    assert!(outer_idx < contours.len());
-                    assert!(!hole_idxs.is_empty(), "'A' should have hole contours");
-                    let outer_area = contours[outer_idx].area();
-                    for &hi in &hole_idxs {
-                        assert!(
-                            outer_area > contours[hi].area(),
-                            "outer {outer_area} should be > hole area {}",
-                            contours[hi].area()
-                        );
-                    }
-                }
+        if let Some(font_data) = data.ok().and_then(|d| FontData::from_bytes(d).ok())
+            && let Some(gid) = font_data.face().glyph_index('A')
+            && let Some(contours) = glyph_outlines(&font_data, gid)
+        {
+            let (outer_idx, hole_idxs) = split_outer_holes(&contours);
+            assert!(outer_idx < contours.len());
+            assert!(!hole_idxs.is_empty(), "'A' should have hole contours");
+            let outer_area = contours[outer_idx].area();
+            for &hi in &hole_idxs {
+                assert!(
+                    outer_area > contours[hi].area(),
+                    "outer {outer_area} should be > hole area {}",
+                    contours[hi].area()
+                );
             }
         }
     }

@@ -103,7 +103,7 @@ run-release:
 
 # Run clippy (Rust linter)
 lint:
-    {{_env}} cargo clippy -- -D warnings
+    {{_env}} cargo clippy --all-targets -- -D warnings
 
 # Format code with rustfmt
 fmt:
