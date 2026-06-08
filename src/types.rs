@@ -79,6 +79,10 @@ pub enum ReplToViewer {
     SetFullscreen(bool),
     /// Enter or exit maximized state.
     SetMaximized(bool),
+    /// Highlight a specific shape by ID.
+    HighlightShape { id: ShapeId },
+    /// Clear all shape highlighting.
+    ClearHighlight,
 }
 
 /// Edge thickness in NDC units (controlled from Janet).

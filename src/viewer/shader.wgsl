@@ -44,11 +44,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 // ── Highlight fragment shader ────────────────────────────────────────────
-// Tints the selected shape blue.
+// Blends the mesh color with a blue tint for selected/highlighted shapes.
 
 @fragment
 fn fs_highlight(input: VertexOutput) -> @location(0) vec4<f32> {
-    let material_color = vec3<f32>(0.3, 0.5, 1.0);
+    let tint = vec3<f32>(0.3, 0.5, 1.0);
+    let blend = 0.5;
+    let material_color = mix(mesh_color.rgb, tint, blend);
     let light_dir = normalize(vec3<f32>(1.0, 2.0, 1.0));
     let ambient = 0.4;
     let normal = normalize(input.world_normal);

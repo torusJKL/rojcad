@@ -200,6 +200,10 @@ extern int rust_is_wire(void *data);
 extern int rust_is_face(void *data);
 extern int rust_is_solid(void *data);
 
+/* Highlight */
+extern void rust_highlight_shape(void *data);
+extern void rust_highlight_clear(void);
+
 /* Text */
 extern int rust_init_text(void *dest, const char *text, const char *font_path,
                            double size, const char *plane,
@@ -883,6 +887,26 @@ JANET_FN(cad_visible_q,
     void *data = unwrap_shape_or_panic(argv[0], 0);
     int visible = rust_shape_get_visible(data);
     return visible ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(_cad_highlight_shape,
+         "_highlight-shape shape",
+         "Highlight a shape in the viewer. (thin primitive)")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    rust_highlight_shape(data);
+    return janet_wrap_nil();
+}
+
+JANET_FN(_cad_highlight_clear,
+         "_highlight-clear",
+         "Clear shape highlighting in the viewer. (thin primitive)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    rust_highlight_clear();
+    return janet_wrap_nil();
 }
 
 JANET_FN(_cad_quit_requested,
@@ -2011,6 +2035,8 @@ void cad_register_functions(JanetTable *env) {
         {"hide",                   cad_hide,                   cad_hide_docstring_},
         {"show",                   cad_show,                   cad_show_docstring_},
         {"registry-remove",        cad_registry_remove,        cad_registry_remove_docstring_},
+        {"_highlight-shape",       _cad_highlight_shape,       _cad_highlight_shape_docstring_},
+        {"_highlight-clear",       _cad_highlight_clear,       _cad_highlight_clear_docstring_},
         {"visible?",               cad_visible_q,              cad_visible_q_docstring_},
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},

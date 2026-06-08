@@ -76,7 +76,6 @@
       (set result (_cut result (shapes k) 0 0)))
     (def last-b (shapes (- n 1)))
     (set result (_cut result last-b (if eager? 1 0) (if hide? 1 0))))
-  (unless hide? (show result))
   result)
 
 (wrap-c-fn common _common [first & rest]
@@ -96,7 +95,6 @@
       (set result (_common result (shapes k) 0 0)))
     (def last-b (shapes (- n 1)))
     (set result (_common result last-b (if eager? 1 0) (if hide? 1 0))))
-  (unless hide? (show result))
   result)
 
 (wrap-c-fn fuse _fuse [first & rest]
@@ -116,7 +114,6 @@
       (set result (_fuse result (shapes k) 0 0)))
     (def last-b (shapes (- n 1)))
     (set result (_fuse result last-b (if eager? 1 0) (if hide? 1 0))))
-  (unless hide? (show result))
   result)
 
 # ── Compound and color wrappers ──────────────────────────
@@ -147,7 +144,6 @@
         shape)
       (let [shape (_compound-cfn shapes (if eager 1 0) (if hide 1 0))]
         (when color (set-color shape (color 0) (color 1) (color 2)))
-        (unless hide (show shape))
         shape))))})
  
 # `color` uses C function `set-color`, so we can't use wrap-c-fn (name mismatch).
@@ -187,7 +183,6 @@
                (if (not= nil cz) cz math/nan)
                (if (not= nil angle) angle math/nan)
                (if eager 1 0) (if hide 1 0)))
-  (unless hide (show shape))
   shape)
 
 (wrap-c-fn cone _cone [& args]
@@ -220,7 +215,6 @@
                (if (not= nil cz) cz math/nan)
                (if (not= nil angle) angle math/nan)
                (if eager 1 0) (if hide 1 0)))
-  (unless hide (show shape))
   shape)
 
 # ── Complex wrappers (box, cylinder, torus) ─────────────────────────
@@ -269,7 +263,6 @@
                          (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
                          (if eager 1 0) (if hide 1 0))
       (error "box: expected 1 or 3 positional args or keywords :w :d :h or :pl :ph")))
-  (unless hide (show shape))
   shape)}) 
 (defmeta box "primitives"
   "(box &keys :w :d :h :c :pl :ph :eager :hide)\n\nCreate a box or cube.\n\nPositional: (box w d h) or (box size) for a cube.\nKeywords: :w :d :h (dimensions), :c (center [x y z]),\n         :pl :ph (opposite corners [x y z]).\n         :eager (tessellate immediately).\n         :hide (skip automatic show on def).\n\nExamples:\n  (box 10 20 30)           — box at origin\n  (box 10 20 30 :c [5 5 5]) — centered box\n  (box 5)                  — 5x5x5 cube\n  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n  (box :w 10 :d 20 :h 30) — keyword style\n  (box 10 :eager)          — eager tessellation\n  (box 10 :hide)           — create without showing\n\nReturns a rojcad/shape abstract value.")
@@ -308,7 +301,6 @@
       (when (= nil r) (error "cylinder: :r (radius) is required with :fp/:tp"))
       (def shape (_init_cylinder_from_points (fp 0) (fp 1) (fp 2) (tp 0) (tp 1) (tp 2) r
                    (if eager 1 0) (if hide 1 0)))
-      (unless hide (show shape))
       shape)
     (or fp tp)
     (error "cylinder: :fp and :tp must both be provided")
@@ -325,7 +317,6 @@
           (_init_cylinder r h
             (if (not= nil cx) cx math/nan) (if (not= nil cy) cy math/nan) (if (not= nil cz) cz math/nan)
             (if eager 1 0) (if hide 1 0))))
-      (unless hide (show shape))
       shape)))}) 
 (defmeta cylinder "primitives"
   "(cylinder &keys :r :h :c :dir :fp :tp :eager :hide)\n\nCreate a cylinder.\n\nPositional: (cylinder radius height) — along Z axis, base at Z=0\nKeywords: :r (radius), :h (height), :c (center [x y z]),\n         :dir (direction [dx dy dz]),\n         :fp (from-point [x y z]), :tp (to-point [x y z]).\n         :eager (tessellate immediately).\n\nExamples:\n  (cylinder 5 10)                       — simple\n  (cylinder 5 10 :c [0 0 5])            — centered\n  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n  (cylinder :r 5 :h 10)                 — keyword style\n  (cylinder 5 10 :eager)                — eager tessellation\n\nReturns a rojcad/shape abstract value.")
@@ -365,7 +356,6 @@
                (if dir (dir 0) math/nan) (if dir (dir 1) math/nan) (if dir (dir 2) math/nan)
                (if (not= nil a) a math/nan) (if (not= nil as) as math/nan) (if (not= nil ae) ae math/nan)
                (if eager 1 0) (if hide 1 0)))
-  (unless hide (show shape))
   shape)}) 
 (defmeta torus "primitives"
   "(torus &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager :hide)\n\nCreate a torus.\n\nPositional: (torus rr tr)\nKeywords: :rr (ring radius), :tr (tube radius),\n         :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians, partial),\n         :as (start angle degrees), :asr (start angle radians),\n         :ae (end angle degrees), :aer (end angle radians),\n         :dir (axis direction [dx dy dz]),\n         :eager (tessellate immediately).\n\nExamples:\n  (torus 20 10)                    — full torus\n  (torus 20 10 :c [0 0 5])         — repositioned\n  (torus 20 10 :a 180)             — half torus\n  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n  (torus 20 10 :eager)             — eager tessellation\n\nReturns a rojcad/shape abstract value.")
@@ -388,7 +378,6 @@
       nil)
     (++ i))
   (def s (_extrude shape height dx dy dz (if both 1 0) (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn revolve _revolve [shape & args]
@@ -409,7 +398,6 @@
     (++ i))
   (default angle (* 2 math/pi))
   (def s (_revolve shape angle ox oy oz dx dy dz (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn extrude-polygon _extrude-polygon [& args]
@@ -433,7 +421,6 @@
         (++ pos-count)))
     (++ i))
   (def s (_extrude-polygon pts height plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn rect _rect [& args]
@@ -460,7 +447,6 @@
          (++ pos-count)))
      (++ i))
   (def s (_rect w d (if is-wire 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn circle _circle [& args]
@@ -480,7 +466,6 @@
       (when (= nil r) (set r (args i))))
     (++ i))
   (def s (_circle r (if is-wire 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn polygon _polygon [& args]
@@ -500,7 +485,6 @@
       nil)
     (++ i))
   (def s (_polygon pts (if is-wire 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn text _text [str font size & args]
@@ -519,7 +503,6 @@
       nil)
     (++ i))
   (def s (_text str font size depth (if both 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn text3d _text3d [str font size depth & args]
@@ -537,7 +520,6 @@
       nil)
     (++ i))
   (def s (_text3d str font size depth (if both 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn list-fonts _list-fonts []
@@ -565,7 +547,6 @@
          (++ pos-count)))
      (++ i))
   (def s (_translate shape dx dy dz (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn rotate _rotate [shape & args]
@@ -586,7 +567,6 @@
       nil)
     (++ i))
   (def s (_rotate shape ax ay az angle (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn scale _scale [shape factor & args]
@@ -602,7 +582,6 @@
       nil)
     (++ i))
   (def s (_scale shape factor ox oy oz (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 (wrap-c-fn mirror _mirror [shape ox oy oz dx dy dz & args]
@@ -612,7 +591,6 @@
       :eager (set eager true)
       :hide (set hide true)))
   (def s (_mirror shape ox oy oz dx dy dz (if eager 1 0) (if hide 1 0)))
-  (unless hide (show s))
   s)
 
 # ── Thin C-primitive wrappers ───────────────────────────────────────────────

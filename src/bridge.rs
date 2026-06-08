@@ -299,6 +299,10 @@ unsafe extern "C" {
 
     pub fn rust_list_fonts(count_out: *mut c_int) -> *mut *mut c_char;
     pub fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_int);
+
+    // Highlight functions
+    pub fn rust_highlight_shape(data: *mut c_void);
+    pub fn rust_highlight_clear();
 }
 
 // ── JanetReg struct ───────────────────────────────────────────────────────────

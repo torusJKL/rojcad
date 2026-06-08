@@ -1982,6 +1982,29 @@ pub unsafe extern "C" fn rust_window_maximized_query() -> c_int {
     c_int::from(WINDOW_MAXIMIZED.load(Ordering::SeqCst))
 }
 
+// ── Highlight FFI ────────────────────────────────────────────────────────────
+
+/// Send a highlight command to the viewer for the given shape.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_shape(data: *mut c_void) {
+    if data.is_null() {
+        return;
+    }
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    let id = shape_data.shape_id;
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::HighlightShape { id });
+    }
+}
+
+/// Send a clear-highlight command to the viewer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_clear() {
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::ClearHighlight);
+    }
+}
+
 // ── C bridge registration forward declaration ────────────────────────────────
 
 unsafe extern "C" {
@@ -2187,11 +2210,16 @@ fn main() {
 
     // Embed and run boot.janet (rojcad REPL server)
     let boot_base = include_str!("../boot.janet");
+
+    // Embed and append model.janet (parametric model runtime)
+    let model_base = include_str!("../boot/model.janet");
+    let boot_with_model = format!("{}\n\n{}\n", boot_base, model_base);
+
     let boot_code = if !eval_exprs.is_empty() {
-        // Append --eval expression(s) as raw Janet code at end of boot.janet.
-        format!("{}\n\n{}\n", boot_base, eval_exprs.join("\n"))
+        // Append --eval expression(s) as raw Janet code at end of boot.
+        format!("{}\n\n{}\n", boot_with_model, eval_exprs.join("\n"))
     } else {
-        boot_base.to_string()
+        boot_with_model
     };
     let boot_c = CString::new(boot_code).unwrap_or_else(|_| CString::new("").unwrap());
     let boot_name_c = CString::new("boot.janet").unwrap();
