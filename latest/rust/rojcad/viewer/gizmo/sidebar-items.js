@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["AXIS_LEN","CIRCLE_RADIUS","GIZMO_VIEWPORT_SIZE","HOVER_SCALE","LETTER_DEPTH_BIAS","LINE_WIDTH","SPHERE_LAT","SPHERE_LON"],"fn":["axis_color","build_letter_mesh_3d","generate_cylinder","generate_sphere","to_array"],"struct":["GizmoRenderer","GizmoUniforms","GizmoVertex"]};
