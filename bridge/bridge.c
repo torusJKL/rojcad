@@ -1887,43 +1887,6 @@ JANET_FN(_cad_get_shape_by_id,
     return ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
 }
 
-/* ── CAD function metadata ────────────────────────────────────────────────── */
-
-static const char *cad_fn_categories[][2] = {
-    {"shape-type", "queries"},
-    {"visible?", "queries"},
-    {"purge", "registry"},
-    {"hide", "registry"},
-    {"show", "registry"},
-    {"registry-remove", "registry"},
-    {"write-step", "io"},
-    {"write-stl", "io"},
-    {"read-step", "io"},
-    {"edge-toggle-inactive", "edge-styling"},
-    {"edge-toggle-active", "edge-styling"},
-    {"edge-inactive-show?", "edge-styling"},
-    {"edge-active-show?", "edge-styling"},
-    {"wire?", "queries"},
-    {"face?", "queries"},
-    {"solid?", "queries"},
-    {"stats-overlay", "view"},
-    {"window-help-toggle", "view"},
-    {"window-help-show?", "view"},
-    {"window-help-show", "view"},
-    {"edge-hidden-toggle",     "edge-styling"},
-    {"edge-hidden-show?",      "edge-styling"},
-    {"edge-hidden",            "edge-styling"},
-    {"projection-toggle",      "view"},
-    {"projection-perspective", "view"},
-    {"window-size",            "view"},
-    {"window-size?",           "view"},
-    {"window-fullscreen",      "view"},
-    {"window-fullscreen?",     "view"},
-    {"window-maximized",       "view"},
-    {"window-maximized?",      "view"},
-    {NULL, NULL}
-};
-
 /* ── Registration ───────────────────────────────────────────────────────── */
 
 void cad_register_functions(JanetTable *env) {
@@ -1937,33 +1900,35 @@ void cad_register_functions(JanetTable *env) {
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
     JanetReg cfuns[] = {
-        {"_sphere",                _cad_sphere,                _cad_sphere_docstring_},
+        /* Non-underscore thin primitives — captured by boot.janet */
         {"sphere",                 _cad_sphere,                _cad_sphere_docstring_},
-        {"_cone",                  _cad_cone,                  _cad_cone_docstring_},
-        {"_bx",                    _cad_init_box,              _cad_init_box_docstring_},
-        {"_cb",                    _cad_init_cube,             _cad_init_cube_docstring_},
-        {"_bfc",                   _cad_init_box_from_corners, _cad_init_box_from_corners_docstring_},
-        {"_cy",                    _cad_init_cylinder,         _cad_init_cylinder_docstring_},
-        {"_cyfp",                  _cad_init_cylinder_from_points, _cad_init_cylinder_from_points_docstring_},
-        {"_cydir",                 _cad_init_cylinder_point_dir, _cad_init_cylinder_point_dir_docstring_},
-        {"_tr",                    _cad_init_torus,            _cad_init_torus_docstring_},
         {"cone",                   _cad_cone,                  _cad_cone_docstring_},
         {"cylinder",               _cad_init_cylinder,         _cad_init_cylinder_docstring_},
         {"torus",                  _cad_init_torus,            _cad_init_torus_docstring_},
-        {"_cut",                   _cad_cut,                   _cad_cut_docstring_},
         {"cut",                    _cad_cut,                   _cad_cut_docstring_},
-        {"_common",                _cad_common,                _cad_common_docstring_},
         {"common",                 _cad_common,                _cad_common_docstring_},
-        {"_fuse",                  _cad_fuse,                 _cad_fuse_docstring_},
         {"fuse",                   _cad_fuse,                  _cad_fuse_docstring_},
-        {"_translate",             _cad_translate,             _cad_translate_docstring_},
         {"translate",              _cad_translate,             _cad_translate_docstring_},
-        {"_rotate",                _cad_rotate,                _cad_rotate_docstring_},
         {"rotate",                 _cad_rotate,                _cad_rotate_docstring_},
-        {"_scale",                 _cad_scale,                 _cad_scale_docstring_},
         {"scale",                  _cad_scale,                 _cad_scale_docstring_},
-        {"_mirror",                _cad_mirror,                _cad_mirror_docstring_},
         {"mirror",                 _cad_mirror,                _cad_mirror_docstring_},
+        {"rect",                   _cad_rect,                  _cad_rect_docstring_},
+        {"circle",                 _cad_circle,                _cad_circle_docstring_},
+        {"polygon",                _cad_polygon,               _cad_polygon_docstring_},
+        {"extrude",                _cad_extrude,               _cad_extrude_docstring_},
+        {"revolve",                _cad_revolve,               _cad_revolve_docstring_},
+        {"extrude-polygon",        _cad_extrude_polygon,       _cad_extrude_polygon_docstring_},
+        {"text",                   _cad_text,                  _cad_text_docstring_},
+        {"text3d",                 _cad_text3d,                _cad_text3d_docstring_},
+        {"list-fonts",             _cad_list_fonts,            _cad_list_fonts_docstring_},
+
+        /* Renamed underscore-only primitives — no non-underscore equivalent */
+        {"_init-box",              _cad_init_box,              _cad_init_box_docstring_},
+        {"_init-cube",             _cad_init_cube,             _cad_init_cube_docstring_},
+        {"_init-box-from-corners", _cad_init_box_from_corners, _cad_init_box_from_corners_docstring_},
+        {"_init-cylinder-from-points", _cad_init_cylinder_from_points, _cad_init_cylinder_from_points_docstring_},
+        {"_init-cylinder-point-dir",   _cad_init_cylinder_point_dir, _cad_init_cylinder_point_dir_docstring_},
+
         {"shape-type",             cad_shape_type,             cad_shape_type_docstring_},
 
         {"purge",                  cad_purge,                  cad_purge_docstring_},
@@ -1975,7 +1940,6 @@ void cad_register_functions(JanetTable *env) {
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
         {"quit-requested",         _cad_quit_requested,         _cad_quit_requested_docstring_},
-        {"_quit-requested",        _cad_quit_requested,        _cad_quit_requested_docstring_},
         {"_poll-selection-raw",    _cad_poll_selection_raw,    _cad_poll_selection_raw_docstring_},
         {"_get-selected-ids",      _cad_get_selected_ids,      _cad_get_selected_ids_docstring_},
         {"_get-registered-ids",    _cad_get_registered_ids,    _cad_get_registered_ids_docstring_},
@@ -1987,72 +1951,29 @@ void cad_register_functions(JanetTable *env) {
         {"edge-thickness",         _cad_edge_thickness,         _cad_edge_thickness_docstring_},
         {"edge-color-inactive",    _cad_edge_color_inactive,    _cad_edge_color_inactive_docstring_},
         {"edge-color-active",      _cad_edge_color_active,      _cad_edge_color_active_docstring_},
-        {"_edge-thickness",        _cad_edge_thickness,        _cad_edge_thickness_docstring_},
-        {"_edge-color-inactive",   _cad_edge_color_inactive,   _cad_edge_color_inactive_docstring_},
-        {"_edge-color-active",     _cad_edge_color_active,     _cad_edge_color_active_docstring_},
         {"edge-hidden-toggle",     cad_edge_hidden_toggle,     cad_edge_hidden_toggle_docstring_},
         {"edge-hidden-show?",      cad_edge_hidden_showing,    cad_edge_hidden_showing_docstring_},
         {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
         {"projection-toggle",      cad_projection_toggle,      cad_projection_toggle_docstring_},
         {"projection-perspective", cad_projection_perspective, cad_projection_perspective_docstring_},
-
-        /* Stats overlay */
         {"stats-overlay",          cad_stats_overlay,          cad_stats_overlay_docstring_},
-
-        /* Help overlay */
         {"window-help-toggle",     cad_help_toggle,            cad_help_toggle_docstring_},
         {"window-help-show?",      cad_help_showing,           cad_help_showing_docstring_},
         {"window-help-show",       cad_help_set,               cad_help_set_docstring_},
-
-        /* Window size */
         {"window-size",            cad_window_size,            cad_window_size_docstring_},
         {"window-size?",           cad_window_size_query,      cad_window_size_query_docstring_},
-
-        /* Window fullscreen */
         {"window-fullscreen",      cad_window_fullscreen,      cad_window_fullscreen_docstring_},
         {"window-fullscreen?",     cad_window_fullscreen_query,cad_window_fullscreen_query_docstring_},
-
-        /* Window maximized */
         {"window-maximized",       cad_window_maximized,       cad_window_maximized_docstring_},
         {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
 
-        /* View fit (thin primitives) */
-        {"view-fit",               _cad_view_fit,               _cad_view_fit_docstring_},
-        {"view-fit-all",           _cad_view_fit_all,           _cad_view_fit_all_docstring_},
-        {"_view-fit",              _cad_view_fit,              _cad_view_fit_docstring_},
-        {"_view-fit-all",          _cad_view_fit_all,          _cad_view_fit_all_docstring_},
+        /* Wire operations (non-underscore only) */
+        {"wire-to-face",           _cad_wire_to_face,           _cad_wire_to_face_docstring_},
+        {"wire-fillet",            _cad_wire_fillet,            _cad_wire_fillet_docstring_},
+        {"wire-chamfer",           _cad_wire_chamfer,           _cad_wire_chamfer_docstring_},
+        {"wire-offset",            _cad_wire_offset,            _cad_wire_offset_docstring_},
 
-        /* View angle (thin primitive) */
-        {"view-angle",             _cad_view_angle,             _cad_view_angle_docstring_},
-        {"_view-angle",            _cad_view_angle,            _cad_view_angle_docstring_},
-
-        /* 2D primitives */
-        {"_rect",                  _cad_rect,                  _cad_rect_docstring_},
-        {"rect",                   _cad_rect,                  _cad_rect_docstring_},
-        {"_circle",                _cad_circle,                _cad_circle_docstring_},
-        {"circle",                 _cad_circle,                _cad_circle_docstring_},
-        {"_polygon",               _cad_polygon,               _cad_polygon_docstring_},
-        {"polygon",                _cad_polygon,               _cad_polygon_docstring_},
-
-        /* Extrusion / Revolution */
-        {"_extrude",               _cad_extrude,               _cad_extrude_docstring_},
-        {"extrude",                _cad_extrude,               _cad_extrude_docstring_},
-        {"_revolve",               _cad_revolve,               _cad_revolve_docstring_},
-        {"revolve",                _cad_revolve,               _cad_revolve_docstring_},
-        {"_extrude-polygon",       _cad_extrude_polygon,       _cad_extrude_polygon_docstring_},
-        {"extrude-polygon",        _cad_extrude_polygon,        _cad_extrude_polygon_docstring_},
-
-        /* Wire operations */
-        {"wire-to-face",           _cad_wire_to_face,            _cad_wire_to_face_docstring_},
-        {"wire-fillet",            _cad_wire_fillet,             _cad_wire_fillet_docstring_},
-        {"wire-chamfer",           _cad_wire_chamfer,            _cad_wire_chamfer_docstring_},
-        {"wire-offset",            _cad_wire_offset,             _cad_wire_offset_docstring_},
-        {"_wire-to-face",          _cad_wire_to_face,            _cad_wire_to_face_docstring_},
-        {"_wire-fillet",           _cad_wire_fillet,             _cad_wire_fillet_docstring_},
-        {"_wire-chamfer",          _cad_wire_chamfer,            _cad_wire_chamfer_docstring_},
-        {"_wire-offset",           _cad_wire_offset,             _cad_wire_offset_docstring_},
-
-        /* Sketch */
+        /* Sketch (non-underscore only) */
         {"sketch",                 _cad_sketch,                _cad_sketch_docstring_},
         {"move-to",                _cad_move_to,               _cad_move_to_docstring_},
         {"line-to",                _cad_line_to,               _cad_line_to_docstring_},
@@ -2062,42 +1983,19 @@ void cad_register_functions(JanetTable *env) {
         {"arc-to",                 _cad_arc_to,                _cad_arc_to_docstring_},
         {"close-sketch",           _cad_close_sketch,          _cad_close_sketch_docstring_},
         {"build-wire",             _cad_build_wire,            _cad_build_wire_docstring_},
-        {"_sketch",                _cad_sketch,                _cad_sketch_docstring_},
-        {"_move-to",               _cad_move_to,               _cad_move_to_docstring_},
-        {"_line-to",               _cad_line_to,               _cad_line_to_docstring_},
-        {"_line-dx",               _cad_line_dx,               _cad_line_dx_docstring_},
-        {"_line-dy",               _cad_line_dy,               _cad_line_dy_docstring_},
-        {"_line-dx-dy",            _cad_line_dx_dy,            _cad_line_dx_dy_docstring_},
-        {"_arc-to",                _cad_arc_to,                _cad_arc_to_docstring_},
-        {"_close-sketch",          _cad_close_sketch,          _cad_close_sketch_docstring_},
-        {"_build-wire",            _cad_build_wire,            _cad_build_wire_docstring_},
 
         /* Helper queries */
         {"wire?",                  cad_wire_q,                 cad_wire_q_docstring_},
         {"face?",                  cad_face_q,                 cad_face_q_docstring_},
         {"solid?",                 cad_solid_q,                cad_solid_q_docstring_},
 
-        /* Text */
-        {"_text",                  _cad_text,                  _cad_text_docstring_},
-        {"text",                   _cad_text,                  _cad_text_docstring_},
-        {"_text3d",                _cad_text3d,                _cad_text3d_docstring_},
-        {"text3d",                 _cad_text3d,                _cad_text3d_docstring_},
-        {"_list-fonts",            _cad_list_fonts,            _cad_list_fonts_docstring_},
-        {"list-fonts",             _cad_list_fonts,            _cad_list_fonts_docstring_},
+        /* View controls (non-underscore only) */
+        {"view-fit",               _cad_view_fit,               _cad_view_fit_docstring_},
+        {"view-fit-all",           _cad_view_fit_all,           _cad_view_fit_all_docstring_},
+        {"view-angle",             _cad_view_angle,             _cad_view_angle_docstring_},
+
         {NULL, NULL, NULL}
     };
 
     janet_cfuns(env, NULL, cfuns);
-
-    /* Tag each CAD function with :source (for cad-fns filtering) and
-     * :category (for group display) metadata. */
-    for (int32_t i = 0; cad_fn_categories[i][0] != NULL; i++) {
-        Janet sym = janet_csymbolv(cad_fn_categories[i][0]);
-        Janet binding = janet_table_get(env, sym);
-        if (janet_checktype(binding, JANET_TABLE)) {
-            JanetTable *t = janet_unwrap_table(binding);
-            janet_table_put(t, janet_ckeywordv("source"), janet_cstringv("rojcad"));
-            janet_table_put(t, janet_ckeywordv("category"), janet_cstringv(cad_fn_categories[i][1]));
-        }
-    }
 }

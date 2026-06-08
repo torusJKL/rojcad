@@ -227,11 +227,11 @@
 
 # ── Complex wrappers (box, cylinder, torus) ─────────────────────────
 
-(var _init_box (get core-env '_bx))
+(var _init_box (get core-env '_init-box))
 (if (= :table (type _init_box)) (set _init_box (get _init_box :value)))
-(var _init_cube (get core-env '_cb))
+(var _init_cube (get core-env '_init-cube))
 (if (= :table (type _init_cube)) (set _init_cube (get _init_cube :value)))
-(var _init_box_from_corners (get core-env '_bfc))
+(var _init_box_from_corners (get core-env '_init-box-from-corners))
 (if (= :table (type _init_box_from_corners)) (set _init_box_from_corners (get _init_box_from_corners :value)))
 (put core-env 'box @{:value (fn [& args]
   (var cx nil) (var cy nil) (var cz nil)
@@ -288,11 +288,11 @@
 (put (get core-env 'box) :source "rojcad")
 (put (get core-env 'box) :category "primitives")
 
-(var _init_cylinder (get core-env '_cy))
+(var _init_cylinder (get core-env 'cylinder))
 (if (= :table (type _init_cylinder)) (set _init_cylinder (get _init_cylinder :value)))
-(var _init_cylinder_from_points (get core-env '_cyfp))
+(var _init_cylinder_from_points (get core-env '_init-cylinder-from-points))
 (if (= :table (type _init_cylinder_from_points)) (set _init_cylinder_from_points (get _init_cylinder_from_points :value)))
-(var _init_cylinder_point_dir (get core-env '_cydir))
+(var _init_cylinder_point_dir (get core-env '_init-cylinder-point-dir))
 (if (= :table (type _init_cylinder_point_dir)) (set _init_cylinder_point_dir (get _init_cylinder_point_dir :value)))
 (put core-env 'cylinder @{:value (fn [& args]
   (var cx nil) (var cy nil) (var cz nil)
@@ -349,7 +349,7 @@
 (put (get core-env 'cylinder) :source "rojcad")
 (put (get core-env 'cylinder) :category "primitives")
 
-(var _init_torus (get core-env '_tr))
+(var _init_torus (get core-env 'torus))
 (if (= :table (type _init_torus)) (set _init_torus (get _init_torus :value)))
 (put core-env 'torus @{:value (fn [& args]
   (var cx nil) (var cy nil) (var cz nil)
@@ -1056,13 +1056,45 @@
 (put (get core-env 'read-step) :source "rojcad")
 (put (get core-env 'read-step) :category "io")
 
-(put (get core-env 'view-fit) :source "rojcad")
-(put (get core-env 'view-fit) :category "view")
-
-(put (get core-env 'view-fit-all) :source "rojcad")
-(put (get core-env 'view-fit-all) :category "view")
-
 # view-angle metadata is set below with the presets
+
+# ── rojcad metadata ───────────────────────────────────────────────────────
+# Replaces removed C cad_fn_categories table + adds metadata for wrappers.
+
+(def rojcad-groups
+  {"primitives" [sphere cone cylinder torus]
+   "booleans" [cut common fuse]
+   "transforms" [translate rotate scale mirror]
+   "2d-primitives" [rect circle polygon]
+   "operations" [extrude revolve extrude-polygon]
+   "text" [text text3d list-fonts]
+   "wire-operations" [wire-to-face wire-fillet wire-chamfer wire-offset]
+   "sketch" [sketch move-to line-to line-dx line-dy
+             line-dx-dy arc-to close-sketch build-wire]
+   "view" [view-fit view-fit-all
+           projection-toggle projection-perspective stats-overlay
+           window-help-toggle window-help-show? window-help-show
+           window-size window-size? window-fullscreen
+           window-fullscreen? window-maximized window-maximized?]
+   "queries" [shape-type visible? wire? face? solid?]
+   "registry" [purge hide show registry-remove]
+   "edge-styling" [edge-toggle-inactive edge-toggle-active
+                   edge-inactive-show? edge-active-show?
+                   edge-hidden-toggle edge-hidden-show? edge-hidden]})
+
+(var gk (next rojcad-groups nil))
+(while gk
+  (def cat gk)
+  (def syms (get rojcad-groups gk))
+  (var i 0)
+  (def n (length syms))
+  (while (< i n)
+    (def t (get core-env (syms i)))
+    (when (= :table (type t))
+      (put t :source "rojcad")
+      (put t :category cat))
+    (set i (+ i 1)))
+  (set gk (next rojcad-groups gk)))
 
 # ── Display helper (array-aware string conversion) ─────────────────────────
 
