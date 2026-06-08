@@ -262,6 +262,131 @@
 (put (get core-env 'window-maximized?) :value
   (fn [] (_window-maximized?)))
 
+# ── Sketch wrappers ──────────────────────────────────────────────────────────
+# Replace C user-facing names with Janet wrappers for docstrings.
+# The C thin primitives are registered under both the user-facing name
+# and the _-prefixed name for internal use.
+
+(def _sketch ((get core-env 'sketch) :value))
+(put (get core-env 'sketch) :value
+  (fn [&keys {:plane plane :at at}]
+    (def args @[])
+    (if plane (do (array/push args :plane) (array/push args plane)))
+    (if at (do (array/push args :at) (array/push args at)))
+    (apply _sketch args)))
+(put (get core-env 'sketch) :doc
+  "(sketch &keys :plane :at)\n\nCreate a new sketch on a workplane.\nKeywords: :plane (keyword, default :xy), :at (array [x y z]).\nReturns a rojcad/sketch abstract value.\n\nExamples:\n  (sketch)\n  (sketch :plane :xz :at [10 0 5])")
+
+(def _move-to ((get core-env 'move-to) :value))
+(put (get core-env 'move-to) :value
+  (fn [sketch x y] (_move-to sketch x y)))
+(put (get core-env 'move-to) :doc
+  "(move-to sketch x y)\n\nMove the sketch cursor to (x, y) without drawing.\nReturns a new sketch.")
+
+(def _line-to ((get core-env 'line-to) :value))
+(put (get core-env 'line-to) :value
+  (fn [sketch x y] (_line-to sketch x y)))
+(put (get core-env 'line-to) :doc
+  "(line-to sketch x y)\n\nDraw a line from current cursor to (x, y).\nReturns a new sketch.")
+
+(def _line-dx ((get core-env 'line-dx) :value))
+(put (get core-env 'line-dx) :value
+  (fn [sketch dx] (_line-dx sketch dx)))
+(put (get core-env 'line-dx) :doc
+  "(line-dx sketch dx)\n\nDraw a horizontal line by dx units.\nReturns a new sketch.")
+
+(def _line-dy ((get core-env 'line-dy) :value))
+(put (get core-env 'line-dy) :value
+  (fn [sketch dy] (_line-dy sketch dy)))
+(put (get core-env 'line-dy) :doc
+  "(line-dy sketch dy)\n\nDraw a vertical line by dy units.\nReturns a new sketch.")
+
+(def _line-dx-dy ((get core-env 'line-dx-dy) :value))
+(put (get core-env 'line-dx-dy) :value
+  (fn [sketch dx dy] (_line-dx-dy sketch dx dy)))
+(put (get core-env 'line-dx-dy) :doc
+  "(line-dx-dy sketch dx dy)\n\nDraw a line by (dx, dy) offset.\nReturns a new sketch.")
+
+(def _arc-to ((get core-env 'arc-to) :value))
+(put (get core-env 'arc-to) :value
+  (fn [sketch x2 y2 x3 y3] (_arc-to sketch x2 y2 x3 y3)))
+(put (get core-env 'arc-to) :doc
+  "(arc-to sketch x2 y2 x3 y3)\n\nDraw a circular arc through (x2, y2) to (x3, y3).\nReturns a new sketch.")
+
+(def _close-sketch ((get core-env 'close-sketch) :value))
+(put (get core-env 'close-sketch) :value
+  (fn [sketch &keys {:eager eager :hide hide}]
+    (def args @[sketch])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _close-sketch args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'close-sketch) :doc
+  "(close-sketch sketch &keys :eager :hide)\n\nClose the sketch and return a Face.\nKeywords: :eager, :hide\n\nExamples:\n  (-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))")
+
+(def _build-wire ((get core-env 'build-wire) :value))
+(put (get core-env 'build-wire) :value
+  (fn [sketch &keys {:eager eager :hide hide}]
+    (def args @[sketch])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _build-wire args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'build-wire) :doc
+  "(build-wire sketch &keys :eager :hide)\n\nReturn the sketch as an unclosed Wire.\nKeywords: :eager, :hide\n\nExamples:\n  (-> (sketch) (line-to 10 0) (line-to 10 10) (build-wire))")
+
+# ── Wire operation wrappers ──────────────────────────────────────────────────
+
+(def _wire-to-face ((get core-env 'wire-to-face) :value))
+(put (get core-env 'wire-to-face) :value
+  (fn [wire &keys {:eager eager :hide hide}]
+    (def args @[wire])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _wire-to-face args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'wire-to-face) :doc
+  "(wire-to-face wire &keys :eager :hide)\n\nConvert a Wire into a Face by filling its boundary.\nKeywords: :eager, :hide\n\nExamples:\n  (wire-to-face my-wire)")
+
+(def _wire-fillet ((get core-env 'wire-fillet) :value))
+(put (get core-env 'wire-fillet) :value
+  (fn [wire &keys {:r r :eager eager :hide hide}]
+    (def args @[wire :r (if r r 0)])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _wire-fillet args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'wire-fillet) :doc
+  "(wire-fillet wire &keys :r :eager :hide)\n\nRound all vertices of a closed Wire by radius :r.\nKeywords: :r (required), :eager, :hide\n\nExamples:\n  (wire-fillet my-wire :r 2)")
+
+(def _wire-chamfer ((get core-env 'wire-chamfer) :value))
+(put (get core-env 'wire-chamfer) :value
+  (fn [wire &keys {:d d :eager eager :hide hide}]
+    (def args @[wire :d (if d d 0)])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _wire-chamfer args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'wire-chamfer) :doc
+  "(wire-chamfer wire &keys :d :eager :hide)\n\nBevel all vertices of a closed Wire by distance :d.\nKeywords: :d (required), :eager, :hide\n\nExamples:\n  (wire-chamfer my-wire :d 2)")
+
+(def _wire-offset ((get core-env 'wire-offset) :value))
+(put (get core-env 'wire-offset) :value
+  (fn [wire &keys {:d d :eager eager :hide hide}]
+    (def args @[wire :d (if d d 0)])
+    (if eager (array/push args :eager))
+    (if hide (array/push args :hide))
+    (def s (apply _wire-offset args))
+    (if hide (hide s))
+    s))
+(put (get core-env 'wire-offset) :doc
+  "(wire-offset wire &keys :d :eager :hide)\n\nCreate a parallel offset of a closed Wire by distance :d.\nKeywords: :d (required), :eager, :hide\n\nExamples:\n  (wire-offset my-wire :d 2)")
+
 # ── I/O wrappers ────────────────────────────────────────────────────────────
 
 (def _write-step ((get core-env 'write-step) :value))
@@ -280,7 +405,7 @@
 
 (def _read-step ((get core-env 'read-step) :value))
 (put (get core-env 'read-step) :value
-  (fn [path &keys :eager :hide]
+  (fn [path &keys {:eager eager :hide hide}]
     (def s (_read-step path (if eager true false)))
     (if hide (hide s))
     s))
@@ -293,20 +418,20 @@
 
 # ── Quit & Selection wrappers ────────────────────────────────────────────────
 
-(def _quit-requested ((get core-env '_quit-requested) :value))
+(def _quit-requested ((get core-env 'quit-requested) :value))
 (put (get core-env 'quit-requested) :value
   (fn [] (_quit-requested)))
 
-(put (get core-env 'on-select) :value
-  (fn [callback]
-    (if (or (= nil callback) (= :function (type callback)))
-      (set *on-select-callback* callback)
-      (error "on-select expects a function or nil"))
-    nil))
+(put core-env 'on-select @{:value (fn [callback]
+    (if (= nil callback)
+      (set *on-select-callback* nil)
+      (if (= :function (type callback))
+        (set *on-select-callback* callback)
+        (error "on-select expects a function or nil")))
+    nil)})
 
 (def _poll-selection-raw ((get core-env '_poll-selection-raw) :value))
-(put (get core-env 'poll-selection) :value
-  (fn []
+(put core-env 'poll-selection @{:value (fn []
     (def raw (_poll-selection-raw))
     (if (= nil raw)
       nil
@@ -321,29 +446,31 @@
               id)))
         (if (not= nil *on-select-callback*)
           (*on-select-callback* event))
-        event))))
+        event)))})
 
 # ── Shape query wrappers ─────────────────────────────────────────────────────
 
 (def _get-selected-ids ((get core-env '_get-selected-ids) :value))
 (def _get-shape ((get core-env '_get-shape) :value))
-(put (get core-env 'selected-shapes) :value
-  (fn []
+(put core-env 'selected-shapes @{:value (fn []
     (def ids (_get-selected-ids))
     (def result @[])
-    (each id ids
-      (array/push result (_get-shape id)))
-    (tuple/slice result)))
+    (var i 0) (def n (length ids))
+    (while (< i n)
+      (array/push result (_get-shape (ids i)))
+      (set i (+ i 1)))
+    (tuple/slice result))})
 
 (def _get-registered-ids ((get core-env '_get-registered-ids) :value))
-(put (get core-env 'list-shapes) :value
-  (fn [&keys :visible :hidden]
+(put core-env 'list-shapes @{:value (fn [&keys {:visible visible :hidden hidden}]
     (def filter (if hidden 2 (if visible 1 0)))
     (def ids (_get-registered-ids filter))
     (def result @[])
-    (each id ids
-      (array/push result (_get-shape id)))
-    (tuple/slice result)))
+    (var j 0) (def m (length ids))
+    (while (< j m)
+      (array/push result (_get-shape (ids j)))
+      (set j (+ j 1)))
+    (tuple/slice result))})
 
 # ── Edge styling wrappers ────────────────────────────────────────────────────
 
@@ -377,7 +504,7 @@
 
 (def _view-fit-all ((get core-env '_view-fit-all) :value))
 (put (get core-env 'view-fit-all) :value
-  (fn [&keys :hidden :reset]
+  (fn [&keys {:hidden hidden :reset reset}]
     (def args @[])
     (if hidden (array/push args :hidden))
     (if reset (array/push args :reset))
@@ -1123,6 +1250,36 @@
           "Examples:\n"
           "  (view-iso)\n"
           "  (view-iso 150)"))
+
+# Sketch metadata
+(put (get core-env 'sketch) :source "rojcad")
+(put (get core-env 'sketch) :category "sketch")
+(put (get core-env 'move-to) :source "rojcad")
+(put (get core-env 'move-to) :category "sketch")
+(put (get core-env 'line-to) :source "rojcad")
+(put (get core-env 'line-to) :category "sketch")
+(put (get core-env 'line-dx) :source "rojcad")
+(put (get core-env 'line-dx) :category "sketch")
+(put (get core-env 'line-dy) :source "rojcad")
+(put (get core-env 'line-dy) :category "sketch")
+(put (get core-env 'line-dx-dy) :source "rojcad")
+(put (get core-env 'line-dx-dy) :category "sketch")
+(put (get core-env 'arc-to) :source "rojcad")
+(put (get core-env 'arc-to) :category "sketch")
+(put (get core-env 'close-sketch) :source "rojcad")
+(put (get core-env 'close-sketch) :category "sketch")
+(put (get core-env 'build-wire) :source "rojcad")
+(put (get core-env 'build-wire) :category "sketch")
+
+# Wire operation metadata
+(put (get core-env 'wire-to-face) :source "rojcad")
+(put (get core-env 'wire-to-face) :category "wire-operations")
+(put (get core-env 'wire-fillet) :source "rojcad")
+(put (get core-env 'wire-fillet) :category "wire-operations")
+(put (get core-env 'wire-chamfer) :source "rojcad")
+(put (get core-env 'wire-chamfer) :category "wire-operations")
+(put (get core-env 'wire-offset) :source "rojcad")
+(put (get core-env 'wire-offset) :category "wire-operations")
 
 (def poll-viewer (fn []
   (while true

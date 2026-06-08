@@ -1827,11 +1827,9 @@ JANET_FN(cad_extrude_polygon,
 
 // ── Wire Operations ───────────────────────────────────────────────────────
 
-JANET_FN(cad_wire_to_face,
-         "(wire-to-face wire &keys :eager :hide)",
-         "Convert a Wire shape into a Face by filling its boundary.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (FACE).")
+JANET_FN(_cad_wire_to_face,
+         "(_wire-to-face wire &keys :eager :hide)",
+         "")
 {
     janet_arity(argc, 1, 2);
     int eager = has_eager(argv, argc);
@@ -1842,11 +1840,9 @@ JANET_FN(cad_wire_to_face,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_fillet,
-         "(wire-fillet wire &keys :r :eager :hide)",
-         "Round all vertices of a closed Wire by a radius.\n\n"
-         "Keywords: :r (radius, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_fillet,
+         "(_wire-fillet wire &keys :r :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1860,11 +1856,9 @@ JANET_FN(cad_wire_fillet,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_chamfer,
-         "(wire-chamfer wire &keys :d :eager :hide)",
-         "Bevel all vertices of a closed Wire by a distance.\n\n"
-         "Keywords: :d (distance, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_chamfer,
+         "(_wire-chamfer wire &keys :d :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1878,11 +1872,9 @@ JANET_FN(cad_wire_chamfer,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_offset,
-         "(wire-offset wire &keys :d :eager :hide)",
-         "Create a parallel offset of a closed Wire by a distance.\n\n"
-         "Keywords: :d (distance, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_offset,
+         "(_wire-offset wire &keys :d :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1898,17 +1890,9 @@ JANET_FN(cad_wire_offset,
 
 // ── Sketch ────────────────────────────────────────────────────────────────
 
-JANET_FN(cad_sketch,
-         "(sketch &keys :plane :at)",
-         "Create a new sketch on a workplane.\n\n"
-         "Keywords: :plane (workplane, default :xy), :at (position [x y z]).\n\n"
-         "Returns a rojcad/sketch abstract value. Each sketch operation returns\n"
-         "a new sketch — no mutation.\n\n"
-         "Examples:\n"
-         "  (sketch)                              — XY plane at origin\n"
-         "  (sketch :plane :xz :at [10 0 5])      — XZ plane at [10, 0, 5]\n\n"
-         "Combine with -> for threading:\n"
-         "  (-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))")
+JANET_FN(_cad_sketch,
+         "(_sketch &keys :plane :at)",
+         "")
 {
     double ax, ay, az;
     int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
@@ -1938,27 +1922,27 @@ static Janet sketch_op(Janet sketch_val, void (*op)(void *, void *, double, doub
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_move_to,
-         "(move-to sketch x y)",
-         "Move the sketch cursor to (x, y) without drawing. Returns a new sketch.")
+JANET_FN(_cad_move_to,
+         "(_move-to sketch x y)",
+         "")
 {
     janet_arity(argc, 3, 3);
     return sketch_op(argv[0], rust_sketch_move_to,
                      janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
 }
 
-JANET_FN(cad_line_to,
-         "(line-to sketch x y)",
-         "Draw a line from the current cursor to (x, y). Returns a new sketch.")
+JANET_FN(_cad_line_to,
+         "(_line-to sketch x y)",
+         "")
 {
     janet_arity(argc, 3, 3);
     return sketch_op(argv[0], rust_sketch_line_to,
                      janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
 }
 
-JANET_FN(cad_line_dx,
-         "(line-dx sketch dx)",
-         "Draw a horizontal line by dx units. Returns a new sketch.")
+JANET_FN(_cad_line_dx,
+         "(_line-dx sketch dx)",
+         "")
 {
     janet_arity(argc, 2, 2);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -1967,9 +1951,9 @@ JANET_FN(cad_line_dx,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_line_dy,
-         "(line-dy sketch dy)",
-         "Draw a vertical line by dy units. Returns a new sketch.")
+JANET_FN(_cad_line_dy,
+         "(_line-dy sketch dy)",
+         "")
 {
     janet_arity(argc, 2, 2);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -1978,9 +1962,9 @@ JANET_FN(cad_line_dy,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_line_dx_dy,
-         "(line-dx-dy sketch dx dy)",
-         "Draw a line by (dx, dy) offset. Returns a new sketch.")
+JANET_FN(_cad_line_dx_dy,
+         "(_line-dx-dy sketch dx dy)",
+         "")
 {
     janet_arity(argc, 3, 3);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -1991,10 +1975,9 @@ JANET_FN(cad_line_dx_dy,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_arc_to,
-         "(arc-to sketch x2 y2 x3 y3)",
-         "Draw a circular arc from current cursor through (x2, y2) to (x3, y3). "
-         "Returns a new sketch.")
+JANET_FN(_cad_arc_to,
+         "(_arc-to sketch x2 y2 x3 y3)",
+         "")
 {
     janet_arity(argc, 5, 5);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2007,11 +1990,9 @@ JANET_FN(cad_arc_to,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_close_sketch,
-         "(close-sketch sketch &keys :eager :hide)",
-         "Close the sketch and return a Face. Adds a closing edge if needed.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (FACE).")
+JANET_FN(_cad_close_sketch,
+         "(_close-sketch sketch &keys :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2022,11 +2003,9 @@ JANET_FN(cad_close_sketch,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_build_wire,
-         "(build-wire sketch &keys :eager :hide)",
-         "Return the sketch as an unclosed Wire. Does not close the loop.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_build_wire,
+         "(_build-wire sketch &keys :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2313,19 +2292,7 @@ static const char *cad_fn_categories[][2] = {
     {"extrude", "operations"},
     {"revolve", "operations"},
     {"extrude-polygon", "operations"},
-    {"wire-to-face", "wire-operations"},
-    {"wire-fillet", "wire-operations"},
-    {"wire-chamfer", "wire-operations"},
-    {"wire-offset", "wire-operations"},
-    {"sketch", "sketch"},
-    {"move-to", "sketch"},
-    {"line-to", "sketch"},
-    {"line-dx", "sketch"},
-    {"line-dy", "sketch"},
-    {"line-dx-dy", "sketch"},
-    {"arc-to", "sketch"},
-    {"close-sketch", "sketch"},
-    {"build-wire", "sketch"},
+
     {"wire?", "queries"},
     {"face?", "queries"},
     {"solid?", "queries"},
@@ -2387,6 +2354,7 @@ void cad_register_functions(JanetTable *env) {
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
+        {"quit-requested",         _cad_quit_requested,         _cad_quit_requested_docstring_},
         {"_quit-requested",        _cad_quit_requested,        _cad_quit_requested_docstring_},
         {"_poll-selection-raw",    _cad_poll_selection_raw,    _cad_poll_selection_raw_docstring_},
         {"_get-selected-ids",      _cad_get_selected_ids,      _cad_get_selected_ids_docstring_},
@@ -2396,6 +2364,9 @@ void cad_register_functions(JanetTable *env) {
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},
         {"edge-inactive-show?",    cad_edge_inactive_showing,  cad_edge_inactive_showing_docstring_},
         {"edge-active-show?",      cad_edge_active_showing,    cad_edge_active_showing_docstring_},
+        {"edge-thickness",         _cad_edge_thickness,         _cad_edge_thickness_docstring_},
+        {"edge-color-inactive",    _cad_edge_color_inactive,    _cad_edge_color_inactive_docstring_},
+        {"edge-color-active",      _cad_edge_color_active,      _cad_edge_color_active_docstring_},
         {"_edge-thickness",        _cad_edge_thickness,        _cad_edge_thickness_docstring_},
         {"_edge-color-inactive",   _cad_edge_color_inactive,   _cad_edge_color_inactive_docstring_},
         {"_edge-color-active",     _cad_edge_color_active,     _cad_edge_color_active_docstring_},
@@ -2426,10 +2397,13 @@ void cad_register_functions(JanetTable *env) {
         {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
 
         /* View fit (thin primitives) */
+        {"view-fit",               _cad_view_fit,               _cad_view_fit_docstring_},
+        {"view-fit-all",           _cad_view_fit_all,           _cad_view_fit_all_docstring_},
         {"_view-fit",              _cad_view_fit,              _cad_view_fit_docstring_},
         {"_view-fit-all",          _cad_view_fit_all,          _cad_view_fit_all_docstring_},
 
         /* View angle (thin primitive) */
+        {"view-angle",             _cad_view_angle,             _cad_view_angle_docstring_},
         {"_view-angle",            _cad_view_angle,            _cad_view_angle_docstring_},
 
         /* 2D primitives */
@@ -2443,21 +2417,34 @@ void cad_register_functions(JanetTable *env) {
         {"extrude-polygon",        cad_extrude_polygon,        cad_extrude_polygon_docstring_},
 
         /* Wire operations */
-        {"wire-to-face",           cad_wire_to_face,           cad_wire_to_face_docstring_},
-        {"wire-fillet",            cad_wire_fillet,            cad_wire_fillet_docstring_},
-        {"wire-chamfer",           cad_wire_chamfer,           cad_wire_chamfer_docstring_},
-        {"wire-offset",            cad_wire_offset,            cad_wire_offset_docstring_},
+        {"wire-to-face",           _cad_wire_to_face,            _cad_wire_to_face_docstring_},
+        {"wire-fillet",            _cad_wire_fillet,             _cad_wire_fillet_docstring_},
+        {"wire-chamfer",           _cad_wire_chamfer,            _cad_wire_chamfer_docstring_},
+        {"wire-offset",            _cad_wire_offset,             _cad_wire_offset_docstring_},
+        {"_wire-to-face",          _cad_wire_to_face,            _cad_wire_to_face_docstring_},
+        {"_wire-fillet",           _cad_wire_fillet,             _cad_wire_fillet_docstring_},
+        {"_wire-chamfer",          _cad_wire_chamfer,            _cad_wire_chamfer_docstring_},
+        {"_wire-offset",           _cad_wire_offset,             _cad_wire_offset_docstring_},
 
         /* Sketch */
-        {"sketch",                 cad_sketch,                 cad_sketch_docstring_},
-        {"move-to",                cad_move_to,                cad_move_to_docstring_},
-        {"line-to",                cad_line_to,                cad_line_to_docstring_},
-        {"line-dx",                cad_line_dx,                cad_line_dx_docstring_},
-        {"line-dy",                cad_line_dy,                cad_line_dy_docstring_},
-        {"line-dx-dy",             cad_line_dx_dy,             cad_line_dx_dy_docstring_},
-        {"arc-to",                 cad_arc_to,                 cad_arc_to_docstring_},
-        {"close-sketch",           cad_close_sketch,           cad_close_sketch_docstring_},
-        {"build-wire",             cad_build_wire,             cad_build_wire_docstring_},
+        {"sketch",                 _cad_sketch,                _cad_sketch_docstring_},
+        {"move-to",                _cad_move_to,               _cad_move_to_docstring_},
+        {"line-to",                _cad_line_to,               _cad_line_to_docstring_},
+        {"line-dx",                _cad_line_dx,               _cad_line_dx_docstring_},
+        {"line-dy",                _cad_line_dy,               _cad_line_dy_docstring_},
+        {"line-dx-dy",             _cad_line_dx_dy,            _cad_line_dx_dy_docstring_},
+        {"arc-to",                 _cad_arc_to,                _cad_arc_to_docstring_},
+        {"close-sketch",           _cad_close_sketch,          _cad_close_sketch_docstring_},
+        {"build-wire",             _cad_build_wire,            _cad_build_wire_docstring_},
+        {"_sketch",                _cad_sketch,                _cad_sketch_docstring_},
+        {"_move-to",               _cad_move_to,               _cad_move_to_docstring_},
+        {"_line-to",               _cad_line_to,               _cad_line_to_docstring_},
+        {"_line-dx",               _cad_line_dx,               _cad_line_dx_docstring_},
+        {"_line-dy",               _cad_line_dy,               _cad_line_dy_docstring_},
+        {"_line-dx-dy",            _cad_line_dx_dy,            _cad_line_dx_dy_docstring_},
+        {"_arc-to",                _cad_arc_to,                _cad_arc_to_docstring_},
+        {"_close-sketch",          _cad_close_sketch,          _cad_close_sketch_docstring_},
+        {"_build-wire",            _cad_build_wire,            _cad_build_wire_docstring_},
 
         /* Helper queries */
         {"wire?",                  cad_wire_q,                 cad_wire_q_docstring_},
