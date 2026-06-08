@@ -1454,62 +1454,43 @@ JANET_FN(_cad_edge_color_active,
 
 JANET_FN(cad_write_step,
          "(write-step shape path)",
-         "Export a shape to a STEP file at the given path. "
-         "Returns nil on success, signals an error on failure.")
+         "")
 {
     janet_arity(argc, 2, 2);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    if (!janet_checktype(argv[1], JANET_STRING)) {
-        janet_panic("write-step: path must be a string");
-    }
     const uint8_t *path_bytes = janet_unwrap_string(argv[1]);
-    const char *path = (const char *)path_bytes;
-
-    int result = rust_write_step(data, path);
+    int result = rust_write_step(data, (const char *)path_bytes);
     if (result != 0) {
-        janet_panic("STEP export failed");
+        const char *msg = rust_take_last_error();
+        janet_panic(msg);
     }
     return janet_wrap_nil();
 }
 
 JANET_FN(cad_write_stl,
          "(write-stl shape path)",
-         "Export a shape to an STL file at the given path. "
-         "Returns nil on success, signals an error on failure.")
+         "")
 {
     janet_arity(argc, 2, 2);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    if (!janet_checktype(argv[1], JANET_STRING)) {
-        janet_panic("write-stl: path must be a string");
-    }
     const uint8_t *path_bytes = janet_unwrap_string(argv[1]);
-    const char *path = (const char *)path_bytes;
-
-    int result = rust_write_stl(data, path);
+    int result = rust_write_stl(data, (const char *)path_bytes);
     if (result != 0) {
-        janet_panic("STL export failed");
+        const char *msg = rust_take_last_error();
+        janet_panic(msg);
     }
     return janet_wrap_nil();
 }
 
 JANET_FN(cad_read_step,
-         "(read-step path &keys :eager :hide)",
-         "Read a STEP file from disk and return a shape.\n\n"
-         "Example:\n"
-         "  (read-step \"/tmp/model.step\")       — load from file\n"
-         "  (read-step \"/tmp/model.step\" :eager) — load and tessellate\n\n"
-         "Returns a rojcad/shape abstract value. Signals an error on failure.")
+         "(read-step path eager)",
+         "")
 {
-    janet_arity(argc, 1, 1);
-    if (!janet_checktype(argv[0], JANET_STRING)) {
-        janet_panic("read-step: path must be a string");
-    }
+    janet_arity(argc, 2, 2);
     const uint8_t *path_bytes = janet_unwrap_string(argv[0]);
-    const char *path = (const char *)path_bytes;
-    int eager = has_eager(argv, argc);
+    int eager = janet_truthy(argv[1]);
     void *shape = alloc_shape();
-    CAD_CHECK(rust_init_read_step(shape, path, eager));
-    maybe_hide(shape, argv, argc);
+    CAD_CHECK(rust_init_read_step(shape, (const char *)path_bytes, eager));
     return janet_wrap_abstract(shape);
 }
 

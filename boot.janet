@@ -262,6 +262,31 @@
 (put (get core-env 'window-maximized?) :value
   (fn [] (_window-maximized?)))
 
+# ── I/O wrappers ────────────────────────────────────────────────────────────
+
+(def _write-step ((get core-env 'write-step) :value))
+(put (get core-env 'write-step) :value
+  (fn [shape path]
+    (_write-step shape path)))
+(put (get core-env 'write-step) :doc
+  "(write-step shape path)\n\nExport a shape to a STEP file at the given path.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step my-shape \"/tmp/model.step\")")
+
+(def _write-stl ((get core-env 'write-stl) :value))
+(put (get core-env 'write-stl) :value
+  (fn [shape path]
+    (_write-stl shape path)))
+(put (get core-env 'write-stl) :doc
+  "(write-stl shape path)\n\nExport a shape to an STL file at the given path.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-stl my-shape \"/tmp/model.stl\")")
+
+(def _read-step ((get core-env 'read-step) :value))
+(put (get core-env 'read-step) :value
+  (fn [path &keys :eager :hide]
+    (def s (_read-step path (if eager true false)))
+    (if hide (hide s))
+    s))
+(put (get core-env 'read-step) :doc
+  "(read-step path &keys :eager :hide)\n\nRead a STEP file from disk and return a shape.\n\nExamples:\n  (read-step \"/tmp/model.step\")       -- load from file\n  (read-step \"/tmp/model.step\" :eager) -- load and tessellate\n  (read-step \"/tmp/model.step\" :hide)  -- load without showing\n\nReturns a rojcad/shape abstract value. Signals an error on failure.")
+
 # ── Selection callback storage ──────────────────────────────────────────────
 
 (var *on-select-callback* nil)
@@ -390,6 +415,15 @@
 
 (put (get core-env 'edge-color-active) :source "rojcad")
 (put (get core-env 'edge-color-active) :category "edge-styling")
+
+(put (get core-env 'write-step) :source "rojcad")
+(put (get core-env 'write-step) :category "io")
+
+(put (get core-env 'write-stl) :source "rojcad")
+(put (get core-env 'write-stl) :category "io")
+
+(put (get core-env 'read-step) :source "rojcad")
+(put (get core-env 'read-step) :category "io")
 
 (put (get core-env 'view-fit) :source "rojcad")
 (put (get core-env 'view-fit) :category "view")

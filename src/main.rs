@@ -1520,7 +1520,10 @@ pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char)
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_step(shape_data, &path_str) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(msg) => {
+            set_last_error(msg);
+            1
+        }
     }
 }
 
@@ -1533,7 +1536,10 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_stl(shape_data, &path_str) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(msg) => {
+            set_last_error(msg);
+            1
+        }
     }
 }
 
