@@ -6,10 +6,10 @@ use std::f64::consts::TAU;
 
 use glam::{DQuat, DVec3};
 use opencascade::angle::Angle;
-use opencascade::primitives::{Face, JoinType, Shape, ShapeType, Solid, Wire};
+use opencascade::primitives::{Compound, Face, JoinType, Shape, ShapeType, Solid, Wire};
 use opencascade::workplane::Workplane;
 
-use crate::types::{MeshData, ShapeData};
+use crate::types::{MeshData, ShapeData, global_shape_registry};
 
 /// Extract tessellated mesh data from an OCCT shape.
 pub fn extract_mesh(shape: &Shape) -> Option<MeshData> {
@@ -396,6 +396,33 @@ pub fn fuse(a: &ShapeData, b: &ShapeData, eager: bool) -> Result<ShapeData, Stri
         sd.tessellate_if_needed();
     }
     Ok(sd)
+}
+
+/// Group 2+ shapes into an OCCT Compound (lightweight topological container).
+pub fn make_compound(shapes: &[&ShapeData], eager: bool) -> Result<ShapeData, String> {
+    if shapes.len() < 2 {
+        return Err("make_compound: at least two shapes are required".to_string());
+    }
+    let refs: Vec<&Shape> = shapes.iter().map(|s| &s.shape).collect();
+    let compound = Compound::from_shapes(&refs);
+    let mut sd = ShapeData::new(Shape::from(compound));
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
+/// Set a shape's render color (mutates in place).
+pub fn set_color(data: &mut ShapeData, r: f64, g: f64, b: f64) {
+    data.color = Some([r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0)]);
+    if data.registered {
+        global_shape_registry().set_color(data.shape_id, data.color);
+    }
+}
+
+/// Get a shape's render color, or `None` if unset.
+pub fn get_color(data: &ShapeData) -> Option<[f64; 3]> {
+    data.color
 }
 
 // ── Shape Translation ─────────────────────────────────────────────────────────
@@ -1456,5 +1483,79 @@ mod tests {
         let (center, radius) = compute_union_bounds(&refs).unwrap();
         assert!((center - DVec3::new(42.0, 43.0, 44.0)).length() < 1e-10);
         assert!(radius.abs() < 1e-10);
+    }
+
+    // ── Compound Tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_make_compound_two_shapes() {
+        let a = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let b = unwrap_sphere(5.0, None, None, false);
+        let refs = [&a, &b];
+        let result = make_compound(&refs, false).unwrap();
+        assert_eq!(result.type_string(), "COMPOUND");
+    }
+
+    #[test]
+    fn test_make_compound_too_few() {
+        let a = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let refs = [&a];
+        let result = make_compound(&refs, false);
+        match result {
+            Err(msg) => assert!(msg.contains("at least two"), "{}", msg),
+            Ok(_) => panic!("expected error for single shape"),
+        }
+    }
+
+    #[test]
+    fn test_make_compound_empty() {
+        let refs: [&ShapeData; 0] = [];
+        let result = make_compound(&refs, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_make_compound_three_shapes() {
+        let a = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let b = unwrap_sphere(5.0, None, None, false);
+        let c = make_cylinder(5.0, 10.0, None, false).unwrap();
+        let refs = [&a, &b, &c];
+        let result = make_compound(&refs, false).unwrap();
+        assert_eq!(result.type_string(), "COMPOUND");
+    }
+
+    #[test]
+    fn test_make_compound_eager() {
+        let a = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let b = unwrap_sphere(5.0, None, None, false);
+        let refs = [&a, &b];
+        let result = make_compound(&refs, true).unwrap();
+        assert_eq!(result.type_string(), "COMPOUND");
+        assert!(result.mesh.is_some());
+    }
+
+    // ── Color Tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_set_color_and_get_color() {
+        let mut sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        assert!(sd.color.is_none());
+        assert!(get_color(&sd).is_none());
+        set_color(&mut sd, 0.8, 0.2, 0.2);
+        assert_eq!(sd.color, Some([0.8, 0.2, 0.2]));
+        assert_eq!(get_color(&sd), Some([0.8, 0.2, 0.2]));
+    }
+
+    #[test]
+    fn test_set_color_clamping() {
+        let mut sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        set_color(&mut sd, 1.5, -0.5, 0.0);
+        assert_eq!(sd.color, Some([1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn test_color_default_none() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        assert!(get_color(&sd).is_none());
     }
 }

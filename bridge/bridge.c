@@ -75,6 +75,11 @@ extern int rust_init_torus(void *dest,
 extern int rust_init_cut(void *dest, void *a, void *b, int eager);
 extern int rust_init_common(void *dest, void *a, void *b, int eager);
 extern int rust_init_fuse(void *dest, void *a, void *b, int eager);
+extern int rust_init_compound(void *dest, void **shapes, int num_shapes, int eager);
+
+/* Shape color */
+extern void rust_set_color(void *data, double r, double g, double b);
+extern int rust_get_color(void *data, double *r, double *g, double *b);
 
 /* Transformation operations */
 extern int rust_init_translate(void *dest, void *data, double dx, double dy, double dz, int eager);
@@ -645,6 +650,74 @@ JANET_FN(_cad_fuse,
     CAD_CHECK(rust_init_fuse(result, a, b, eager));
     if (hide_val) rust_shape_hide(result);
     return janet_wrap_abstract(result);
+}
+
+JANET_FN(_cad_compound,
+         "(compound shapes eager hide)",
+         "Create a compound from a tuple of shapes. (thin primitive)")
+{
+    janet_arity(argc, 3, 3);
+    int eager = janet_truthy(argv[1]);
+    int hide_val = janet_truthy(argv[2]);
+
+    const Janet *parts;
+    int32_t n;
+    if (janet_checktype(argv[0], JANET_TUPLE)) {
+        parts = janet_unwrap_tuple(argv[0]);
+        n = janet_tuple_length(parts);
+    } else if (janet_checktype(argv[0], JANET_ARRAY)) {
+        JanetArray *arr = janet_unwrap_array(argv[0]);
+        parts = arr->data;
+        n = arr->count;
+    } else {
+        janet_panicf("expected tuple or array of shapes, got %t", argv[0]);
+        return janet_wrap_nil();
+    }
+
+    if (n < 2) {
+        janet_panic("compound requires at least 2 shapes");
+    }
+
+    void *shape_ptrs[64];
+    if (n > 64) janet_panic("too many shapes for compound (max 64)");
+    for (int32_t i = 0; i < n; i++) {
+        shape_ptrs[i] = unwrap_shape_or_panic(parts[i], i);
+    }
+
+    void *result = alloc_shape();
+    CAD_CHECK(rust_init_compound(result, shape_ptrs, n, eager));
+    if (hide_val) rust_shape_hide(result);
+    return janet_wrap_abstract(result);
+}
+
+JANET_FN(_cad_set_color,
+         "(_cad_set_color shape r g b)",
+         "Set a shape's render color. (thin primitive)")
+{
+    janet_arity(argc, 4, 4);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double r = janet_getnumber(argv, 1);
+    double g = janet_getnumber(argv, 2);
+    double b = janet_getnumber(argv, 3);
+    rust_set_color(data, r, g, b);
+    return argv[0];
+}
+
+JANET_FN(_cad_get_color,
+         "(_cad_get_color shape)",
+         "Get a shape's render color, or nil if unset. (thin primitive)")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double r, g, b;
+    if (rust_get_color(data, &r, &g, &b)) {
+        Janet parts[3];
+        parts[0] = janet_wrap_number(r);
+        parts[1] = janet_wrap_number(g);
+        parts[2] = janet_wrap_number(b);
+        return janet_wrap_tuple(parts);
+    }
+    return janet_wrap_nil();
 }
 
 JANET_FN(_cad_translate,
@@ -1908,6 +1981,9 @@ void cad_register_functions(JanetTable *env) {
         {"cut",                    _cad_cut,                   _cad_cut_docstring_},
         {"common",                 _cad_common,                _cad_common_docstring_},
         {"fuse",                   _cad_fuse,                  _cad_fuse_docstring_},
+        {"compound",               _cad_compound,              _cad_compound_docstring_},
+        {"set-color",              _cad_set_color,             _cad_set_color_docstring_},
+        {"get-color",              _cad_get_color,             _cad_get_color_docstring_},
         {"translate",              _cad_translate,             _cad_translate_docstring_},
         {"rotate",                 _cad_rotate,                _cad_rotate_docstring_},
         {"scale",                  _cad_scale,                 _cad_scale_docstring_},

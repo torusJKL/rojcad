@@ -1115,6 +1115,73 @@ pub unsafe extern "C" fn rust_init_fuse(
     }
 }
 
+/// Create a compound from multiple shapes, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_compound(
+    dest: *mut c_void,
+    shapes: *mut *mut c_void,
+    num_shapes: c_int,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let num = num_shapes as usize;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
+        let shape_refs: Vec<&ShapeData> = shapes_slice
+            .iter()
+            .map(|p| unsafe { &*(*p as *const ShapeData) })
+            .collect();
+        cad::make_compound(&shape_refs, eager)
+    }));
+    match result {
+        Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_compound".to_string());
+            1
+        }
+    }
+}
+
+/// Set a shape's render color (in-place mutation, no new shape).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_set_color(data: *mut c_void, r: c_double, g: c_double, b: c_double) {
+    let shape_data = unsafe { &mut *(data as *mut ShapeData) };
+    cad::set_color(shape_data, r, g, b);
+}
+
+/// Get a shape's render color. Returns 1 if set, 0 if nil.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_color(
+    data: *mut c_void,
+    r: *mut c_double,
+    g: *mut c_double,
+    b: *mut c_double,
+) -> c_int {
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    match cad::get_color(shape_data) {
+        Some(c) => {
+            unsafe {
+                *r = c[0];
+                *g = c[1];
+                *b = c[2];
+            }
+            1
+        }
+        None => 0,
+    }
+}
+
 /// Translate a shape, storing the result at dest.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_init_translate(

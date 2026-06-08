@@ -119,6 +119,51 @@
   (unless hide? (show result))
   result)
 
+# ── Compound and color wrappers ──────────────────────────
+
+(def _compound-cfn ((get core-env 'compound) :value))
+(put core-env 'compound @{:value (fn [& args]
+  (var shapes @[])
+  (var color nil)
+  (var eager false)
+  (var hide false)
+  (var i 0)
+  (while (< i (length args))
+    (if (= :keyword (type (args i)))
+      (case (args i)
+        :color (do
+          (def v (args (++ i)))
+          (set color @[(v 0) (v 1) (v 2)]))
+        :eager (set eager true)
+        :hide (set hide true))
+      (array/push shapes (args i)))
+    (++ i))
+  (def n (length shapes))
+  (if (= n 0)
+    (error "compound: at least one shape is required")
+    (if (= n 1)
+      (let [shape (get shapes 0)]
+        (when color (set-color shape (color 0) (color 1) (color 2)))
+        shape)
+      (let [shape (_compound-cfn shapes (if eager 1 0) (if hide 1 0))]
+        (when color (set-color shape (color 0) (color 1) (color 2)))
+        (unless hide (show shape))
+        shape))))})
+ 
+# `color` uses C function `set-color`, so we can't use wrap-c-fn (name mismatch).
+(def _set-color ((get core-env 'set-color) :value))
+(put core-env 'color @{:value (fn [shape r g b]
+  (_set-color shape r g b)
+  shape)})
+
+(wrap-c-fn get-color _get-color [shape]
+  (def c (_get-color shape))
+  (if (= nil c) nil c))
+
+(defmeta compound "cad-operations")
+(defmeta color "cad-operations")
+(defmeta get-color "cad-operations")
+
 # ── Medium wrappers (manual variadic) ────────────────────────────
 
 (wrap-c-fn sphere _sphere [& args]
@@ -739,17 +784,18 @@
 
 (def _poll-selection-raw ((get core-env '_poll-selection-raw) :value))
 (put core-env 'poll-selection @{:value (fn []
-    (def raw (_poll-selection-raw))
-    (when raw
-      (def action (in raw 0))
-      (def id (in raw 1))
-      (def event
-        (case action
-          3 :deselected
-          2 [:deselected id]
-          id))
-      (when *on-select-callback* (*on-select-callback* event))
-      event))})
+    (when _poll-selection-raw
+      (def raw (_poll-selection-raw))
+      (when raw
+        (def action (in raw 0))
+        (def id (in raw 1))
+        (def event
+          (case action
+            3 :deselected
+            2 [:deselected id]
+            id))
+        (when *on-select-callback* (*on-select-callback* event))
+        event)))}) 
 (defmeta poll-selection "selection")
 
 # ── Shape query wrappers ─────────────────────────────────────────────────────

@@ -283,6 +283,15 @@ impl ShapeRegistry {
             REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
         }
     }
+
+    /// Update the color on a shape.
+    pub fn set_color(&self, shape_id: ShapeId, color: Option<[f64; 3]>) {
+        let mut map = self.inner.write().expect("shape registry lock poisoned");
+        if let Some(entry) = map.get_mut(&shape_id) {
+            entry.color = color;
+            REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 }
 
 impl Clone for ShapeRegistry {
