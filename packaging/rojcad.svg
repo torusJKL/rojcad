@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
     <linearGradient id="top" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6BA8F0"/>
-      <stop offset="100%" stop-color="#4A90D9"/>
+      <stop offset="0%" stop-color="#C8D4DF"/>
+      <stop offset="100%" stop-color="#B8C6D4"/>
     </linearGradient>
     <linearGradient id="left" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#4A90D9"/>
-      <stop offset="100%" stop-color="#357ABD"/>
+      <stop offset="0%" stop-color="#B8C6D4"/>
+      <stop offset="100%" stop-color="#A8B8C8"/>
     </linearGradient>
     <linearGradient id="right" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3A80C9"/>
-      <stop offset="100%" stop-color="#2C6AA0"/>
+      <stop offset="0%" stop-color="#B0C0CF"/>
+      <stop offset="100%" stop-color="#9DAEBF"/>
     </linearGradient>
   </defs>
   <polygon points="64,20 100,40 64,60 28,40" fill="url(#top)" stroke="#2C5F8A" stroke-width="2" stroke-linejoin="round"/>
   <polygon points="28,40 64,60 64,100 28,80" fill="url(#left)" stroke="#2C5F8A" stroke-width="2" stroke-linejoin="round"/>
   <polygon points="64,60 100,40 100,80 64,100" fill="url(#right)" stroke="#2C5F8A" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="64" cy="60" r="10" fill="none" stroke="#E8F0FE" stroke-width="2" opacity="0.6"/>
-  <text x="64" y="120" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#4A90D9" text-anchor="middle">rojcad</text>
+  <text x="12" y="95" font-family="system-ui,sans-serif" font-size="110" font-weight="300" fill="#2C5F8A" text-anchor="middle">(</text>
+  <text x="116" y="95" font-family="system-ui,sans-serif" font-size="110" font-weight="300" fill="#2C5F8A" text-anchor="middle">)</text>
 </svg>
