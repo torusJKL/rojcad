@@ -1013,37 +1013,22 @@ JANET_FN(cad_visible_q,
     return visible ? janet_wrap_true() : janet_wrap_false();
 }
 
-/* Global callback for selection events */
-static Janet on_select_callback = {0};
-
-JANET_FN(cad_on_select,
-         "(on-select callback)",
-         "Register a Janet function to be called when a shape is selected"
-         " in the viewer. The function receives the same value as"
-         " (poll-selection): a shape ID (integer), :deselected, or"
-         " [:deselected id]. Pass nil to unregister the callback.\n\n"
-         "Example:\n"
-         "  (on-select (fn [event] (print \"selection: \" event)))")
+JANET_FN(_cad_quit_requested,
+         "_quit-requested",
+         "Check if the application should quit. (thin primitive)\n\n"
+         "Returns true if Ctrl+Q was pressed or the window was closed.\n"
+         "This is a one-shot check -- returns true only once per quit request.")
 {
-    janet_arity(argc, 1, 1);
-    if (janet_checktype(argv[0], JANET_NIL)) {
-        on_select_callback = janet_wrap_nil();
-    } else if (janet_checktype(argv[0], JANET_FUNCTION)) {
-        on_select_callback = argv[0];
-    } else {
-        janet_panic("on-select expects a function or nil");
-    }
-    return janet_wrap_nil();
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    return rust_quit_requested() ? janet_wrap_true() : janet_wrap_false();
 }
 
-JANET_FN(cad_poll_selection,
-         "(poll-selection)",
-         "Check for a pending selection event from the viewer.\n\n"
-         "Returns nil if no event, the shape ID (integer) if a shape was"
-         " selected, a tuple [:deselected id] if a shape was toggled off,\n"
-         " or :deselected if the entire selection was cleared.\n\n"
-         "If a callback was registered via (on-select), it will be"
-         " invoked automatically with the result.")
+JANET_FN(_cad_poll_selection_raw,
+         "_poll-selection-raw",
+         "Low-level poll for selection events. (thin primitive)\n\n"
+         "Returns nil if no event, or a tuple [action id] where\n"
+         "action is 1 (selected), 2 (deselected), or 3 (cleared).")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
@@ -1052,42 +1037,10 @@ JANET_FN(cad_poll_selection,
     if (action == 0) {
         return janet_wrap_nil();
     }
-
-    Janet event;
-    if (action == 3) {
-        /* Cleared */
-        event = janet_ckeywordv("deselected");
-    } else if (action == 2) {
-        /* Toggled off — return [:deselected id] */
-        Janet parts[2];
-        parts[0] = janet_ckeywordv("deselected");
-        parts[1] = janet_wrap_number((double)id);
-        event = janet_wrap_tuple(janet_tuple_n(parts, 2));
-    } else {
-        /* Toggled on (action == 1) — return shape id (backward compat) */
-        event = janet_wrap_number((double)id);
-    }
-
-    /* Invoke the stored callback if registered */
-    if (janet_checktype(on_select_callback, JANET_FUNCTION)) {
-        JanetFunction *fn = janet_unwrap_function(on_select_callback);
-        Janet args[] = { event };
-        janet_call(fn, 1, args);
-    }
-
-    return event;
-}
-
-JANET_FN(cad_quit_requested,
-         "(quit-requested)",
-         "Check if the application should quit.\n\n"
-         "Returns true if Ctrl+Q was pressed or the window was closed.\n"
-         "Used by boot.janet to exit the event loop.\n\n"
-         "This is a one-shot check -- returns true only once per quit request.")
-{
-    janet_arity(argc, 0, 0);
-    (void)argv;
-    return rust_quit_requested() ? janet_wrap_true() : janet_wrap_false();
+    Janet parts[2];
+    parts[0] = janet_wrap_number((double)action);
+    parts[1] = janet_wrap_number((double)id);
+    return janet_wrap_tuple(janet_tuple_n(parts, 2));
 }
 
 JANET_FN(cad_edge_toggle_inactive,
@@ -1358,17 +1311,11 @@ JANET_FN(cad_window_maximized_query,
     return result ? janet_wrap_true() : janet_wrap_false();
 }
 
-JANET_FN(cad_view_fit,
-         "(view-fit shape & shapes ; reset)",
-         "Fit camera to the bounding box of one or more shapes.\n\n"
-         "Animates the 3D camera over 0.5s to frame the union bounding\n"
-         "box of the given shapes. The current orbit angle is preserved.\n\n"
-         "Use :reset to return to the default isometric angle\n"
-         "(yaw=0, pitch=0.4).\n\n"
-         "Examples:\n"
-         "  (view-fit my-shape)\n"
-         "  (view-fit box1 cylinder2)\n"
-         "  (view-fit :reset part1 part2)")
+JANET_FN(_cad_view_fit,
+         "_view-fit (shape & shapes ; reset)",
+         "Fit camera to shapes. (thin primitive)\n\n"
+         "Like view-fit but without keyword parsing.\n"
+         ":reset keyword must be among the args.")
 {
     int shape_count = 0;
     int reset = 0;
@@ -1385,7 +1332,7 @@ JANET_FN(cad_view_fit,
     }
 
     if (shape_count < 1) {
-        janet_panic("expected at least one shape");
+        janet_panic("_view-fit: expected at least one shape");
     }
 
     void **shape_ptrs = janet_malloc((size_t)shape_count * sizeof(void *));
@@ -1405,22 +1352,11 @@ JANET_FN(cad_view_fit,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_view_fit_all,
-         "(view-fit-all ; hidden ; reset)",
-         "Fit camera to the bounding box of shapes.\n\n"
-         "By default only visible shapes are framed. "
-         "Use :hidden to include hidden shapes as well.\n"
-         "Animates the 3D camera over 0.5s to frame the union bounding box.\n"
-         "The current orbit angle is preserved.\n"
-         "If no shapes are found, resets the camera to default position.\n\n"
-         "Keywords:\n"
-         "  :hidden  — include hidden shapes in the bounding box\n"
-         "  :reset   — return to the default isometric angle\n\n"
-         "Examples:\n"
-         "  (view-fit-all)\n"
-         "  (view-fit-all :reset)\n"
-         "  (view-fit-all :hidden)\n"
-         "  (view-fit-all :hidden :reset)")
+JANET_FN(_cad_view_fit_all,
+         "_view-fit-all ; hidden ; reset",
+         "Fit camera to all shapes. (thin primitive)\n\n"
+         "Like view-fit-all but without keyword parsing.\n"
+         ":hidden and :reset keywords are detected directly.")
 {
     int reset = 0;
     int include_hidden = 0;
@@ -1438,15 +1374,10 @@ JANET_FN(cad_view_fit_all,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_view_angle,
-         "(view-angle yaw pitch ; distance)",
-         "Set camera to arbitrary yaw/pitch angles (radians).\n\n"
-         "Animates the 3D camera over 0.5s to the given orientation.\n"
-         "Yaw and pitch are in radians. An optional third argument sets\n"
-         "the camera distance (zoom); omitted preserves the current distance.\n\n"
-         "Examples:\n"
-         "  (view-angle 0 1.57)      — top view (yaw=0, pitch=~90°)\n"
-         "  (view-angle 0 0 100)     — look along +X at distance 100")
+JANET_FN(_cad_view_angle,
+         "_view-angle yaw pitch ; distance",
+         "Set camera angles. (thin primitive)\n\n"
+         "Like view-angle but with 2-3 positional args.")
 {
     janet_arity(argc, 2, 3);
     double yaw = janet_getnumber(argv, 0);
@@ -1456,13 +1387,9 @@ JANET_FN(cad_view_angle,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_edge_thickness,
-         "(edge-thickness &opt value)",
-         "Get or set the edge line thickness in NDC units.\n\n"
-         "Called with no arguments, returns the current thickness.\n"
-         "Called with one numeric argument, sets the thickness and returns it.\n\n"
-         "Example: (edge-thickness 0.008) — thicker lines\n"
-         "         (edge-thickness)      — query")
+JANET_FN(_cad_edge_thickness,
+         "_edge-thickness &opt value",
+         "Get or set edge thickness. (thin primitive)")
 {
     janet_arity(argc, 0, 1);
     double result;
@@ -1470,7 +1397,7 @@ JANET_FN(cad_edge_thickness,
         result = rust_edge_get_thickness();
     } else {
         if (!janet_checktype(argv[0], JANET_NUMBER)) {
-            janet_panic("edge-thickness: expected a number");
+            janet_panic("_edge-thickness: expected a number");
         }
         double val = janet_unwrap_number(argv[0]);
         rust_edge_set_thickness(val);
@@ -1479,25 +1406,21 @@ JANET_FN(cad_edge_thickness,
     return janet_wrap_number(result);
 }
 
-JANET_FN(cad_edge_color_inactive,
-         "(edge-color-inactive &opt r g b)",
-         "Get or set the inactive edge color as RGB values in [0, 1].\n\n"
-         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
-         "Called with three numeric arguments (r g b), sets the color.\n\n"
-         "Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey\n"
-         "         (edge-color-inactive)               — query")
+JANET_FN(_cad_edge_color_inactive,
+         "_edge-color-inactive &opt r g b",
+         "Set inactive edge color. (thin primitive)")
 {
     janet_arity(argc, 0, 3);
     if (argc == 0) {
         return janet_wrap_nil();
     }
     if (argc != 3) {
-        janet_panic("edge-color-inactive expects 0 or 3 arguments");
+        janet_panic("_edge-color-inactive expects 0 or 3 arguments");
     }
     if (!janet_checktype(argv[0], JANET_NUMBER) ||
         !janet_checktype(argv[1], JANET_NUMBER) ||
         !janet_checktype(argv[2], JANET_NUMBER)) {
-        janet_panic("edge-color-inactive: r, g, b must be numbers");
+        janet_panic("_edge-color-inactive: r, g, b must be numbers");
     }
     double r = janet_unwrap_number(argv[0]);
     double g = janet_unwrap_number(argv[1]);
@@ -1506,25 +1429,21 @@ JANET_FN(cad_edge_color_inactive,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_edge_color_active,
-         "(edge-color-active &opt r g b)",
-         "Get or set the active (selected) edge color as RGB values in [0, 1].\n\n"
-         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
-         "Called with three numeric arguments (r g b), sets the color.\n\n"
-         "Example: (edge-color-active 0.3 0.5 1.0)  — light blue\n"
-         "         (edge-color-active)               — query")
+JANET_FN(_cad_edge_color_active,
+         "_edge-color-active &opt r g b",
+         "Set active edge color. (thin primitive)")
 {
     janet_arity(argc, 0, 3);
     if (argc == 0) {
         return janet_wrap_nil();
     }
     if (argc != 3) {
-        janet_panic("edge-color-active expects 0 or 3 arguments");
+        janet_panic("_edge-color-active expects 0 or 3 arguments");
     }
     if (!janet_checktype(argv[0], JANET_NUMBER) ||
         !janet_checktype(argv[1], JANET_NUMBER) ||
         !janet_checktype(argv[2], JANET_NUMBER)) {
-        janet_panic("edge-color-active: r, g, b must be numbers");
+        janet_panic("_edge-color-active: r, g, b must be numbers");
     }
     double r = janet_unwrap_number(argv[0]);
     double g = janet_unwrap_number(argv[1]);
@@ -2323,17 +2242,11 @@ JANET_FN(cad_list_fonts,
     return janet_wrap_array(arr);
 }
 
-// ── Shape Query Functions ────────────────────────────────────────────────────
+// ── Thin shape query primitives ──────────────────────────────────────────────
 
-JANET_FN(cad_selected_shapes,
-         "(selected-shapes)",
-         "Return a tuple of ShapeData abstract values currently selected in the"
-         " 3D viewer.\n\n"
-         "Returns an empty tuple `()` if nothing is selected.\n\n"
-         "Examples:\n"
-         "  (selected-shapes)                     — get selected shapes\n"
-         "  (each s (selected-shapes) (hide s))   — hide all selected\n\n"
-         "Returns a tuple of rojcad/shape abstract values.")
+JANET_FN(_cad_get_selected_ids,
+         "_get-selected-ids",
+         "Return a tuple of selected shape IDs. (thin primitive)")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
@@ -2343,8 +2256,7 @@ JANET_FN(cad_selected_shapes,
 
     Janet *parts = janet_smalloc(sizeof(Janet) * count);
     for (size_t i = 0; i < count; i++) {
-        void *ptr = rust_get_shape_pointer(ids[i]);
-        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+        parts[i] = janet_wrap_number((double)ids[i]);
     }
     const Janet *tup = janet_tuple_n(parts, count);
     janet_sfree(parts);
@@ -2352,45 +2264,36 @@ JANET_FN(cad_selected_shapes,
     return janet_wrap_tuple(tup);
 }
 
-JANET_FN(cad_list_shapes,
-         "(list-shapes &keys :visible :hidden)",
-         "Return a tuple of all registered ShapeData abstract values,"
-         " optionally filtered by visibility.\n\n"
-         "With no arguments, returns all registered shapes.\n"
-         "With :visible, returns only visible shapes.\n"
-         "With :hidden, returns only hidden shapes.\n"
-         "If both :visible and :hidden are given, :hidden takes precedence.\n\n"
-         "Only shapes that have been shown (registered in the viewer)"
-         " are included.\n\n"
-         "Examples:\n"
-         "  (list-shapes)                    — all registered shapes\n"
-         "  (list-shapes :visible)           — visible shapes only\n"
-         "  (list-shapes :hidden)            — hidden shapes only\n"
-         "  (each s (list-shapes) (print s)) — print all shapes\n\n"
-         "Returns a tuple of rojcad/shape abstract values.")
+JANET_FN(_cad_get_registered_ids,
+         "_get-registered-ids filter",
+         "Return a tuple of registered shape IDs by filter. (thin primitive)\n\n"
+         "Filter: 0=all, 1=visible, 2=hidden.")
 {
-    int hidden = find_keyword(argv, argc, "hidden") >= 0 ? 1 : 0;
-    int visible = find_keyword(argv, argc, "visible") >= 0 ? 1 : 0;
-
-    uint8_t filter = 0;
-    if (hidden) {
-        filter = 2;
-    } else if (visible) {
-        filter = 1;
-    }
+    janet_arity(argc, 1, 1);
+    double filter = janet_getnumber(argv, 0);
 
     size_t count = 0;
-    uint64_t *ids = rust_get_registered_shape_ids(filter, &count);
+    uint64_t *ids = rust_get_registered_shape_ids((uint8_t)filter, &count);
 
     Janet *parts = janet_smalloc(sizeof(Janet) * count);
     for (size_t i = 0; i < count; i++) {
-        void *ptr = rust_get_shape_pointer(ids[i]);
-        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+        parts[i] = janet_wrap_number((double)ids[i]);
     }
     const Janet *tup = janet_tuple_n(parts, count);
     janet_sfree(parts);
     rust_free_u64_array(ids, count);
     return janet_wrap_tuple(tup);
+}
+
+JANET_FN(_cad_get_shape_by_id,
+         "_get-shape id",
+         "Look up a shape pointer by ID. (thin primitive)\n\n"
+         "Returns the shape abstract value or nil.")
+{
+    janet_arity(argc, 1, 1);
+    uint64_t id = (uint64_t)janet_getnumber(argv, 0);
+    void *ptr = rust_get_shape_pointer(id);
+    return ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
 }
 
 /* ── CAD function metadata ────────────────────────────────────────────────── */
@@ -2417,15 +2320,11 @@ static const char *cad_fn_categories[][2] = {
     {"write-step", "io"},
     {"write-stl", "io"},
     {"read-step", "io"},
-    {"on-select", "selection"},
-    {"poll-selection", "selection"},
     {"edge-toggle-inactive", "edge-styling"},
     {"edge-toggle-active", "edge-styling"},
     {"edge-inactive-show?", "edge-styling"},
     {"edge-active-show?", "edge-styling"},
-    {"edge-thickness", "edge-styling"},
-    {"edge-color-inactive", "edge-styling"},
-    {"edge-color-active", "edge-styling"},
+
 
     {"rect", "2d-primitives"},
     {"circle", "2d-primitives"},
@@ -2449,9 +2348,7 @@ static const char *cad_fn_categories[][2] = {
     {"wire?", "queries"},
     {"face?", "queries"},
     {"solid?", "queries"},
-    {"view-fit", "view"},
-    {"view-fit-all", "view"},
-    {"view-angle", "view"},
+
     {"stats-overlay", "view"},
     {"window-help-toggle", "view"},
     {"window-help-show?", "view"},
@@ -2459,10 +2356,7 @@ static const char *cad_fn_categories[][2] = {
     {"text", "text"},
     {"text3d", "text"},
     {"list-fonts", "text"},
-    {"selected-shapes", "queries"},
-    {"list-shapes", "queries"},
 
-    {"quit-requested",         "view"},
     {"edge-hidden-toggle",     "edge-styling"},
     {"edge-hidden-show?",      "edge-styling"},
     {"edge-hidden",            "edge-styling"},
@@ -2512,18 +2406,18 @@ void cad_register_functions(JanetTable *env) {
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
-        {"on-select",              cad_on_select,              cad_on_select_docstring_},
-        {"poll-selection",         cad_poll_selection,         cad_poll_selection_docstring_},
-        {"selected-shapes",        cad_selected_shapes,        cad_selected_shapes_docstring_},
-        {"list-shapes",            cad_list_shapes,            cad_list_shapes_docstring_},
-        {"quit-requested",         cad_quit_requested,         cad_quit_requested_docstring_},
+        {"_quit-requested",        _cad_quit_requested,        _cad_quit_requested_docstring_},
+        {"_poll-selection-raw",    _cad_poll_selection_raw,    _cad_poll_selection_raw_docstring_},
+        {"_get-selected-ids",      _cad_get_selected_ids,      _cad_get_selected_ids_docstring_},
+        {"_get-registered-ids",    _cad_get_registered_ids,    _cad_get_registered_ids_docstring_},
+        {"_get-shape",             _cad_get_shape_by_id,       _cad_get_shape_by_id_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},
         {"edge-inactive-show?",    cad_edge_inactive_showing,  cad_edge_inactive_showing_docstring_},
         {"edge-active-show?",      cad_edge_active_showing,    cad_edge_active_showing_docstring_},
-        {"edge-thickness",         cad_edge_thickness,         cad_edge_thickness_docstring_},
-        {"edge-color-inactive",    cad_edge_color_inactive,    cad_edge_color_inactive_docstring_},
-        {"edge-color-active",      cad_edge_color_active,      cad_edge_color_active_docstring_},
+        {"_edge-thickness",        _cad_edge_thickness,        _cad_edge_thickness_docstring_},
+        {"_edge-color-inactive",   _cad_edge_color_inactive,   _cad_edge_color_inactive_docstring_},
+        {"_edge-color-active",     _cad_edge_color_active,     _cad_edge_color_active_docstring_},
         {"edge-hidden-toggle",     cad_edge_hidden_toggle,     cad_edge_hidden_toggle_docstring_},
         {"edge-hidden-show?",      cad_edge_hidden_showing,    cad_edge_hidden_showing_docstring_},
         {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
@@ -2550,12 +2444,12 @@ void cad_register_functions(JanetTable *env) {
         {"window-maximized",       cad_window_maximized,       cad_window_maximized_docstring_},
         {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
 
-        /* View fit */
-        {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},
-        {"view-fit-all",           cad_view_fit_all,           cad_view_fit_all_docstring_},
+        /* View fit (thin primitives) */
+        {"_view-fit",              _cad_view_fit,              _cad_view_fit_docstring_},
+        {"_view-fit-all",          _cad_view_fit_all,          _cad_view_fit_all_docstring_},
 
-        /* View angle (low-level primitive) */
-        {"view-angle",             cad_view_angle,             cad_view_angle_docstring_},
+        /* View angle (thin primitive) */
+        {"_view-angle",            _cad_view_angle,            _cad_view_angle_docstring_},
 
         /* 2D primitives */
         {"rect",                   cad_rect,                   cad_rect_docstring_},

@@ -262,6 +262,143 @@
 (put (get core-env 'window-maximized?) :value
   (fn [] (_window-maximized?)))
 
+# ── Selection callback storage ──────────────────────────────────────────────
+
+(var *on-select-callback* nil)
+
+# ── Quit & Selection wrappers ────────────────────────────────────────────────
+
+(def _quit-requested ((get core-env '_quit-requested) :value))
+(put (get core-env 'quit-requested) :value
+  (fn [] (_quit-requested)))
+
+(put (get core-env 'on-select) :value
+  (fn [callback]
+    (if (or (= nil callback) (= :function (type callback)))
+      (set *on-select-callback* callback)
+      (error "on-select expects a function or nil"))
+    nil))
+
+(def _poll-selection-raw ((get core-env '_poll-selection-raw) :value))
+(put (get core-env 'poll-selection) :value
+  (fn []
+    (def raw (_poll-selection-raw))
+    (if (= nil raw)
+      nil
+      (do
+        (def action (in raw 0))
+        (def id (in raw 1))
+        (def event
+          (if (= action 3)
+            :deselected
+            (if (= action 2)
+              [:deselected id]
+              id)))
+        (if (not= nil *on-select-callback*)
+          (*on-select-callback* event))
+        event))))
+
+# ── Shape query wrappers ─────────────────────────────────────────────────────
+
+(def _get-selected-ids ((get core-env '_get-selected-ids) :value))
+(def _get-shape ((get core-env '_get-shape) :value))
+(put (get core-env 'selected-shapes) :value
+  (fn []
+    (def ids (_get-selected-ids))
+    (def result @[])
+    (each id ids
+      (array/push result (_get-shape id)))
+    (tuple/slice result)))
+
+(def _get-registered-ids ((get core-env '_get-registered-ids) :value))
+(put (get core-env 'list-shapes) :value
+  (fn [&keys :visible :hidden]
+    (def filter (if hidden 2 (if visible 1 0)))
+    (def ids (_get-registered-ids filter))
+    (def result @[])
+    (each id ids
+      (array/push result (_get-shape id)))
+    (tuple/slice result)))
+
+# ── Edge styling wrappers ────────────────────────────────────────────────────
+
+(def _edge-thickness ((get core-env '_edge-thickness) :value))
+(put (get core-env 'edge-thickness) :value
+  (fn [&opt value]
+    (if (not= nil value)
+      (_edge-thickness value)
+      (_edge-thickness))))
+
+(def _edge-color-inactive ((get core-env '_edge-color-inactive) :value))
+(put (get core-env 'edge-color-inactive) :value
+  (fn [&opt r g b]
+    (if r
+      (_edge-color-inactive r g b)
+      (_edge-color-inactive))))
+
+(def _edge-color-active ((get core-env '_edge-color-active) :value))
+(put (get core-env 'edge-color-active) :value
+  (fn [&opt r g b]
+    (if r
+      (_edge-color-active r g b)
+      (_edge-color-active))))
+
+# ── View control wrappers ────────────────────────────────────────────────────
+
+(def _view-fit ((get core-env '_view-fit) :value))
+(put (get core-env 'view-fit) :value
+  (fn [& args]
+    (apply _view-fit args)))
+
+(def _view-fit-all ((get core-env '_view-fit-all) :value))
+(put (get core-env 'view-fit-all) :value
+  (fn [&keys :hidden :reset]
+    (def args @[])
+    (if hidden (array/push args :hidden))
+    (if reset (array/push args :reset))
+    (apply _view-fit-all args)))
+
+(def _view-angle ((get core-env '_view-angle) :value))
+(put (get core-env 'view-angle) :value
+  (fn [yaw pitch &opt distance]
+    (if (not= nil distance)
+      (_view-angle yaw pitch distance)
+      (_view-angle yaw pitch))))
+
+# Set metadata for the wrappers that moved from C
+
+(put (get core-env 'quit-requested) :source "rojcad")
+(put (get core-env 'quit-requested) :category "view")
+
+(put (get core-env 'on-select) :source "rojcad")
+(put (get core-env 'on-select) :category "selection")
+
+(put (get core-env 'poll-selection) :source "rojcad")
+(put (get core-env 'poll-selection) :category "selection")
+
+(put (get core-env 'selected-shapes) :source "rojcad")
+(put (get core-env 'selected-shapes) :category "queries")
+
+(put (get core-env 'list-shapes) :source "rojcad")
+(put (get core-env 'list-shapes) :category "queries")
+
+(put (get core-env 'edge-thickness) :source "rojcad")
+(put (get core-env 'edge-thickness) :category "edge-styling")
+
+(put (get core-env 'edge-color-inactive) :source "rojcad")
+(put (get core-env 'edge-color-inactive) :category "edge-styling")
+
+(put (get core-env 'edge-color-active) :source "rojcad")
+(put (get core-env 'edge-color-active) :category "edge-styling")
+
+(put (get core-env 'view-fit) :source "rojcad")
+(put (get core-env 'view-fit) :category "view")
+
+(put (get core-env 'view-fit-all) :source "rojcad")
+(put (get core-env 'view-fit-all) :category "view")
+
+# view-angle metadata is set below with the presets
+
 # ── Display helper (array-aware string conversion) ─────────────────────────
 
 (def display-val (fn [x]
