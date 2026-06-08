@@ -2096,16 +2096,18 @@ fn main() {
     // Pre-define boot/args and boot/config symbols (referenced by upstream.janet for
     // CLI arg parsing and core image generation — not used in rojcad's embedded build).
     let upstream_base = include_str!("../upstream.janet");
-    let upstream_code = format!(
-        "(def boot/args @[\"rojcad\" \"\" \"\"])\n{}",
-        upstream_base
-    );
+    let upstream_code = format!("(def boot/args @[\"rojcad\" \"\" \"\"])\n{}", upstream_base);
     let upstream_c = CString::new(upstream_code).unwrap_or_else(|_| CString::new("").unwrap());
     let upstream_name_c = CString::new("upstream.janet").unwrap();
 
     let mut result = bridge::Janet(0);
     let status = unsafe {
-        bridge::janet_dostring(env, upstream_c.as_ptr(), upstream_name_c.as_ptr(), &mut result)
+        bridge::janet_dostring(
+            env,
+            upstream_c.as_ptr(),
+            upstream_name_c.as_ptr(),
+            &mut result,
+        )
     };
 
     if status != 0 {
@@ -2128,9 +2130,8 @@ fn main() {
     let boot_name_c = CString::new("boot.janet").unwrap();
 
     let mut result = bridge::Janet(0);
-    let status = unsafe {
-        bridge::janet_dostring(env, boot_c.as_ptr(), boot_name_c.as_ptr(), &mut result)
-    };
+    let status =
+        unsafe { bridge::janet_dostring(env, boot_c.as_ptr(), boot_name_c.as_ptr(), &mut result) };
 
     if status != 0 {
         eprintln!("rojcad: failed to load boot.janet");
