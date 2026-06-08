@@ -15,6 +15,13 @@ _cargo_home := justfile_directory() + "/.local-cargo"
 # - RUSTFLAGS="-Clinker=clang" makes rustc use clang as linker driver
 _env := "HOME=/tmp GIT_CONFIG_NOSYSTEM=1 CC=clang CXX=clang++ CARGO_HOME=" + _cargo_home + " RUSTFLAGS=-Clinker=clang"
 
+# Version from Cargo.toml (evaluated at load time)
+_version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml`
+
+# Version for documentation: git tag (with -dirty if uncommitted),
+# short hash (with -dirty), or Cargo.toml fallback
+_doc_version := `desc=$(git describe --tags --exact-match --dirty 2>/dev/null); if [ -n "$desc" ]; then echo "$desc"; else hash=$(git rev-parse --short HEAD 2>/dev/null); if [ -n "$hash" ]; then dirty=$(git status --porcelain 2>/dev/null | grep -q . && echo "-dirty"); echo "$hash$dirty"; else sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml; fi; fi`
+
 # ── Default ────────────────────────────────────────────────────────────────────
 
 # Default recipe — shown when running `just` with no arguments
@@ -28,12 +35,14 @@ default:
     @echo "  build          Build in debug mode"
     @echo "  build-release  Build in release mode"
     @echo "  test           Run all tests"
-    @echo "  run            Start the TCP REPL server on port 9000"
+    @echo "  run            Start the TCP REPL server on port 9365"
     @echo "  run-release    Start the server (release build)"
     @echo "  lint           Run clippy"
     @echo "  fmt            Format code with rustfmt"
     @echo "  doc            Build Rust documentation"
     @echo "  doc-janet      Generate Janet API reference (Markdown + HTML)"
+    @echo "  appimage       Build release + package as AppImage"
+    @echo "  tarball        Build release + package as tar.gz"
     @echo "  deps           Show dependency tree"
     @echo "  clean          Remove build artifacts"
     @echo "  clean-all      Remove all artifacts + local cargo cache"
@@ -76,6 +85,10 @@ test-unit:
 test-name name:
     {{_env}} cargo test {{name}} -- --nocapture
 
+# Run REPL integration tests for variadic CAD function wrappers
+test-repl:
+    {{_env}} tests/test-variadic.sh
+
 # ── Run ────────────────────────────────────────────────────────────────────────
 
 # Run the server (debug)
@@ -90,7 +103,7 @@ run-release:
 
 # Run clippy (Rust linter)
 lint:
-    {{_env}} cargo clippy -- -D warnings
+    {{_env}} cargo clippy --all-targets -- -D warnings
 
 # Format code with rustfmt
 fmt:
@@ -112,7 +125,53 @@ doc-open:
 
 # Generate Janet API reference (Markdown + HTML)
 doc-janet:
-    {{_env}} cargo run -- --headless --eval '(do (dump-docs "doc") (os/exit 0))'
+    {{_env}} cargo run -- --headless --eval '(do (dump-docs "doc" "{{_doc_version}}") (os/exit 0))'
+
+# ── Packaging ──────────────────────────────────────────────────────────────────
+
+# Download AppImage tooling (linuxdeploy + appimagetool)
+_appimage-tools:
+    mkdir -p .appimage
+    test -f .appimage/linuxdeploy || curl -sL \
+      "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
+      -o .appimage/linuxdeploy
+    chmod +x .appimage/linuxdeploy
+    test -f .appimage/appimagetool || curl -sL \
+      "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
+      -o .appimage/appimagetool
+    chmod +x .appimage/appimagetool
+
+# Package as AppImage
+appimage: build-release _appimage-tools
+    rm -rf .appimage/rojcad.AppDir
+    mkdir -p dist
+    APPIMAGE_EXTRACT_AND_RUN=1 \
+    ./.appimage/linuxdeploy \
+      --appdir .appimage/rojcad.AppDir \
+      --executable target/release/rojcad \
+      --desktop-file packaging/rojcad.desktop \
+      --icon-file packaging/rojcad.svg
+    # Bundle Vulkan loader (wgpu loads it at runtime via dlopen)
+    mkdir -p .appimage/rojcad.AppDir/usr/lib
+    cp /usr/lib/x86_64-linux-gnu/libvulkan.so.1 \
+      .appimage/rojcad.AppDir/usr/lib/ 2>/dev/null || true
+    APPIMAGE_EXTRACT_AND_RUN=1 \
+    ./.appimage/appimagetool \
+      --no-appstream \
+      .appimage/rojcad.AppDir \
+      dist/rojcad-{{_version}}-x86_64.AppImage
+
+# Package as tar.gz with binary, docs, and README
+tarball: build-release
+    mkdir -p dist/rojcad-{{_version}}-x86_64
+    {{_env}} cargo run --release -- \
+      --headless --eval '(do (dump-docs "doc" "{{_doc_version}}") (os/exit 0))'
+    cp -r doc dist/rojcad-{{_version}}-x86_64/
+    cp target/release/rojcad dist/rojcad-{{_version}}-x86_64/
+    cp README.md dist/rojcad-{{_version}}-x86_64/
+    cp CHANGELOG.md dist/rojcad-{{_version}}-x86_64/ 2>/dev/null || true
+    tar czf dist/rojcad-{{_version}}-x86_64.tar.gz \
+      -C dist rojcad-{{_version}}-x86_64
 
 # ── Clean ──────────────────────────────────────────────────────────────────────
 

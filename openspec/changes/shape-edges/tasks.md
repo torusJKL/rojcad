@@ -58,7 +58,7 @@
 - [ ] 8.5 Test `(edge-toggle-inactive)` — edges disappear/reappear on non-selected shapes
 - [ ] 8.6 Test `(edge-toggle-active)` — edges disappear/reappear on selected shape
 - [ ] 8.7 Test `(edge-inactive-show?)` and `(edge-active-show?)` return correct states
-- [ ] 8.8 Test `(edge-thickness 0.008)` — verify edges get thicker
+- [x] 8.8 Test `(edge-thickness 0.008)` — verify edges get thicker
 - [ ] 8.9 Test `(edge-color-inactive 0.9 0.9 0.9)` — verify inactive edge color changes
 - [ ] 8.10 Test `(edge-color-active 1.0 0.0 0.0)` — verify selected edge color changes to red
-- [ ] 8.11 Verify `X` key back-edge toggle still works with both active and inactive edges
+- [x] 8.11 Verify `X` key back-edge toggle still works with both active and inactive edges

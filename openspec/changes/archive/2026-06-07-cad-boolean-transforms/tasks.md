@@ -69,5 +69,5 @@
 
 - [x] 9.1 Run `just build` — clean compilation with local opencascade-rs
 - [x] 9.2 Run `cargo test` — all 45 tests pass
-- [ ] 9.3 Run `cargo clippy -- -D warnings` — only pre-existing errors in viewer/, no new errors from changed files
-- [ ] 9.4 Verify manually via REPL: create shapes, apply transforms, check results
+- [x] 9.3 Run `cargo clippy -- -D warnings` — only pre-existing errors in viewer/, no new errors from changed files
+- [x] 9.4 Verify manually via REPL: create shapes, apply transforms, check results

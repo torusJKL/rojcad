@@ -16,6 +16,7 @@
 mod bridge;
 mod cad;
 mod sketch;
+mod text;
 mod types;
 mod viewer;
 
@@ -23,7 +24,21 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+
+use crate::types::{
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
+    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, WINDOW_FULLSCREEN,
+    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, init_edge_color_defaults,
+    pack_color, register_shape_pointer,
+};
+use crate::viewer::ViewerConfig;
+
+use glam::DVec3;
+use opencascade::primitives::{Face, Shape};
 
 // ── Thread-local error buffer for propagating CAD errors to C bridge ─────
 
@@ -46,14 +61,6 @@ pub unsafe extern "C" fn rust_take_last_error() -> *mut c_char {
     let msg = take_last_error();
     CString::new(msg).unwrap().into_raw()
 }
-
-use glam::DVec3;
-use opencascade::primitives::{Face, Shape};
-
-use types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, SHOW_ACTIVE_EDGES,
-    SHOW_INACTIVE_EDGES, ShapeData, init_edge_color_defaults, pack_color,
-};
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
 
@@ -113,9 +120,11 @@ pub unsafe extern "C" fn rust_init_box(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -156,9 +165,11 @@ pub unsafe extern "C" fn rust_init_sphere(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -193,9 +204,11 @@ pub unsafe extern "C" fn rust_init_cube(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -227,9 +240,11 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -265,9 +280,11 @@ pub unsafe extern "C" fn rust_init_cylinder(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -300,9 +317,11 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -336,9 +355,11 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -381,9 +402,11 @@ pub unsafe extern "C" fn rust_init_cone(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -454,9 +477,11 @@ pub unsafe extern "C" fn rust_init_torus(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -545,9 +570,11 @@ pub unsafe extern "C" fn rust_sketch_close(shape_dest: *mut c_void, src: *mut c_
     let wire = src_sketch.close();
     let face = Face::from_wire(&wire);
     let sd = ShapeData::new(Shape::from(face));
+    let shape_id = sd.shape_id;
     unsafe {
         ptr::write(shape_dest as *mut ShapeData, sd);
     }
+    register_shape_pointer(shape_id, shape_dest);
 }
 
 /// Build an unclosed Wire from a sketch.
@@ -556,9 +583,11 @@ pub unsafe extern "C" fn rust_sketch_build_wire(shape_dest: *mut c_void, src: *m
     let src_sketch = unsafe { &*(src as *const sketch::SketchData) };
     let wire = src_sketch.build_wire();
     let sd = ShapeData::new(Shape::from(wire));
+    let shape_id = sd.shape_id;
     unsafe {
         ptr::write(shape_dest as *mut ShapeData, sd);
     }
+    register_shape_pointer(shape_id, shape_dest);
 }
 
 // ── 2D Primitives — initialize at a pre-allocated destination ──────────────
@@ -593,9 +622,11 @@ pub unsafe extern "C" fn rust_init_rect(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -638,9 +669,11 @@ pub unsafe extern "C" fn rust_init_circle(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -685,9 +718,11 @@ pub unsafe extern "C" fn rust_init_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -721,9 +756,11 @@ pub unsafe extern "C" fn rust_init_extrude(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -763,9 +800,11 @@ pub unsafe extern "C" fn rust_init_revolve(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -811,9 +850,11 @@ pub unsafe extern "C" fn rust_init_extrude_polygon(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -839,9 +880,11 @@ pub unsafe extern "C" fn rust_init_wire_to_face(
     let result = catch_unwind(AssertUnwindSafe(|| cad::wire_to_face(shape, eager != 0)));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -868,9 +911,11 @@ pub unsafe extern "C" fn rust_init_wire_fillet(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -897,9 +942,11 @@ pub unsafe extern "C" fn rust_init_wire_chamfer(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -926,9 +973,11 @@ pub unsafe extern "C" fn rust_init_wire_offset(
     }));
     match result {
         Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, sd);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -980,9 +1029,11 @@ pub unsafe extern "C" fn rust_init_cut(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1012,9 +1063,11 @@ pub unsafe extern "C" fn rust_init_common(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1044,9 +1097,11 @@ pub unsafe extern "C" fn rust_init_fuse(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1077,9 +1132,11 @@ pub unsafe extern "C" fn rust_init_translate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1111,9 +1168,11 @@ pub unsafe extern "C" fn rust_init_rotate(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1151,9 +1210,11 @@ pub unsafe extern "C" fn rust_init_scale(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1187,9 +1248,11 @@ pub unsafe extern "C" fn rust_init_mirror(
     }));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1260,9 +1323,11 @@ pub unsafe extern "C" fn rust_init_read_step(
     let result = catch_unwind(AssertUnwindSafe(|| cad::read_step(&path_str, eager)));
     match result {
         Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
             unsafe {
                 ptr::write(dest as *mut ShapeData, shape_data);
             }
+            register_shape_pointer(shape_id, dest);
             0
         }
         Ok(Err(msg)) => {
@@ -1273,6 +1338,174 @@ pub unsafe extern "C" fn rust_init_read_step(
             set_last_error("unexpected error in rust_init_read_step".to_string());
             1
         }
+    }
+}
+
+// ── Text ───────────────────────────────────────────────────────────────────
+
+/// Create a 2D text shape (Face) from a string and font file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_text(
+    dest: *mut c_void,
+    text: *const c_char,
+    font_path: *const c_char,
+    size: c_double,
+    plane: *const c_char,
+    ax: c_double,
+    ay: c_double,
+    az: c_double,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let text_str = unsafe { CStr::from_ptr(text) }
+        .to_string_lossy()
+        .to_string();
+    let font_str = unsafe { CStr::from_ptr(font_path) }
+        .to_string_lossy()
+        .to_string();
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let font = text::FontData::from_path(&font_str)?;
+        let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
+        let shape = text::text_to_shape(&text_str, &font, size, &wp)?;
+        let mut sd = ShapeData::new(shape);
+        if eager {
+            sd.tessellate_if_needed();
+        }
+        Ok(sd)
+    }));
+
+    match result {
+        Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_text".to_string());
+            1
+        }
+    }
+}
+
+/// Create an extruded 3D text shape (Solid) from a string and font file.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_text_extruded(
+    dest: *mut c_void,
+    text: *const c_char,
+    font_path: *const c_char,
+    size: c_double,
+    depth: c_double,
+    both: c_int,
+    plane: *const c_char,
+    ax: c_double,
+    ay: c_double,
+    az: c_double,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let both = both != 0;
+    let text_str = unsafe { CStr::from_ptr(text) }
+        .to_string_lossy()
+        .to_string();
+    let font_str = unsafe { CStr::from_ptr(font_path) }
+        .to_string_lossy()
+        .to_string();
+    let plane_str = if plane.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(plane) }
+            .to_string_lossy()
+            .to_string()
+    };
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let font = text::FontData::from_path(&font_str)?;
+        let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
+        let shape = text::text_to_solid(&text_str, &font, size, depth, both, &wp)?;
+        let mut sd = ShapeData::new(shape);
+        if eager {
+            sd.tessellate_if_needed();
+        }
+        Ok(sd)
+    }));
+
+    match result {
+        Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_text_extruded".to_string());
+            1
+        }
+    }
+}
+
+/// List system fonts. Returns an array of "name|/path|:aspect" C strings.
+/// Sets count_out to the number of entries. Caller must free with rust_free_fonts_list.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_list_fonts(count_out: *mut c_int) -> *mut *mut c_char {
+    let fonts = text::list_system_fonts();
+    let count = fonts.len();
+    let mut entries: Vec<*mut c_char> = Vec::with_capacity(count);
+
+    for (name, path, aspect) in fonts {
+        let entry = format!("{}|{}|{}", name, path, aspect.as_str());
+        if let Ok(cs) = CString::new(entry) {
+            entries.push(cs.into_raw());
+        }
+    }
+
+    let boxed = entries.into_boxed_slice();
+    let ptr = boxed.as_ptr() as *mut *mut c_char;
+    std::mem::forget(boxed);
+    unsafe {
+        ptr::write(count_out, count as c_int);
+    }
+    ptr
+}
+
+/// Free the font list allocated by rust_list_fonts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_int) {
+    if ptr.is_null() {
+        return;
+    }
+    let count = count as usize;
+    for i in 0..count {
+        let p = unsafe { *ptr.add(i) };
+        if !p.is_null() {
+            unsafe {
+                drop(CString::from_raw(p));
+            }
+        }
+    }
+    unsafe {
+        let sl = std::ptr::slice_from_raw_parts_mut(ptr, count);
+        drop(Box::<[*mut c_char]>::from_raw(sl));
     }
 }
 
@@ -1304,15 +1537,94 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
     }
 }
 
+// ── Shape Query FFI ───────────────────────────────────────────────────────────
+
+/// Return an array of selected shape IDs and their count.
+/// Caller must free the returned array with rust_free_u64_array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_selected_shape_ids(count_out: *mut usize) -> *mut u64 {
+    let ids: Vec<u64> = types::get_selected_ids().into_iter().collect();
+    let count = ids.len();
+    let ptr = ids.as_ptr() as *mut u64;
+    std::mem::forget(ids);
+    if !count_out.is_null() {
+        unsafe {
+            *count_out = count;
+        }
+    }
+    ptr
+}
+
+/// Return an array of registered shape IDs matching the given filter.
+/// filter: 0 = all, 1 = visible only, 2 = hidden only.
+/// Caller must free the returned array with rust_free_u64_array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_registered_shape_ids(
+    filter: u8,
+    count_out: *mut usize,
+) -> *mut u64 {
+    let registry = global_shape_registry();
+    let entries = match filter {
+        1 => registry.visible_shapes(),
+        2 => registry.hidden_shapes(),
+        _ => registry.all_shapes(),
+    };
+    let ids: Vec<u64> = entries.iter().map(|e| e.shape_id).collect();
+    let count = ids.len();
+    let ptr = ids.as_ptr() as *mut u64;
+    std::mem::forget(ids);
+    if !count_out.is_null() {
+        unsafe {
+            *count_out = count;
+        }
+    }
+    ptr
+}
+
+/// Look up a ShapeData pointer by shape ID. Returns null if not found.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_shape_pointer(id: u64) -> *mut c_void {
+    types::get_shape_pointer(id)
+}
+
+/// Free an array of u64 allocated by rust_get_selected_shape_ids
+/// or rust_get_registered_shape_ids.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_free_u64_array(ptr: *mut u64, count: usize) {
+    if !ptr.is_null() {
+        unsafe {
+            drop(Vec::from_raw_parts(ptr, count, count));
+        }
+    }
+}
+
 // ── Selection callback ───────────────────────────────────────────────────────
 
 /// Poll for a pending selection event.
 /// Returns 0 if no event, u64::MAX for deselected, or the selected shape ID.
-/// Resets the event to 0 after reading.
+/// Writes the action type (0=none, 1=toggled_on, 2=toggled_off, 3=cleared)
+/// to the out-parameter pointed to by `action` if non-null.
+/// Resets both atomics to 0 after reading.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_poll_selection() -> u64 {
-    LAST_SELECTION.swap(0, Ordering::SeqCst)
+pub unsafe extern "C" fn rust_poll_selection(action: *mut u8) -> u64 {
+    let id = LAST_SELECTION.swap(0, Ordering::SeqCst);
+    if !action.is_null() {
+        unsafe {
+            *action = LAST_SELECTION_ACTION.swap(0, Ordering::SeqCst);
+        }
+    }
+    id
 }
+
+/// Check if the application should quit (Ctrl+Q or window close).
+/// Returns 1 if quit was requested, 0 otherwise. One-shot — resets the flag.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_quit_requested() -> c_int {
+    c_int::from(QUIT_REQUESTED.swap(false, Ordering::SeqCst))
+}
+
+/// Sender for REPL→Viewer commands (fit-to-bounds, etc.).
+static REPL_TO_VIEWER: OnceLock<mpsc::Sender<ReplToViewer>> = OnceLock::new();
 
 // ── Edge visibility toggles ────────────────────────────────────────────────────
 
@@ -1366,6 +1678,235 @@ pub unsafe extern "C" fn rust_edge_set_color_inactive(r: c_double, g: c_double, 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_edge_set_color_active(r: c_double, g: c_double, b: c_double) {
     ACTIVE_EDGE_COLOR.store(pack_color(r, g, b), Ordering::SeqCst);
+}
+
+// ── Back (hidden) edges visibility ────────────────────────────────────────────
+
+/// Toggle back edge visibility. Returns new state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_toggle() -> c_int {
+    let old = SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query back edge visibility state (1 = showing, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_showing() -> c_int {
+    c_int::from(SHOW_BACK_EDGES.load(Ordering::SeqCst))
+}
+
+/// Set back edge visibility (0 = hidden, non-zero = showing).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_back_edges_set(value: c_int) {
+    SHOW_BACK_EDGES.store(value != 0, Ordering::SeqCst);
+}
+
+// ── Projection mode toggle ────────────────────────────────────────────────────
+
+/// Toggle projection mode. Returns new state (1 = perspective, 0 = orthographic).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_toggle() -> c_int {
+    let old = PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query projection mode (1 = perspective, 0 = orthographic).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_showing() -> c_int {
+    c_int::from(PROJECTION_PERSPECTIVE.load(Ordering::SeqCst))
+}
+
+/// Set projection mode (0 = orthographic, non-zero = perspective).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_projection_perspective_set(value: c_int) {
+    PROJECTION_PERSPECTIVE.store(value != 0, Ordering::SeqCst);
+}
+
+// ── View angle ──────────────────────────────────────────────────────────────
+
+/// Set camera to specific yaw/pitch angles, optionally with a distance.
+/// If has_distance is false, the current camera radius is preserved.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_set_angles(
+    yaw: f64,
+    pitch: f64,
+    has_distance: bool,
+    distance: f64,
+) {
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let dist = if has_distance { Some(distance) } else { None };
+        let _ = tx.send(ReplToViewer::SetViewAngles {
+            yaw,
+            pitch,
+            distance: dist,
+        });
+    }
+}
+
+// ── Stats overlay toggle ───────────────────────────────────────────────────
+
+/// Toggle stats overlay. Returns new state (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_toggle() -> c_int {
+    let old = SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query stats overlay visibility (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_showing() -> c_int {
+    c_int::from(SHOW_STATS_OVERLAY.load(Ordering::SeqCst))
+}
+
+/// Set stats overlay visibility (0 = hidden, non-zero = visible).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_stats_overlay_set(value: c_int) {
+    SHOW_STATS_OVERLAY.store(value != 0, Ordering::SeqCst);
+}
+
+// ── Help overlay toggle ────────────────────────────────────────────────────
+
+/// Toggle help window. Returns new state (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_toggle() -> c_int {
+    let old = SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+    c_int::from(!old)
+}
+
+/// Query help window visibility (1 = visible, 0 = hidden).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_showing() -> c_int {
+    c_int::from(SHOW_HELP_OVERLAY.load(Ordering::SeqCst))
+}
+
+/// Set help window visibility (0 = hidden, non-zero = visible).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_overlay_set(value: c_int) {
+    SHOW_HELP_OVERLAY.store(value != 0, Ordering::SeqCst);
+}
+
+// ── View fit ───────────────────────────────────────────────────────────────────
+
+/// Fit camera to bounding box union of explicitly provided shapes.
+/// `reset` — if true, reset to default isometric angle; otherwise keep current angle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_fit_shapes(shapes: *mut *mut c_void, count: c_int, reset: bool) {
+    let shape_ptrs = unsafe { std::slice::from_raw_parts(shapes, count as usize) };
+    let shape_refs: Vec<&ShapeData> = shape_ptrs
+        .iter()
+        .map(|&p| unsafe { &*(p as *const ShapeData) })
+        .collect();
+
+    if let Some((center, radius)) = cad::compute_union_bounds(&shape_refs)
+        && let Some(tx) = REPL_TO_VIEWER.get()
+    {
+        let _ = tx.send(ReplToViewer::FitToBounds {
+            center,
+            radius,
+            keep_angle: !reset,
+        });
+    }
+}
+
+/// Fit camera to bounding box union of all shapes (visible by default,
+/// or all including hidden if `include_hidden` is true).
+/// `reset` — if true, reset to default isometric angle; otherwise keep current angle.
+/// If no shapes are found, always reset to default position.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_view_fit_all(include_hidden: bool, reset: bool) {
+    let registry = global_shape_registry();
+    let entries = if include_hidden {
+        registry.all_shapes()
+    } else {
+        registry.visible_shapes()
+    };
+
+    let mut min = DVec3::splat(f64::MAX);
+    let mut max = DVec3::splat(f64::MIN);
+    let mut has_vertices = false;
+
+    for entry in &entries {
+        if let Some(ref mesh) = entry.mesh {
+            for v in &mesh.vertices {
+                let p = DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+                min = min.min(p);
+                max = max.max(p);
+                has_vertices = true;
+            }
+        }
+    }
+
+    let (center, radius, final_keep) = if has_vertices {
+        (
+            (min + max) * 0.5,
+            (max - min).length() * 0.5 * 1.3,
+            !reset, // invert: reset=false → keep angle (default)
+        )
+    } else {
+        // No shapes found: always reset to default camera position
+        (DVec3::ZERO, 50.0, false)
+    };
+
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::FitToBounds {
+            center,
+            radius,
+            keep_angle: final_keep,
+        });
+    }
+}
+
+// ── Window size / fullscreen FFI ─────────────────────────────────────────────
+
+/// Set viewer window size from Janet. Sets atomics optimistically then sends
+/// a command via the REPL→Viewer channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_size(width: u32, height: u32) {
+    WINDOW_WIDTH.store(width, Ordering::SeqCst);
+    WINDOW_HEIGHT.store(height, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetWindowSize { width, height });
+    }
+}
+
+/// Query current viewer window size. Returns [width, height] written to
+/// the provided out-parameters.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_size_query(out_width: *mut u32, out_height: *mut u32) {
+    unsafe {
+        *out_width = WINDOW_WIDTH.load(Ordering::SeqCst);
+        *out_height = WINDOW_HEIGHT.load(Ordering::SeqCst);
+    }
+}
+
+/// Set fullscreen mode from Janet. Sets the atomic then sends a command.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_fullscreen(fs: bool) {
+    WINDOW_FULLSCREEN.store(fs, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetFullscreen(fs));
+    }
+}
+
+/// Query current fullscreen state. Returns 1 if fullscreen, 0 if not.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_fullscreen_query() -> c_int {
+    c_int::from(WINDOW_FULLSCREEN.load(Ordering::SeqCst))
+}
+
+/// Set maximized state from Janet. Sets the atomic then sends a command.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_set_maximized(mx: bool) {
+    WINDOW_MAXIMIZED.store(mx, Ordering::SeqCst);
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::SetMaximized(mx));
+    }
+}
+
+/// Query current maximized state. Returns 1 if maximized, 0 if not.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_window_maximized_query() -> c_int {
+    c_int::from(WINDOW_MAXIMIZED.load(Ordering::SeqCst))
 }
 
 // ── C bridge registration forward declaration ────────────────────────────────
@@ -1427,11 +1968,59 @@ fn parse_eval_args() -> Vec<String> {
     exprs
 }
 
+fn parse_size_args() -> (Option<u32>, Option<u32>) {
+    let mut width: Option<u32> = None;
+    let mut height: Option<u32> = None;
+    let mut args = std::env::args().peekable();
+    while let Some(arg) = args.next() {
+        if let Some(w) = arg.strip_prefix("--width=") {
+            width = Some(w.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid width '{}'", w);
+                std::process::exit(1);
+            }));
+        }
+        if arg == "--width" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --width requires a value");
+                std::process::exit(1);
+            });
+            width = Some(next.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid width '{}'", next);
+                std::process::exit(1);
+            }));
+        }
+        if let Some(h) = arg.strip_prefix("--height=") {
+            height = Some(h.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid height '{}'", h);
+                std::process::exit(1);
+            }));
+        }
+        if arg == "--height" {
+            let next = args.next().unwrap_or_else(|| {
+                eprintln!("rojcad: --height requires a value");
+                std::process::exit(1);
+            });
+            height = Some(next.parse().unwrap_or_else(|_| {
+                eprintln!("rojcad: invalid height '{}'", next);
+                std::process::exit(1);
+            }));
+        }
+    }
+    (width, height)
+}
+
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
     let port: u16 = parse_port_arg().unwrap_or(9365);
     let eval_exprs: Vec<String> = parse_eval_args();
+    let (cli_width, cli_height) = parse_size_args();
+    let maximized = cli_width.is_none() && cli_height.is_none();
+    let viewer_config = ViewerConfig {
+        width: cli_width.unwrap_or(1024),
+        height: cli_height.unwrap_or(768),
+        maximized,
+    };
 
     // Initialize edge style defaults
     init_edge_color_defaults();
@@ -1484,10 +2073,14 @@ fn main() {
         }
     }
 
+    // Create channel for REPL→Viewer commands
+    let (repl_tx, repl_rx) = mpsc::channel::<ReplToViewer>();
+    let _ = REPL_TO_VIEWER.set(repl_tx);
+
     // Start viewer thread unless --headless flag is present
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let _viewer_handle = if !headless {
-        Some(viewer::spawn_viewer())
+        Some(viewer::spawn_viewer(repl_rx, viewer_config))
     } else {
         None
     };

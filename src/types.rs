@@ -4,9 +4,12 @@
 //! Also defines the shared `ShapeRegistry` used to synchronize shape
 //! state between the REPL thread and the viewer thread.
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::collections::{HashMap, HashSet};
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
+
+use glam::DVec3;
 
 /// Global generation counter for change tracking.
 /// Incremented on every ShapeRegistry write.
@@ -19,9 +22,64 @@ use opencascade::primitives::Shape;
 /// 0 = no event pending, u64::MAX = deselected, other = selected shape ID.
 pub static LAST_SELECTION: AtomicU64 = AtomicU64::new(0);
 
+/// Action type for the last selection event.
+/// 0 = none, 1 = toggled_on, 2 = toggled_off, 3 = cleared.
+pub static LAST_SELECTION_ACTION: AtomicU8 = AtomicU8::new(0);
+
 /// Edge visibility toggles, controlled from the Janet REPL.
 pub static SHOW_INACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
 pub static SHOW_ACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
+
+/// Hidden (occluded) edge visibility — toggled via Janet or X key.
+pub static SHOW_BACK_EDGES: AtomicBool = AtomicBool::new(false);
+
+/// Camera projection mode. true = perspective, false = orthographic.
+/// Viewer thread syncs from this each frame.
+pub static PROJECTION_PERSPECTIVE: AtomicBool = AtomicBool::new(true);
+
+/// Stats overlay visibility toggle.
+pub static SHOW_STATS_OVERLAY: AtomicBool = AtomicBool::new(false);
+
+/// Help window visibility toggle (default visible on startup).
+pub static SHOW_HELP_OVERLAY: AtomicBool = AtomicBool::new(true);
+
+/// Set to true when the viewer requests the application to quit (Ctrl+Q or window close).
+pub static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Current viewer window width in logical pixels. Updated by viewer on resize.
+pub static WINDOW_WIDTH: AtomicU32 = AtomicU32::new(1024);
+
+/// Current viewer window height in logical pixels. Updated by viewer on resize.
+pub static WINDOW_HEIGHT: AtomicU32 = AtomicU32::new(768);
+
+/// Whether the viewer window is currently in fullscreen mode.
+pub static WINDOW_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+
+/// Whether the viewer window is currently maximized.
+pub static WINDOW_MAXIMIZED: AtomicBool = AtomicBool::new(false);
+
+/// Commands sent from the REPL thread to the viewer thread.
+/// The viewer polls these each frame via an mpsc receiver.
+pub enum ReplToViewer {
+    /// Fit the camera to frame a bounding sphere.
+    FitToBounds {
+        center: DVec3,
+        radius: f64,
+        keep_angle: bool,
+    },
+    /// Set camera to specific yaw/pitch angles, optionally with a distance.
+    SetViewAngles {
+        yaw: f64,
+        pitch: f64,
+        distance: Option<f64>,
+    },
+    /// Resize the viewer window to the given logical dimensions.
+    SetWindowSize { width: u32, height: u32 },
+    /// Enter or exit fullscreen mode.
+    SetFullscreen(bool),
+    /// Enter or exit maximized state.
+    SetMaximized(bool),
+}
 
 /// Edge thickness in NDC units (controlled from Janet).
 pub static EDGE_THICKNESS: AtomicU64 = AtomicU64::new(f64::to_bits(0.001));
@@ -50,6 +108,61 @@ pub static ACTIVE_EDGE_COLOR: AtomicU64 = AtomicU64::new(0);
 pub fn init_edge_color_defaults() {
     INACTIVE_EDGE_COLOR.store(pack_color(0.7, 0.7, 0.7), Ordering::SeqCst);
     ACTIVE_EDGE_COLOR.store(pack_color(0.4, 0.6, 1.0), Ordering::SeqCst);
+}
+
+/// Wrapper around `*mut c_void` that implements Send + Sync for use in statics.
+/// Safe because all access is behind a RwLock.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct ShapePointer(pub *mut c_void);
+
+unsafe impl Send for ShapePointer {}
+unsafe impl Sync for ShapePointer {}
+
+/// Global map from ShapeId to ShapeData pointer (Janet GC-allocated).
+/// Populated when shapes are constructed, cleaned up on ShapeData::drop.
+/// Allows the C bridge to return real ShapeData objects from ID-based queries.
+pub static SHAPE_PTR_MAP: OnceLock<RwLock<HashMap<ShapeId, ShapePointer>>> = OnceLock::new();
+
+/// Register a ShapeData pointer by its shape ID.
+pub fn register_shape_pointer(id: ShapeId, ptr: *mut c_void) {
+    SHAPE_PTR_MAP
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .write()
+        .expect("SHAPE_PTR_MAP lock poisoned")
+        .insert(id, ShapePointer(ptr));
+}
+
+/// Unregister a ShapeData pointer (called from Drop).
+pub fn unregister_shape_pointer(id: ShapeId) {
+    if let Some(map) = SHAPE_PTR_MAP.get() {
+        map.write()
+            .expect("SHAPE_PTR_MAP lock poisoned")
+            .remove(&id);
+    }
+}
+
+/// Look up a ShapeData pointer by shape ID. Returns null if not found.
+pub fn get_shape_pointer(id: ShapeId) -> *mut c_void {
+    SHAPE_PTR_MAP
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .read()
+        .expect("SHAPE_PTR_MAP lock poisoned")
+        .get(&id)
+        .map(|sp| sp.0)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Global set of currently selected shape IDs, synced from the viewer thread.
+pub static SELECTED_IDS: OnceLock<RwLock<HashSet<ShapeId>>> = OnceLock::new();
+
+/// Read the current selection set. Returns an empty HashSet if not initialized.
+pub fn get_selected_ids() -> HashSet<ShapeId> {
+    SELECTED_IDS
+        .get_or_init(|| RwLock::new(HashSet::new()))
+        .read()
+        .expect("SELECTED_IDS lock poisoned")
+        .clone()
 }
 
 /// Monotonically increasing shape ID counter.
@@ -118,11 +231,40 @@ impl ShapeRegistry {
         REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
     }
 
+    /// Return a snapshot of all registered shapes (visible and hidden).
+    pub fn all_shapes(&self) -> Vec<ShapeEntry> {
+        let map = self.inner.read().expect("shape registry lock poisoned");
+        map.values()
+            .map(|e| ShapeEntry {
+                shape_id: e.shape_id,
+                mesh: e.mesh.clone(),
+                edge_polylines: e.edge_polylines.clone(),
+                visible: e.visible,
+                color: e.color,
+            })
+            .collect()
+    }
+
     /// Return a snapshot of all currently visible shapes with their data.
     pub fn visible_shapes(&self) -> Vec<ShapeEntry> {
         let map = self.inner.read().expect("shape registry lock poisoned");
         map.values()
             .filter(|e| e.visible)
+            .map(|e| ShapeEntry {
+                shape_id: e.shape_id,
+                mesh: e.mesh.clone(),
+                edge_polylines: e.edge_polylines.clone(),
+                visible: e.visible,
+                color: e.color,
+            })
+            .collect()
+    }
+
+    /// Return a snapshot of all currently hidden shapes with their data.
+    pub fn hidden_shapes(&self) -> Vec<ShapeEntry> {
+        let map = self.inner.read().expect("shape registry lock poisoned");
+        map.values()
+            .filter(|e| !e.visible)
             .map(|e| ShapeEntry {
                 shape_id: e.shape_id,
                 mesh: e.mesh.clone(),
@@ -270,6 +412,7 @@ impl ShapeData {
 
 impl Drop for ShapeData {
     fn drop(&mut self) {
+        unregister_shape_pointer(self.shape_id);
         if self.registered {
             global_shape_registry().remove(self.shape_id);
         }

@@ -1,6 +1,6 @@
 # rojcad
 
-> Headless parametric CAD system with embedded Janet DSL.
+> Parametric CAD system with embedded Janet DSL.
 
 **rojcad** embeds a [Janet](https://janet-lang.org/) interpreter with
 [OpenCASCADE](https://www.opencascade.com/) modeling via
@@ -88,23 +88,6 @@ Rust API documentation can be built with:
 just doc
 ```
 
-## Dependencies & Licenses
-
-| Dependency | License |
-|------------|---------|
-| [rojcad](.) (this project) | GPL-3.0-only |
-| [OpenCASCADE](https://www.opencascade.com/) (OCCT) | LGPL-2.1 with exception |
-| [opencascade-rs](https://github.com/bschwind/opencascade-rs) | LGPL-2.1 |
-| [Janet](https://janet-lang.org/) (vendored) | MIT |
-| [wgpu](https://github.com/gfx-rs/wgpu) | MIT / Apache-2.0 |
-| [winit](https://github.com/rust-windowing/winit) | Apache-2.0 |
-| [glam](https://github.com/bitshifter/glam-rs) | MIT / Apache-2.0 / Zlib |
-| [thiserror](https://github.com/dtolnay/thiserror) | MIT / Apache-2.0 |
-| [bytemuck](https://github.com/Lokathor/bytemuck) | Zlib / Apache-2.0 / MIT |
-| [pollster](https://github.com/zesterer/pollster) | MIT / Apache-2.0 |
-
-Full license texts are in [`licenses/`](licenses/) with a mapping in [`licenses/README.md`](licenses/README.md).
-
 ## Architecture
 
 ```
@@ -137,9 +120,26 @@ Full license texts are in [`licenses/`](licenses/) with a mapping in [`licenses/
 └──────────────────────────────────────────┘
 ```
 
-The 3D viewer runs on a background thread (wgpu + winit) and is compiled out
-on macOS/iOS.  REPL ↔ viewer communication is via `mpsc` channels, with shared
-state in a `ShapeRegistry` (RwLock + atomic generation counter).
+The 3D viewer runs on a background thread (wgpu + winit + egui) and is compiled
+out on macOS/iOS.  REPL ↔ viewer communication is via `mpsc` channels, with
+shared state in a `ShapeRegistry` (RwLock + atomic generation counter).
+
+## Dependencies & Licenses
+
+| Dependency | License |
+|------------|---------|
+| [rojcad](.) (this project) | GPL-3.0-only |
+| [OpenCASCADE](https://www.opencascade.com/) (OCCT) | LGPL-2.1 with exception |
+| [opencascade-rs](https://github.com/bschwind/opencascade-rs) | LGPL-2.1 |
+| [Janet](https://janet-lang.org/) (vendored) | MIT |
+| [wgpu](https://github.com/gfx-rs/wgpu) | MIT / Apache-2.0 |
+| [winit](https://github.com/rust-windowing/winit) | Apache-2.0 |
+| [glam](https://github.com/bitshifter/glam-rs) | MIT / Apache-2.0 / Zlib |
+| [thiserror](https://github.com/dtolnay/thiserror) | MIT / Apache-2.0 |
+| [bytemuck](https://github.com/Lokathor/bytemuck) | Zlib / Apache-2.0 / MIT |
+| [pollster](https://github.com/zesterer/pollster) | MIT / Apache-2.0 |
+
+Full license texts are in [`licenses/`](licenses/) with a mapping in [`licenses/README.md`](licenses/README.md).
 
 ## License
 

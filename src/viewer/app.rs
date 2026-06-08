@@ -1,32 +1,40 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender};
+
+use glam::DVec3;
 
 use wgpu::{self, util::DeviceExt};
 #[cfg(target_os = "linux")]
 use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::{
     application::ApplicationHandler,
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, ModifiersState, NamedKey},
-    window::{Window, WindowId},
+    window::{Fullscreen, Window, WindowId},
 };
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, MeshData,
-    REGISTRY_GENERATION, SHOW_ACTIVE_EDGES, SHOW_INACTIVE_EDGES, ShapeId, global_shape_registry,
-    unpack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
+    MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
+    SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES,
+    SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH,
+    global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
+use super::help::Help;
 use super::pick::pick_shape;
+use super::stats::Stats;
 
-use super::ViewerToRepl;
+use super::{ViewerConfig, ViewerToRepl};
 
 const GIZMO_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+const CLICK_THRESHOLD: f64 = 3.0;
 
 // ── Uniform buffers ───────────────────────────────────────────────────────
 
@@ -105,6 +113,61 @@ impl CameraAnimation {
 
     fn stop(&mut self) {
         self.active = false;
+    }
+}
+
+// ── FitAnimation ─────────────────────────────────────────────────────────────
+
+/// Smoothly animates camera target, radius, yaw, and pitch for fit-to-shape.
+struct FitAnimation {
+    start_target: DVec3,
+    end_target: DVec3,
+    start_radius: f64,
+    end_radius: f64,
+    start_yaw: f64,
+    end_yaw: f64,
+    start_pitch: f64,
+    end_pitch: f64,
+    elapsed: f64,
+    duration: f64,
+}
+
+impl FitAnimation {
+    fn new(
+        start_target: DVec3,
+        end_target: DVec3,
+        start_radius: f64,
+        end_radius: f64,
+        start_yaw: f64,
+        end_yaw: f64,
+        start_pitch: f64,
+        end_pitch: f64,
+    ) -> Self {
+        Self {
+            start_target,
+            end_target,
+            start_radius,
+            end_radius,
+            start_yaw,
+            end_yaw,
+            start_pitch,
+            end_pitch,
+            elapsed: 0.0,
+            duration: ANIMATION_DURATION,
+        }
+    }
+
+    fn update(&mut self, camera: &mut OrbitCamera, dt: f64) -> bool {
+        self.elapsed += dt;
+        let t = (self.elapsed / self.duration).clamp(0.0, 1.0);
+        let e = ease_in_out(t);
+
+        camera.target = self.start_target.lerp(self.end_target, e);
+        camera.radius = self.start_radius + (self.end_radius - self.start_radius) * e;
+        camera.yaw = self.start_yaw + (self.end_yaw - self.start_yaw) * e;
+        camera.pitch = self.start_pitch + (self.end_pitch - self.start_pitch) * e;
+
+        t >= 1.0
     }
 }
 
@@ -339,10 +402,10 @@ impl SurfaceDrawer {
         self.meshes = meshes;
     }
 
-    pub fn render(&self, pass: &mut wgpu::RenderPass, selected_id: Option<ShapeId>) {
+    pub fn render(&self, pass: &mut wgpu::RenderPass, selected_ids: &HashSet<ShapeId>) {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         for mesh in &self.meshes {
-            let is_selected = Some(mesh.shape_id) == selected_id;
+            let is_selected = selected_ids.contains(&mesh.shape_id);
             if is_selected {
                 pass.set_pipeline(&self.highlight_pipeline);
             } else {
@@ -730,27 +793,40 @@ pub struct ViewerState {
     gizmo_depth_view: wgpu::TextureView,
     gizmo_viewport_size: u32,
     gizmo_margin: u32,
-    selected_id: Option<ShapeId>,
-    show_back_edges: bool,
+    selected_ids: HashSet<ShapeId>,
+    click_start_pos: PhysicalPosition<f64>,
     mouse_pressed: [bool; 3],
     mouse_pos: PhysicalPosition<f64>,
     last_generation: u64,
     animation: CameraAnimation,
+    fit_animation: Option<FitAnimation>,
     last_time: std::time::Instant,
     keyboard_view: Option<usize>,
     modifiers: ModifiersState,
+    egui_ctx: egui::Context,
+    egui_state: egui_winit::State,
+    egui_renderer: egui_wgpu::Renderer,
+    stats: Stats,
+    help: Help,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
 
 struct ViewerApp {
     viewer_tx: Sender<ViewerToRepl>,
+    repl_rx: Receiver<ReplToViewer>,
     running: Arc<AtomicBool>,
+    config: ViewerConfig,
     state: Option<ViewerState>,
 }
 
 /// Main entry point for the viewer thread.
-pub fn run_viewer(viewer_tx: Sender<ViewerToRepl>, running: Arc<AtomicBool>) {
+pub fn run_viewer(
+    viewer_tx: Sender<ViewerToRepl>,
+    repl_rx: Receiver<ReplToViewer>,
+    running: Arc<AtomicBool>,
+    config: ViewerConfig,
+) {
     let mut builder = EventLoop::builder();
     #[cfg(target_os = "linux")]
     builder.with_any_thread(true);
@@ -758,7 +834,9 @@ pub fn run_viewer(viewer_tx: Sender<ViewerToRepl>, running: Arc<AtomicBool>) {
 
     let mut app = ViewerApp {
         viewer_tx,
+        repl_rx,
         running,
+        config,
         state: None,
     };
 
@@ -798,14 +876,23 @@ impl ApplicationHandler for ViewerApp {
             return;
         }
 
-        let window_attrs = Window::default_attributes()
+        let logical_size = LogicalSize::new(self.config.width as f64, self.config.height as f64);
+        let mut window_attrs = Window::default_attributes()
             .with_title("rojcad — 3D Viewer")
-            .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
+            .with_inner_size(logical_size);
+        if self.config.maximized {
+            window_attrs = window_attrs.with_maximized(true);
+        }
         let window = Arc::new(
             event_loop
                 .create_window(window_attrs)
                 .expect("failed to create window"),
         );
+
+        // Initialize atomics from config so queries work before first frame
+        WINDOW_WIDTH.store(self.config.width, Ordering::SeqCst);
+        WINDOW_HEIGHT.store(self.config.height, Ordering::SeqCst);
+        WINDOW_FULLSCREEN.store(false, Ordering::SeqCst);
 
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
@@ -820,7 +907,7 @@ impl ApplicationHandler for ViewerApp {
         .expect("failed to find adapter");
 
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("failed to create device");
 
         let surface_caps = surface.get_capabilities(&adapter);
@@ -851,6 +938,17 @@ impl ApplicationHandler for ViewerApp {
         let edge_drawer = EdgeDrawer::new(&device, surface_format, depth_format);
         let grid_renderer = GridRenderer::new(&device);
         let mut gizmo_renderer = GizmoRenderer::new(&device, surface_format);
+
+        let egui_ctx = egui::Context::default();
+        let egui_state = egui_winit::State::new(
+            egui_ctx.clone(),
+            egui::ViewportId::ROOT,
+            event_loop,
+            None,
+            None,
+            None,
+        );
+        let egui_renderer = egui_wgpu::Renderer::new(&device, surface_format, None, 1, false);
 
         // Initial empty instance buffers (populated from ShapeRegistry each frame)
         let inactive_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -911,15 +1009,21 @@ impl ApplicationHandler for ViewerApp {
             gizmo_depth_view,
             gizmo_viewport_size,
             gizmo_margin,
-            selected_id: None,
-            show_back_edges: true,
+            selected_ids: HashSet::new(),
+            click_start_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             mouse_pressed: [false; 3],
             mouse_pos: PhysicalPosition { x: 0.0, y: 0.0 },
             last_generation: 0,
             animation: CameraAnimation::new(),
+            fit_animation: None,
             last_time: std::time::Instant::now(),
             keyboard_view: None,
             modifiers: ModifiersState::default(),
+            egui_ctx,
+            egui_state,
+            egui_renderer,
+            stats: Stats::new(),
+            help: Help::new(),
         });
     }
 
@@ -934,14 +1038,19 @@ impl ApplicationHandler for ViewerApp {
             None => return,
         };
 
+        let _ = state.egui_state.on_window_event(&state.window, &event);
+
         match event {
             WindowEvent::CloseRequested => {
+                QUIT_REQUESTED.store(true, Ordering::SeqCst);
                 let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
                 self.running.store(false, Ordering::SeqCst);
                 event_loop.exit();
             }
             WindowEvent::Resized(new_size) => {
                 state.size = new_size;
+                WINDOW_WIDTH.store(new_size.width, Ordering::SeqCst);
+                WINDOW_HEIGHT.store(new_size.height, Ordering::SeqCst);
                 state.surface_config.width = new_size.width.max(1);
                 state.surface_config.height = new_size.height.max(1);
                 state
@@ -982,15 +1091,15 @@ impl ApplicationHandler for ViewerApp {
                 ..
             } => match key {
                 Key::Named(NamedKey::Escape) => {
-                    let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
-                    self.running.store(false, Ordering::SeqCst);
-                    event_loop.exit();
+                    if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
+                        SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+                    }
                 }
                 Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
-                    state.camera.toggle_projection();
+                    PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c) if c == "x" || c == "X" => {
-                    state.show_back_edges = !state.show_back_edges;
+                    SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
                 }
                 Key::Character(c) if state.modifiers.control_key() && c == "1" => {
                     let idx = state
@@ -1016,6 +1125,25 @@ impl ApplicationHandler for ViewerApp {
                     state.animation.start(&state.camera, yaw, pitch);
                     state.keyboard_view = Some(idx);
                 }
+                Key::Character(c)
+                    if state.modifiers.control_key()
+                        && state.modifiers.shift_key()
+                        && state.modifiers.alt_key()
+                        && (c == "s" || c == "S") =>
+                {
+                    SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                }
+                Key::Character(c)
+                    if !state.egui_ctx.wants_keyboard_input() && (c == "h" || c == "H") =>
+                {
+                    SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                }
+                Key::Character(c) if state.modifiers.control_key() && (c == "q" || c == "Q") => {
+                    QUIT_REQUESTED.store(true, Ordering::SeqCst);
+                    let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
+                    self.running.store(false, Ordering::SeqCst);
+                    event_loop.exit();
+                }
                 _ => {}
             },
             WindowEvent::MouseInput {
@@ -1032,8 +1160,18 @@ impl ApplicationHandler for ViewerApp {
                 let pressed = button_state == ElementState::Pressed;
                 state.mouse_pressed[idx] = pressed;
 
-                if pressed && button == MouseButton::Left {
-                    Self::handle_click(state, &self.viewer_tx);
+                if button == MouseButton::Left {
+                    if pressed {
+                        state.click_start_pos = state.mouse_pos;
+                    } else {
+                        // Released — fire click only if not a drag
+                        let dx = state.mouse_pos.x - state.click_start_pos.x;
+                        let dy = state.mouse_pos.y - state.click_start_pos.y;
+                        let dist = (dx * dx + dy * dy).sqrt();
+                        if dist < CLICK_THRESHOLD {
+                            Self::handle_click(state, &self.viewer_tx);
+                        }
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -1041,29 +1179,34 @@ impl ApplicationHandler for ViewerApp {
                 let dy = position.y - state.mouse_pos.y;
                 state.mouse_pos = position;
 
-                if state.mouse_pressed[0] {
-                    state.camera.rotate(dx, dy);
-                    state.animation.stop();
-                }
-                if state.mouse_pressed[1] {
-                    state.camera.pan(dx, dy);
-                    state.animation.stop();
-                }
-                if state.mouse_pressed[2] {
-                    state.camera.zoom(dy * 0.005);
-                    state.animation.stop();
+                if !state.egui_ctx.wants_pointer_input() {
+                    if state.mouse_pressed[0] {
+                        state.camera.rotate(dx, dy);
+                        state.animation.stop();
+                    }
+                    if state.mouse_pressed[1] {
+                        state.camera.pan(dx, dy);
+                        state.animation.stop();
+                    }
+                    if state.mouse_pressed[2] {
+                        state.camera.zoom(dy * 0.005);
+                        state.animation.stop();
+                    }
                 }
 
                 state.gizmo_renderer.set_hovered(&state.device, None);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let zoom_factor = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y as f64,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
-                };
-                state.camera.zoom(zoom_factor * 0.1);
+                if !state.egui_ctx.wants_pointer_input() {
+                    let zoom_factor = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y as f64,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
+                    };
+                    state.camera.zoom(zoom_factor * 0.1);
+                }
             }
             WindowEvent::RedrawRequested => {
+                Self::check_repl_commands(&self.repl_rx, state);
                 Self::render(state);
             }
             _ => {}
@@ -1117,26 +1260,155 @@ impl ViewerApp {
             .filter_map(|e| e.mesh.as_ref().map(|m| (e.shape_id, m)))
             .collect();
 
+        let ctrl = state.modifiers.control_key();
+        let shift = state.modifiers.shift_key();
+
         if let Some(result) = pick_shape(origin, dir, &mesh_refs) {
-            state.selected_id = Some(result.shape_id);
-            let _ = viewer_tx.send(ViewerToRepl::ShapeSelected);
-            LAST_SELECTION.store(result.shape_id, std::sync::atomic::Ordering::SeqCst);
+            if ctrl {
+                // Toggle clicked shape in/out of selection
+                if state.selected_ids.contains(&result.shape_id) {
+                    state.selected_ids.remove(&result.shape_id);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(2, Ordering::SeqCst);
+                } else {
+                    state.selected_ids.insert(result.shape_id);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                }
+            } else if shift {
+                // Additive — insert if not already present
+                if state.selected_ids.insert(result.shape_id) {
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                }
+            } else {
+                // Plain click — replace selection
+                state.selected_ids.clear();
+                state.selected_ids.insert(result.shape_id);
+                viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+            }
         } else {
-            let was_selected = state.selected_id.is_some();
-            state.selected_id = None;
-            if was_selected {
-                let _ = viewer_tx.send(ViewerToRepl::ShapeDeselected);
-                LAST_SELECTION.store(u64::MAX, std::sync::atomic::Ordering::SeqCst);
+            // Miss — no shape under cursor
+            if !ctrl && !shift {
+                // Plain click on empty space: clear selection
+                let was_selected = !state.selected_ids.is_empty();
+                state.selected_ids.clear();
+                if was_selected {
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                    LAST_SELECTION.store(u64::MAX, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(3, Ordering::SeqCst);
+                }
+            }
+            // Ctrl/Shift click on empty space: no-op
+        }
+
+        // Sync selection state to the global for Janet queries
+        if let Some(selected) = SELECTED_IDS.get() {
+            *selected.write().unwrap() = state.selected_ids.clone();
+        }
+    }
+
+    fn check_repl_commands(rx: &Receiver<ReplToViewer>, state: &mut ViewerState) {
+        while let Ok(cmd) = rx.try_recv() {
+            match cmd {
+                ReplToViewer::FitToBounds {
+                    center,
+                    radius,
+                    keep_angle,
+                } => {
+                    Self::fit_to_bounds(state, center, radius, keep_angle);
+                }
+                ReplToViewer::SetViewAngles {
+                    yaw,
+                    pitch,
+                    distance,
+                } => {
+                    let target_radius = distance.unwrap_or(state.camera.radius);
+                    state.fit_animation = Some(FitAnimation::new(
+                        state.camera.target,
+                        state.camera.target,
+                        state.camera.radius,
+                        target_radius,
+                        state.camera.yaw,
+                        yaw,
+                        state.camera.pitch,
+                        pitch,
+                    ));
+                }
+                ReplToViewer::SetWindowSize { width, height } => {
+                    let logical = LogicalSize::new(width as f64, height as f64);
+                    let _ = state.window.request_inner_size(logical);
+                }
+                ReplToViewer::SetFullscreen(fs) => {
+                    if fs && let Some(monitor) = state.window.current_monitor() {
+                        state
+                            .window
+                            .set_fullscreen(Some(Fullscreen::Borderless(Some(monitor))));
+                    } else if !fs {
+                        state.window.set_fullscreen(None);
+                    }
+                    WINDOW_FULLSCREEN.store(fs, Ordering::SeqCst);
+                }
+                ReplToViewer::SetMaximized(mx) => {
+                    state.window.set_maximized(mx);
+                    WINDOW_MAXIMIZED.store(mx, Ordering::SeqCst);
+                }
             }
         }
     }
 
+    fn fit_to_bounds(state: &mut ViewerState, center: DVec3, radius: f64, keep_angle: bool) {
+        let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
+        let margin = 1.3;
+
+        let target_radius = if state.camera.perspective {
+            let tan_half_fov = (state.camera.fov_y * 0.5).tan();
+            let d_height = radius / tan_half_fov;
+            let d_width = radius / (tan_half_fov * aspect);
+            d_height.max(d_width) * margin
+        } else {
+            let from_height = 2.0 * radius;
+            let from_width = 2.0 * radius / aspect;
+            from_height.max(from_width) * margin
+        };
+
+        let end_yaw = if keep_angle { state.camera.yaw } else { 0.0 };
+        let end_pitch = if keep_angle { state.camera.pitch } else { 0.4 };
+
+        state.fit_animation = Some(FitAnimation::new(
+            state.camera.target,
+            center,
+            state.camera.radius,
+            target_radius,
+            state.camera.yaw,
+            end_yaw,
+            state.camera.pitch,
+            end_pitch,
+        ));
+    }
+
     fn render(state: &mut ViewerState) {
-        // Update camera animation
+        // Sync projection mode from atomic (controlled by Janet or keyboard)
+        let target_perspective = PROJECTION_PERSPECTIVE.load(Ordering::Relaxed);
+        if target_perspective != state.camera.perspective {
+            state.camera.toggle_projection();
+        }
+
+        // Update camera animations
         let now = std::time::Instant::now();
         let dt = (now - state.last_time).as_secs_f64();
         state.last_time = now;
         state.animation.update(&mut state.camera, dt);
+        if let Some(ref mut fit) = state.fit_animation
+            && fit.update(&mut state.camera, dt)
+        {
+            state.fit_animation = None;
+        }
 
         // Update camera uniforms
         let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
@@ -1173,12 +1445,12 @@ impl ViewerApp {
             state.surface_drawer.set_meshes(meshes);
 
             // Build SegmentInstance arrays for instanced line rendering
-            let selected_id = state.selected_id;
+            let selected_ids = &state.selected_ids;
             let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
             let mut active_instances: Vec<SegmentInstance> = Vec::new();
 
             for entry in &visible {
-                let is_active = selected_id.is_some_and(|id| id == entry.shape_id);
+                let is_active = selected_ids.contains(&entry.shape_id);
                 let target = if is_active {
                     &mut active_instances
                 } else {
@@ -1271,7 +1543,7 @@ impl ViewerApp {
             state.grid_renderer.render(&mut pass);
 
             // Mesh surfaces (depth test: Less, writes depth)
-            state.surface_drawer.render(&mut pass, state.selected_id);
+            state.surface_drawer.render(&mut pass, &state.selected_ids);
 
             // Shape edges (depth test: Less with negative bias toward camera,
             // rendered AFTER meshes so edges overlay mesh surfaces)
@@ -1281,7 +1553,7 @@ impl ViewerApp {
                 state.inactive_num_instances,
                 &state.active_instance_buffer,
                 state.active_num_instances,
-                state.show_back_edges,
+                SHOW_BACK_EDGES.load(Ordering::Relaxed),
             );
         }
 
@@ -1317,6 +1589,70 @@ impl ViewerApp {
             pass.set_viewport(gx as f32, gy as f32, gs as f32, gs as f32, 0.0, 1.0);
             pass.set_scissor_rect(gx, gy, gs, gs);
             state.gizmo_renderer.render(&mut pass);
+        }
+
+        // Egui overlay pass
+        {
+            let raw_input = state.egui_state.take_egui_input(&state.window);
+            let full_output = state.egui_ctx.run(raw_input, |ctx| {
+                state.stats.ui(ctx, &state.camera, &state.selected_ids, dt);
+                state.help.ui(ctx);
+            });
+
+            let pixels_per_point = state.window.scale_factor() as f32;
+            let paint_jobs = state
+                .egui_ctx
+                .tessellate(full_output.shapes, pixels_per_point);
+
+            for (id, delta) in &full_output.textures_delta.set {
+                state
+                    .egui_renderer
+                    .update_texture(&state.device, &state.queue, *id, delta);
+            }
+            for id in &full_output.textures_delta.free {
+                state.egui_renderer.free_texture(id);
+            }
+
+            let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                size_in_pixels: [state.size.width, state.size.height],
+                pixels_per_point,
+            };
+
+            let _ = state.egui_renderer.update_buffers(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                &paint_jobs,
+                &screen_descriptor,
+            );
+
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("egui pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // egui-wgpu requires RenderPass<'static> but our pass borrows view
+            // which is a local. The pass is consumed immediately before view drops,
+            // so this is safe.
+            #[allow(deprecated)]
+            let pass_ref = unsafe {
+                std::mem::transmute::<&mut wgpu::RenderPass<'_>, &mut wgpu::RenderPass<'static>>(
+                    &mut pass,
+                )
+            };
+            state
+                .egui_renderer
+                .render(pass_ref, &paint_jobs, &screen_descriptor);
         }
 
         state.queue.submit(Some(encoder.finish()));

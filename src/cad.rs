@@ -780,6 +780,34 @@ fn validate_dimension(value: f64, name: &str) -> Result<(), String> {
     }
 }
 
+/// Compute the union bounding box center and bounding sphere radius from shape mesh data.
+/// Shapes with `mesh: None` are silently skipped. Returns `None` if no mesh data found.
+pub fn compute_union_bounds(shapes: &[&ShapeData]) -> Option<(DVec3, f64)> {
+    let mut min = DVec3::splat(f64::MAX);
+    let mut max = DVec3::splat(f64::MIN);
+    let mut has_vertices = false;
+
+    for shape in shapes {
+        if let Some(ref mesh) = shape.mesh {
+            for v in &mesh.vertices {
+                let p = DVec3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+                min = min.min(p);
+                max = max.max(p);
+                has_vertices = true;
+            }
+        }
+    }
+
+    if !has_vertices {
+        return None;
+    }
+
+    let center = (min + max) * 0.5;
+    let radius = (max - min).length() * 0.5;
+
+    Some((center, radius * 1.3))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1365,5 +1393,68 @@ mod tests {
         let wire = make_rect(10.0, 20.0, true, "xy", None, false).unwrap();
         let result = wire_offset(&wire, -1.0, false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fit_bounds_single() {
+        let mut sd = make_box(1.0, 1.0, 1.0, None, false).unwrap();
+        sd.mesh = Some(MeshData {
+            vertices: vec![
+                [0.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [0.0, 10.0, 0.0],
+                [0.0, 0.0, 10.0],
+            ],
+            normals: vec![],
+            indices: vec![],
+        });
+        let refs = [&sd];
+        let (center, radius) = compute_union_bounds(&refs).unwrap();
+        assert!((center - DVec3::new(5.0, 5.0, 5.0)).length() < 1e-10);
+        let expected_radius = DVec3::new(10.0, 10.0, 10.0).length() * 0.5 * 1.3;
+        assert!((radius - expected_radius).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fit_bounds_multiple() {
+        let mut sd1 = make_box(1.0, 1.0, 1.0, None, false).unwrap();
+        sd1.mesh = Some(MeshData {
+            vertices: vec![[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]],
+            normals: vec![],
+            indices: vec![],
+        });
+        let mut sd2 = make_box(1.0, 1.0, 1.0, None, false).unwrap();
+        sd2.mesh = Some(MeshData {
+            vertices: vec![[20.0, 20.0, 20.0], [30.0, 30.0, 30.0]],
+            normals: vec![],
+            indices: vec![],
+        });
+        let refs = [&sd1, &sd2];
+        let (center, radius) = compute_union_bounds(&refs).unwrap();
+        assert!((center - DVec3::new(15.0, 15.0, 15.0)).length() < 1e-10);
+        let diagonal = DVec3::new(30.0, 30.0, 30.0).length();
+        let expected_radius = diagonal * 0.5 * 1.3;
+        assert!((radius - expected_radius).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fit_bounds_no_mesh() {
+        let sd = make_box(1.0, 1.0, 1.0, None, false).unwrap();
+        let refs = [&sd];
+        assert!(compute_union_bounds(&refs).is_none());
+    }
+
+    #[test]
+    fn test_fit_bounds_single_vertex() {
+        let mut sd = make_box(1.0, 1.0, 1.0, None, false).unwrap();
+        sd.mesh = Some(MeshData {
+            vertices: vec![[42.0, 43.0, 44.0]],
+            normals: vec![],
+            indices: vec![],
+        });
+        let refs = [&sd];
+        let (center, radius) = compute_union_bounds(&refs).unwrap();
+        assert!((center - DVec3::new(42.0, 43.0, 44.0)).length() < 1e-10);
+        assert!(radius.abs() < 1e-10);
     }
 }

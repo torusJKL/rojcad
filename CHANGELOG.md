@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.0 - 2026-06-07
+
+### Added
+
+- Text shape creation from TrueType/OpenType fonts (`text`, `text3d`, `list-fonts`)
+- `view-fit` and `view-fit-all` — frame camera on shape bounding boxes
+- View-angle presets (`front`, `back`, `left`, `right`, `top`, `bottom`, `isometric`) and `view-angle` for arbitrary yaw/pitch/distance
+- Floating help window (toggle with `H`, dismiss with Escape; Janet: `window-help-toggle`, `window-help-show?`, `window-help-show`)
+- Stats-for-nerds overlay (Ctrl+Shift+Alt+S; Janet: `stats-overlay`)
+- Hidden edge controls (`edge-hidden-toggle`, `edge-hidden-show?`, `edge-hidden`)
+- Projection controls (`projection-toggle`, `projection-perspective`)
+- `selected-shapes` and `list-shapes` — query shape state from Janet
+- Multi-shape selection in viewer (Ctrl+click toggle, Shift+click add)
+- Variadic CAD functions — `hide`, `show`, `purge`, `registry-remove`, `shape-type`, `visible?`, `wire?`, `face?`, `solid?`, `cut`, `common`, `fuse` accept multiple shapes
+- Window CLI flags (`--width`, `--height`) and full Janet window API (`window-size`, `window-fullscreen`, `window-maximized`)
+- Ctrl+Q to quit the entire application
+- Auto-purge old shape on symbol redefinition
+- Package as AppImage (`just appimage`) and tarball (`just tarball`) with CI release workflow
+- Publish Janet API and Rust docs to GitHub Pages on tagged releases
+- Provide version parameter to dump-docs with -dirty suffix
+
+### Changed
+
+- Viewer starts maximized by default (`--width`/`--height` implies windowed)
+- ESC no longer closes viewer — falls through to egui help dialog
+- `shape-type` returns a tuple (`@[:solid]`) instead of a single keyword (breaking)
+- `poll-selection` returns `:deselected` keyword on cleared selection
+- Hidden edges default to off
+- Auto-show-on-def also fires on `set` forms
+
 ## 0.1.0 - 2026-06-06
 
 ### Initial Release
