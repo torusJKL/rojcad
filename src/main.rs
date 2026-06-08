@@ -2091,7 +2091,32 @@ fn main() {
         None
     };
 
-    // Embed and run boot.janet
+    // Embed and run upstream.janet (standard Janet macros) before boot.janet,
+    // so that rojcad boot code can optionally use macros like defn, each, ->, etc.
+    // Pre-define boot/args and boot/config symbols (referenced by upstream.janet for
+    // CLI arg parsing and core image generation — not used in rojcad's embedded build).
+    let upstream_base = include_str!("../upstream.janet");
+    let upstream_code = format!(
+        "(def boot/args @[\"rojcad\" \"\" \"\"])\n{}",
+        upstream_base
+    );
+    let upstream_c = CString::new(upstream_code).unwrap_or_else(|_| CString::new("").unwrap());
+    let upstream_name_c = CString::new("upstream.janet").unwrap();
+
+    let mut result = bridge::Janet(0);
+    let status = unsafe {
+        bridge::janet_dostring(env, upstream_c.as_ptr(), upstream_name_c.as_ptr(), &mut result)
+    };
+
+    if status != 0 {
+        eprintln!("rojcad: failed to load upstream.janet");
+        unsafe {
+            bridge::janet_deinit();
+        }
+        std::process::exit(1);
+    }
+
+    // Embed and run boot.janet (rojcad REPL server)
     let boot_base = include_str!("../boot.janet");
     let boot_code = if !eval_exprs.is_empty() {
         // Append --eval expression(s) as raw Janet code at end of boot.janet.
@@ -2100,11 +2125,12 @@ fn main() {
         boot_base.to_string()
     };
     let boot_c = CString::new(boot_code).unwrap_or_else(|_| CString::new("").unwrap());
-    let name_c = CString::new("boot.janet").unwrap();
+    let boot_name_c = CString::new("boot.janet").unwrap();
 
     let mut result = bridge::Janet(0);
-    let status =
-        unsafe { bridge::janet_dostring(env, boot_c.as_ptr(), name_c.as_ptr(), &mut result) };
+    let status = unsafe {
+        bridge::janet_dostring(env, boot_c.as_ptr(), boot_name_c.as_ptr(), &mut result)
+    };
 
     if status != 0 {
         eprintln!("rojcad: failed to load boot.janet");
@@ -2115,6 +2141,7 @@ fn main() {
     }
 
     // The event loop runs automatically via the Janet VM.
+    // The two-phase boot loads upstream macros first, then rojcad boot code.
     // boot.janet has a (forever ...) loop that blocks indefinitely.
     // If we reach here (shouldn't under normal operation), clean up.
     unsafe {

@@ -10,7 +10,11 @@ All `just` commands (build, test, run, check, lint, etc.) run with a sandboxed e
 Compiles OCCT from source via `opencascade-rs`'s `builtin` feature (~10-15 min). CI caches OCCT using the opencascade-rs commit from Cargo.lock. Check local cache: `just check-occt-cache`. Use `just full-build` or `just full-build-release` for a fresh build from submodules.
 
 ## Janet is vendored + bootstrapped
-`vendor/` contains Janet compiled from C in `build.rs`. `boot.janet` (TCP REPL server) is embedded at compile time via `include_str!`. `JANET_BOOTSTRAP=1` means core library modules must be manually registered in `src/main.rs` — any new core module dependency must be added there.
+`vendor/` contains Janet compiled from C in `build.rs`. `JANET_BOOTSTRAP=1` means core library modules must be manually registered in `src/main.rs` — any new core module dependency must be added there.
+
+Standard Janet macros (`defmacro`, `defn`, `def-`, `->`, `each`, `for`, `loop`, `let`, `if-let`, `case`, `match`, `with`, `try`, etc.) are provided by `upstream.janet` at project root — upstream Janet's `src/boot/boot.janet` loaded via `include_str!` before rojcad's `boot.janet`. The `&form`/`&env` macro arguments are NOT available in bootstrap mode (compiler-level restriction).
+
+**Updating `upstream.janet`**: The file is the upstream boot.janet with the build-only image-generation footer removed (the last ~140 lines that `slurp` source files and `spit` a C header — only needed during upstream's own build, not at runtime). When updating to a newer Janet version, fetch the new `src/boot/boot.janet` from the matching tag and trim from the `### Bootstrap` section onward.
 
 ## Default port is 9365
 The TCP REPL listens on port **9365** by default (override with `--port <PORT>` or `--port=<PORT>`). The README incorrectly says 9000.
