@@ -1,4 +1,4 @@
-# rojcad Janet API Reference — 68f1e45-dirty
+# rojcad Janet API Reference — 158ce73-dirty
 
 ## Operations
 
@@ -67,7 +67,7 @@ Pass nil to unregister.
 **Examples:**
 ```janet
 (on-select (fn [s] (print "selected: " s)))
-(on-select nil)  — unregister
+(on-select nil)  # unregister
 ```
 
 **Returns nil.**
@@ -80,7 +80,7 @@ This is called internally by the event loop.
 
 **Examples:**
 ```janet
-(poll-selection)  — returns shape, keyword, tuple, or nil
+(poll-selection)  # returns shape, keyword, tuple, or nil
 ```
 
 **Poll for a selection event. Returns a shape if one is selected,
@@ -159,7 +159,7 @@ Example: (projection-toggle)
 
 **Examples:**
 ```janet
-(quit-requested)  — returns true or nil
+(quit-requested)  # returns true or nil
 ```
 
 **Returns boolean or nil.**
@@ -183,9 +183,9 @@ yaw (radians), pitch (radians), distance (optional, default 100).
 
 **Examples:**
 ```janet
-(view-angle math/pi 0)        — looking along -Z
-(view-angle math/pi 0 200)    — further back
-(view-angle 0 math/pi 2)      — top-down view
+(view-angle math/pi 0)        # looking along -Z
+(view-angle math/pi 0 200)    # further back
+(view-angle 0 math/pi 2)      # top-down view
 ```
 
 **Returns nil.**
@@ -343,7 +343,7 @@ Call with no arg to query, with true/false to show/hide.
 **Examples:**
 ```janet
 (window-help-show true)
-(window-help-show)   — query
+(window-help-show)   # query
 ```
 
 ### `window-help-show?`
@@ -410,13 +410,13 @@ Keywords: :w :d :h (dimensions), :c (center [x y z]),
 
 **Examples:**
 ```janet
-(box 10 20 30)           — box at origin
-(box 10 20 30 :c [5 5 5]) — centered box
-(box 5)                  — 5x5x5 cube
-(box :pl [0 0 0] :ph [10 20 30]) — from corners
-(box :w 10 :d 20 :h 30) — keyword style
-(box 10 :eager)          — eager tessellation
-(box 10 :hide)           — create without showing
+(box 10 20 30)           # box at origin
+(box 10 20 30 :c [5 5 5]) # centered box
+(box 5)                  # 5x5x5 cube
+(box :pl [0 0 0] :ph [10 20 30]) # from corners
+(box :w 10 :d 20 :h 30) # keyword style
+(box 10 :eager)          # eager tessellation
+(box 10 :hide)           # create without showing
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -433,10 +433,10 @@ Keywords: :br (base radius), :tr (top radius, default 0),
 
 **Examples:**
 ```janet
-(cone 5 10)                   — cone radius 5 height 10
-(cone 5 2 10)                 — truncated cone
-(cone :br 5 :tr 2 :h 10)      — keyword style
-(cone 5 10 :eager)            — eager tessellation
+(cone 5 10)                   # cone radius 5 height 10
+(cone 5 2 10)                 # truncated cone
+(cone :br 5 :tr 2 :h 10)      # keyword style
+(cone 5 10 :eager)            # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -447,7 +447,7 @@ Keywords: :br (base radius), :tr (top radius, default 0),
 
 Create a cylinder.
 
-Positional: (cylinder radius height) — along Z axis, base at Z=0
+Positional: (cylinder radius height) - along Z axis, base at Z=0
 Keywords: :r (radius), :h (height), :c (center [x y z]),
          :dir (direction [dx dy dz]),
          :fp (from-point [x y z]), :tp (to-point [x y z]).
@@ -455,11 +455,11 @@ Keywords: :r (radius), :h (height), :c (center [x y z]),
 
 **Examples:**
 ```janet
-(cylinder 5 10)                       — simple
-(cylinder 5 10 :c [0 0 5])            — centered
-(cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point
-(cylinder :r 5 :h 10)                 — keyword style
-(cylinder 5 10 :eager)                — eager tessellation
+(cylinder 5 10)                       # simple
+(cylinder 5 10 :c [0 0 5])            # centered
+(cylinder :fp [0 0 0] :tp [0 0 10] :r 5) # point-to-point
+(cylinder :r 5 :h 10)                 # keyword style
+(cylinder 5 10 :eager)                # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -475,10 +475,10 @@ Keywords: :r (radius), :c (center [x y z]),
 
 **Examples:**
 ```janet
-(sphere 5)                    — radius 5 at origin
-(sphere :r 5 :c [1 2 3])      — centered
-(sphere 5 :a 90)              — hemisphere
-(sphere 5 :eager)             — eager tessellation
+(sphere 5)                    # radius 5 at origin
+(sphere :r 5 :c [1 2 3])      # centered
+(sphere 5 :a 90)              # hemisphere
+(sphere 5 :eager)             # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -500,12 +500,12 @@ Keywords: :rr (ring radius), :tr (tube radius),
 
 **Examples:**
 ```janet
-(torus 20 10)                    — full torus
-(torus 20 10 :c [0 0 5])         — repositioned
-(torus 20 10 :a 180)             — half torus
-(torus :rr 20 :tr 10 :as 0 :ae 180) — angled range
-(torus :rr 20 :tr 10 :dir [0 1 0]) — oriented
-(torus 20 10 :eager)             — eager tessellation
+(torus 20 10)                    # full torus
+(torus 20 10 :c [0 0 5])         # repositioned
+(torus 20 10 :a 180)             # half torus
+(torus :rr 20 :tr 10 :as 0 :ae 180) # angled range
+(torus :rr 20 :tr 10 :dir [0 1 0]) # oriented
+(torus 20 10 :eager)             # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -656,7 +656,7 @@ Keywords: :w (width), :d/:h (depth), :wire (output as wire),
 ```janet
 (rect 10 20)
 (rect :w 10 :d 20 :plane :xz)
-(rect 10 20 :wire)  — as wireframe
+(rect 10 20 :wire)  # as wireframe
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -671,7 +671,7 @@ Keywords: :w (width), :d/:h (depth), :wire (output as wire),
 
 **Examples:**
 ```janet
-(list-fonts)  — returns @[["Arial" "/path/Arial.ttf" :regular] ...]
+(list-fonts)  # returns @[["Arial" "/path/Arial.ttf" :regular] ...]
 ```
 
 **List available system fonts.
@@ -876,7 +876,7 @@ Check if one or more shapes are Faces.
 
 **Examples:**
 ```janet
-(face? my-shape)  — returns true or false
+(face? my-shape)  # returns true or false
 ```
 
 **Returns boolean or array of booleans.**
@@ -891,9 +891,9 @@ Keywords: :visible (show only visible shapes),
 
 **Examples:**
 ```janet
-(list-shapes)              — all registered shapes
-(list-shapes :visible)     — only visible shapes
-(list-shapes :hidden)      — only hidden shapes
+(list-shapes)              # all registered shapes
+(list-shapes :visible)     # only visible shapes
+(list-shapes :hidden)      # only hidden shapes
 ```
 
 **Returns an array of rojcad/shape values.**
@@ -906,7 +906,7 @@ Return an array of currently selected shapes in the viewer.
 
 **Examples:**
 ```janet
-(selected-shapes)  — returns @[shape ...]
+(selected-shapes)  # returns @[shape ...]
 ```
 
 **Returns an array of rojcad/shape values.**
@@ -919,8 +919,8 @@ Return an array of currently selected shapes in the viewer.
 
 **Examples:**
 ```janet
-(shape-type my-shape)      — returns :solid
-(shape-type shape-a shape-b) — returns @[:solid :face]
+(shape-type my-shape)      # returns :solid
+(shape-type shape-a shape-b) # returns @[:solid :face]
 ```
 
 **Returns a keyword or array of keywords.**
@@ -933,7 +933,7 @@ Check if one or more shapes are Solids.
 
 **Examples:**
 ```janet
-(solid? my-shape)  — returns true or false
+(solid? my-shape)  # returns true or false
 ```
 
 **Returns boolean or array of booleans.**
@@ -946,7 +946,7 @@ Check if one or more shapes are visible.
 
 **Examples:**
 ```janet
-(visible? my-shape)  — returns true or false
+(visible? my-shape)  # returns true or false
 ```
 
 **Returns boolean or array of booleans.**
@@ -959,7 +959,7 @@ Check if one or more shapes are Wires.
 
 **Examples:**
 ```janet
-(wire? my-shape)  — returns true or false
+(wire? my-shape)  # returns true or false
 ```
 
 **Returns boolean or array of booleans.**
@@ -983,8 +983,8 @@ RGB values in 0-1 range. Call with no args to query.
 
 **Examples:**
 ```janet
-(edge-color-active 1 0 0)   — red active edges
-(edge-color-active)         — get current color
+(edge-color-active 1 0 0)   # red active edges
+(edge-color-active)         # get current color
 ```
 
 **Returns [r g b] or nil.**
@@ -998,8 +998,8 @@ RGB values in 0-1 range. Call with no args to query.
 
 **Examples:**
 ```janet
-(edge-color-inactive 0.5 0.5 0.5)  — grey inactive edges
-(edge-color-inactive)              — get current color
+(edge-color-inactive 0.5 0.5 0.5)  # grey inactive edges
+(edge-color-inactive)              # get current color
 ```
 
 **Returns [r g b] or nil.**
@@ -1013,8 +1013,8 @@ Call with no arg to query, with true/false to set.
 
 **Examples:**
 ```janet
-(edge-hidden true)   — show hidden edges
-(edge-hidden)        — query
+(edge-hidden true)   # show hidden edges
+(edge-hidden)        # query
 ```
 
 **Returns boolean.**
@@ -1052,8 +1052,8 @@ Call with no arguments to query current thickness.
 
 **Examples:**
 ```janet
-(edge-thickness 2)  — set thickness
-(edge-thickness)    — get current thickness
+(edge-thickness 2)  # set thickness
+(edge-thickness)    # get current thickness
 ```
 
 **Returns the thickness value.**
@@ -1089,7 +1089,7 @@ Keywords: :eager, :hide
 
 **Examples:**
 ```janet
-(mirror box 0 0 0 1 0 0)  — mirror across YZ plane
+(mirror box 0 0 0 1 0 0)  # mirror across YZ plane
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -1123,8 +1123,8 @@ Keywords: :o [x y z] (origin for scaling),
 
 **Examples:**
 ```janet
-(scale box 2)                — double size
-(scale box 2 :o [5 5 5])     — scale from center
+(scale box 2)                # double size
+(scale box 2 :o [5 5 5])     # scale from center
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -1155,8 +1155,8 @@ Keywords: :t [dx dy dz], :eager, :hide
 
 **Examples:**
 ```janet
-(color my-shape 1 0 0)    — red
-(-> (box 10) (color 0 1 0))  — green box
+(color my-shape 1 0 0)    # red
+(-> (box 10) (color 0 1 0))  # green box
 ```
 
 **Returns the shape.**
@@ -1184,7 +1184,7 @@ Get a shape's render color as an array [r g b], or nil if unset.
 
 **Examples:**
 ```janet
-(get-color my-shape)  — returns [r g b] or nil
+(get-color my-shape)  # returns [r g b] or nil
 ```
 
 **Returns an array or nil.**

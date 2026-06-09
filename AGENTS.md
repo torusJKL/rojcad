@@ -26,6 +26,16 @@ The README incorrectly says 9000.
 The client/getline/rawterm parts are excluded (not needed server-side).
 When updating, fetch from https://github.com/janet-lang/spork and verify the server still works.
 
+**Spork patch**: `netrepl-server.janet` has a local patch in `make-onsignal` to print string results
+raw (unescaped) instead of via `pp`. When updating spork, re-apply this change:
+```janet
+:dead (do (put e '_ @{:value x})
+          (if (= :string (type x))
+            (do (buffer/push-string (dyn :out) x)
+                (buffer/push-string (dyn :out) "\n"))
+            (pp x)))
+```
+
 ## CLI flags
 `--headless` disables the 3D viewer. `--eval <EXPR>` or `--eval=<EXPR>` runs Janet code after boot, then exits.
 
@@ -79,4 +89,5 @@ When updating, fetch from https://github.com/janet-lang/spork and verify the ser
 - Use Yoda conditions: `if (false == condition)` not `if (!condition)`.
 - Rust edition 2024. Crate-level allows `non_upper_case_globals`, `non_camel_case_types`, `non_snake_case`, and `clippy::missing_safety_doc`.
 - Every public Janet function must have a docstring. Simple functions get a short description; functions with non-trivial arguments must include a usage example.
+- **Doc string format**: Use `#` (hash) for example comments (not em dashes). Use `-` for prose instead of em dashes. Preserve `\n\n` section separators between usage, body, examples, and returns sections so `split-docstring` can parse them. Each example expression should be on its own line, indented 2 spaces, starting with `(`.
 - OpenSpec change proposals live in `openspec/changes/`. Load `.opencode/skills/` for propose/apply/explore/archive workflows.

@@ -1,5 +1,5 @@
 /**
- * bridge.c — C glue layer between Janet C API and Rust CAD functions.
+ * bridge.c -- C glue layer between Janet C API and Rust CAD functions.
  *
  * 1. Defines the `rojcad/shape` Janet abstract type with finalizer + tostring
  * 2. Implements JANET_FN wrappers for each CAD operation
@@ -25,7 +25,7 @@ extern const char *rust_shape_type_string(void *data);
 /* Retrieve the last CAD error message as a C string (caller frees) */
 extern const char *rust_take_last_error(void);
 
-/* Shape constructors — return 0 on success, 1 on error */
+/* Shape constructors -- return 0 on success, 1 on error */
 extern int rust_init_box(void *dest,
                            double width, double depth, double height,
                            const double *cx, const double *cy, const double *cz,
@@ -349,7 +349,7 @@ static int has_eager(const Janet *argv, int32_t argc) {
 }
 
 /* If :hide keyword is present, mark shape as not visible.
- * Safe to call on unregistered shapes — just sets visible=false. */
+ * Safe to call on unregistered shapes -- just sets visible=false. */
 static void maybe_hide(void *data, const Janet *argv, int32_t argc) {
     if (find_keyword(argv, argc, "hide") >= 0) {
         rust_shape_hide(data);
@@ -811,8 +811,8 @@ JANET_FN(cad_purge,
          "The shape will no longer be rendered. To also unbind the Janet variable,\n"
          "use (purge shape) followed by (def name nil).\n\n"
          "Examples:\n"
-         "  (purge b)          — remove b from viewer\n"
-         "  (purge b) (def b nil) (gc)  — full cleanup\n\n"
+         "  (purge b)          # remove b from viewer\n"
+         "  (purge b) (def b nil) (gc)  # full cleanup\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -840,8 +840,8 @@ JANET_FN(cad_show,
          "Calling show on an already-visible shape is a no-op.\n\n"
          "Examples:\n"
          "  (def b (box 10))\n"
-         "  (show b)         — tessellates if needed, registers, makes visible\n"
-         "  (show b)         — second call is a no-op (already visible)\n\n"
+         "  (show b)         # tessellates if needed, registers, makes visible\n"
+         "  (show b)         # second call is a no-op (already visible)\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -855,8 +855,8 @@ JANET_FN(cad_hide,
          "Set a shape's visible flag to false. The shape stays registered"
          " in the viewer but is no longer rendered.\n\n"
          "Examples:\n"
-         "  (hide b)         — shape disappears from viewer\n"
-         "  (show b)         — reappears without re-tessellating\n\n"
+         "  (hide b)         # shape disappears from viewer\n"
+         "  (show b)         # reappears without re-tessellating\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -1014,9 +1014,9 @@ JANET_FN(cad_edge_hidden,
          "Called with no arguments, returns true if hidden edges are shown, "
          "false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (edge-hidden)        — query\n"
-         "         (edge-hidden true)    — show hidden edges\n"
-         "         (edge-hidden false)   — hide hidden edges")
+         "Example: (edge-hidden)        # query\n"
+         "         (edge-hidden true)    # show hidden edges\n"
+         "         (edge-hidden false)   # hide hidden edges")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1046,9 +1046,9 @@ JANET_FN(cad_projection_perspective,
          "Called with no arguments, returns true if perspective mode is active, "
          "false if orthographic.\n"
          "Called with one boolean argument, sets the mode.\n\n"
-         "Example: (projection-perspective)        — query\n"
-         "         (projection-perspective true)    — perspective\n"
-         "         (projection-perspective false)   — orthographic")
+         "Example: (projection-perspective)        # query\n"
+         "         (projection-perspective true)    # perspective\n"
+         "         (projection-perspective false)   # orthographic")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1066,9 +1066,9 @@ JANET_FN(cad_stats_overlay,
          "Called with no arguments, returns true if the overlay is visible, "
          "false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (stats-overlay)        — query\n"
-         "         (stats-overlay true)    — show overlay\n"
-         "         (stats-overlay false)   — hide overlay\n\n"
+         "Example: (stats-overlay)        # query\n"
+         "         (stats-overlay true)    # show overlay\n"
+         "         (stats-overlay false)   # hide overlay\n\n"
          "The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.")
 {
     janet_arity(argc, 0, 1);
@@ -1110,9 +1110,9 @@ JANET_FN(cad_help_set,
          "Get or set the help window visibility.\n\n"
          "Called with no arguments, returns true if visible, false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (window-help-show)        — query\n"
-         "         (window-help-show true)    — show\n"
-         "         (window-help-show false)   — hide")
+         "Example: (window-help-show)        # query\n"
+         "         (window-help-show true)    # show\n"
+         "         (window-help-show false)   # hide")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1997,7 +1997,7 @@ void cad_register_functions(JanetTable *env) {
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
     JanetReg cfuns[] = {
-        /* Non-underscore thin primitives — captured by boot.janet */
+        /* Non-underscore thin primitives -- captured by boot.janet */
         {"sphere",                 _cad_sphere,                _cad_sphere_docstring_},
         {"cone",                   _cad_cone,                  _cad_cone_docstring_},
         {"cylinder",               _cad_init_cylinder,         _cad_init_cylinder_docstring_},
@@ -2022,7 +2022,7 @@ void cad_register_functions(JanetTable *env) {
         {"text3d",                 _cad_text3d,                _cad_text3d_docstring_},
         {"list-fonts",             _cad_list_fonts,            _cad_list_fonts_docstring_},
 
-        /* Renamed underscore-only primitives — no non-underscore equivalent */
+        /* Renamed underscore-only primitives -- no non-underscore equivalent */
         {"_init-box",              _cad_init_box,              _cad_init_box_docstring_},
         {"_init-cube",             _cad_init_cube,             _cad_init_cube_docstring_},
         {"_init-box-from-corners", _cad_init_box_from_corners, _cad_init_box_from_corners_docstring_},

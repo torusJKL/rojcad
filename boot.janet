@@ -55,27 +55,27 @@
 (wrap-c-fn shape-type _shape-type [& shapes]
   (seq [s :in shapes] (_shape-type s)))
 (defmeta shape-type "queries"
-  "(shape-type & shapes)\n\nReturn the OCCT topological type of one or more shapes.\nReturns keywords like :solid, :face, :edge, :wire, etc.\n\nExamples:\n  (shape-type my-shape)      — returns :solid\n  (shape-type shape-a shape-b) — returns @[:solid :face]\n\nReturns a keyword or array of keywords.")
+  "(shape-type & shapes)\n\nReturn the OCCT topological type of one or more shapes.\nReturns keywords like :solid, :face, :edge, :wire, etc.\n\nExamples:\n  (shape-type my-shape)      # returns :solid\n  (shape-type shape-a shape-b) # returns @[:solid :face]\n\nReturns a keyword or array of keywords.")
 
 (wrap-c-fn visible? _visible [& shapes]
   (seq [s :in shapes] (_visible s)))
 (defmeta visible? "queries"
-  "(visible? & shapes)\n\nCheck if one or more shapes are visible.\n\nExamples:\n  (visible? my-shape)  — returns true or false\n\nReturns boolean or array of booleans.")
+  "(visible? & shapes)\n\nCheck if one or more shapes are visible.\n\nExamples:\n  (visible? my-shape)  # returns true or false\n\nReturns boolean or array of booleans.")
 
 (wrap-c-fn wire? _wire [& shapes]
   (seq [s :in shapes] (_wire s)))
 (defmeta wire? "queries"
-  "(wire? & shapes)\n\nCheck if one or more shapes are Wires.\n\nExamples:\n  (wire? my-shape)  — returns true or false\n\nReturns boolean or array of booleans.")
+  "(wire? & shapes)\n\nCheck if one or more shapes are Wires.\n\nExamples:\n  (wire? my-shape)  # returns true or false\n\nReturns boolean or array of booleans.")
 
 (wrap-c-fn face? _face [& shapes]
   (seq [s :in shapes] (_face s)))
 (defmeta face? "queries"
-  "(face? & shapes)\n\nCheck if one or more shapes are Faces.\n\nExamples:\n  (face? my-shape)  — returns true or false\n\nReturns boolean or array of booleans.")
+  "(face? & shapes)\n\nCheck if one or more shapes are Faces.\n\nExamples:\n  (face? my-shape)  # returns true or false\n\nReturns boolean or array of booleans.")
 
 (wrap-c-fn solid? _solid [& shapes]
   (seq [s :in shapes] (_solid s)))
 (defmeta solid? "queries"
-  "(solid? & shapes)\n\nCheck if one or more shapes are Solids.\n\nExamples:\n  (solid? my-shape)  — returns true or false\n\nReturns boolean or array of booleans.")
+  "(solid? & shapes)\n\nCheck if one or more shapes are Solids.\n\nExamples:\n  (solid? my-shape)  # returns true or false\n\nReturns boolean or array of booleans.")
 
 # ── Booleans (chain + keyword routing) ──
 (wrap-c-fn cut _cut [tool & rest]
@@ -185,9 +185,9 @@
 (defmeta compound "cad-operations"
   "(compound & shapes &keys :color :eager :hide)\n\nCombine multiple shapes into a single compound shape.\nKeywords: :color [r g b], :eager, :hide\n\nExamples:\n  (compound sphere cone)\n  (compound box sphere :color [1 0 0])\n\nReturns a rojcad/shape abstract value.")
 (defmeta color "cad-operations"
-  "(color shape r g b)\n\nSet a shape's render color using RGB values (0-1 range).\nReturns the shape for method chaining.\n\nExamples:\n  (color my-shape 1 0 0)    — red\n  (-> (box 10) (color 0 1 0))  — green box\n\nReturns the shape.")
+  "(color shape r g b)\n\nSet a shape's render color using RGB values (0-1 range).\nReturns the shape for method chaining.\n\nExamples:\n  (color my-shape 1 0 0)    # red\n  (-> (box 10) (color 0 1 0))  # green box\n\nReturns the shape.")
 (defmeta get-color "cad-operations"
-  "(get-color shape)\n\nGet a shape's render color as an array [r g b], or nil if unset.\n\nExamples:\n  (get-color my-shape)  — returns [r g b] or nil\n\nReturns an array or nil.")
+  "(get-color shape)\n\nGet a shape's render color as an array [r g b], or nil if unset.\n\nExamples:\n  (get-color my-shape)  # returns [r g b] or nil\n\nReturns an array or nil.")
 
 # ── Medium wrappers (manual variadic) ────────────────────────────
 
@@ -214,7 +214,7 @@
                (if eager 1 0) (if hide 1 0)))
   shape)
 (defmeta sphere "primitives"
-  "(sphere &keys :r :c :a :ar :eager :hide)\n\nCreate a sphere.\nKeywords: :r (radius), :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians),\n         :eager, :hide\n\nExamples:\n  (sphere 5)                    — radius 5 at origin\n  (sphere :r 5 :c [1 2 3])      — centered\n  (sphere 5 :a 90)              — hemisphere\n  (sphere 5 :eager)             — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+  "(sphere &keys :r :c :a :ar :eager :hide)\n\nCreate a sphere.\nKeywords: :r (radius), :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians),\n         :eager, :hide\n\nExamples:\n  (sphere 5)                    # radius 5 at origin\n  (sphere :r 5 :c [1 2 3])      # centered\n  (sphere 5 :a 90)              # hemisphere\n  (sphere 5 :eager)             # eager tessellation\n\nReturns a rojcad/shape abstract value.")
 
 (wrap-c-fn cone _cone [& args]
   (var br nil) (var tr nil) (var h nil)
@@ -248,7 +248,7 @@
                (if eager 1 0) (if hide 1 0)))
   shape)
 (defmeta cone "primitives"
-  "(cone &keys :br :tr :h :c :a :ar :eager :hide)\n\nCreate a cone or truncated cone.\nKeywords: :br (base radius), :tr (top radius, default 0),\n         :h (height), :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians),\n         :eager, :hide\n\nExamples:\n  (cone 5 10)                   — cone radius 5 height 10\n  (cone 5 2 10)                 — truncated cone\n  (cone :br 5 :tr 2 :h 10)      — keyword style\n  (cone 5 10 :eager)            — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+  "(cone &keys :br :tr :h :c :a :ar :eager :hide)\n\nCreate a cone or truncated cone.\nKeywords: :br (base radius), :tr (top radius, default 0),\n         :h (height), :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians),\n         :eager, :hide\n\nExamples:\n  (cone 5 10)                   # cone radius 5 height 10\n  (cone 5 2 10)                 # truncated cone\n  (cone :br 5 :tr 2 :h 10)      # keyword style\n  (cone 5 10 :eager)            # eager tessellation\n\nReturns a rojcad/shape abstract value.")
 
 # ── Complex wrappers (box, cylinder, torus) ─────────────────────────
 
@@ -298,7 +298,7 @@
       (error "box: expected 1 or 3 positional args or keywords :w :d :h or :pl :ph")))
   shape)})
 (defmeta box "primitives"
-  "(box &keys :w :d :h :c :pl :ph :eager :hide)\n\nCreate a box or cube.\n\nPositional: (box w d h) or (box size) for a cube.\nKeywords: :w :d :h (dimensions), :c (center [x y z]),\n         :pl :ph (opposite corners [x y z]).\n         :eager (tessellate immediately).\n         :hide (skip automatic show on def).\n\nExamples:\n  (box 10 20 30)           — box at origin\n  (box 10 20 30 :c [5 5 5]) — centered box\n  (box 5)                  — 5x5x5 cube\n  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n  (box :w 10 :d 20 :h 30) — keyword style\n  (box 10 :eager)          — eager tessellation\n  (box 10 :hide)           — create without showing\n\nReturns a rojcad/shape abstract value.")
+  "(box &keys :w :d :h :c :pl :ph :eager :hide)\n\nCreate a box or cube.\n\nPositional: (box w d h) or (box size) for a cube.\nKeywords: :w :d :h (dimensions), :c (center [x y z]),\n         :pl :ph (opposite corners [x y z]).\n         :eager (tessellate immediately).\n         :hide (skip automatic show on def).\n\nExamples:\n  (box 10 20 30)           # box at origin\n  (box 10 20 30 :c [5 5 5]) # centered box\n  (box 5)                  # 5x5x5 cube\n  (box :pl [0 0 0] :ph [10 20 30]) # from corners\n  (box :w 10 :d 20 :h 30) # keyword style\n  (box 10 :eager)          # eager tessellation\n  (box 10 :hide)           # create without showing\n\nReturns a rojcad/shape abstract value.")
 
 (var _init_cylinder (get core-env 'cylinder))
 (if (= :table (type _init_cylinder)) (set _init_cylinder (get _init_cylinder :value)))
@@ -353,7 +353,7 @@
             (if eager 1 0) (if hide 1 0))))
       shape))))
 (defmeta cylinder "primitives"
-  "(cylinder &keys :r :h :c :dir :fp :tp :eager :hide)\n\nCreate a cylinder.\n\nPositional: (cylinder radius height) — along Z axis, base at Z=0\nKeywords: :r (radius), :h (height), :c (center [x y z]),\n         :dir (direction [dx dy dz]),\n         :fp (from-point [x y z]), :tp (to-point [x y z]).\n         :eager (tessellate immediately).\n\nExamples:\n  (cylinder 5 10)                       — simple\n  (cylinder 5 10 :c [0 0 5])            — centered\n  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n  (cylinder :r 5 :h 10)                 — keyword style\n  (cylinder 5 10 :eager)                — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+  "(cylinder &keys :r :h :c :dir :fp :tp :eager :hide)\n\nCreate a cylinder.\n\nPositional: (cylinder radius height) - along Z axis, base at Z=0\nKeywords: :r (radius), :h (height), :c (center [x y z]),\n         :dir (direction [dx dy dz]),\n         :fp (from-point [x y z]), :tp (to-point [x y z]).\n         :eager (tessellate immediately).\n\nExamples:\n  (cylinder 5 10)                       # simple\n  (cylinder 5 10 :c [0 0 5])            # centered\n  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) # point-to-point\n  (cylinder :r 5 :h 10)                 # keyword style\n  (cylinder 5 10 :eager)                # eager tessellation\n\nReturns a rojcad/shape abstract value.")
 
 (var _init_torus (get core-env 'torus))
 (if (= :table (type _init_torus)) (set _init_torus (get _init_torus :value)))
@@ -393,7 +393,7 @@
                 (if eager 1 0) (if hide 1 0)))
   shape))
 (defmeta torus "primitives"
-  "(torus &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager :hide)\n\nCreate a torus.\n\nPositional: (torus rr tr)\nKeywords: :rr (ring radius), :tr (tube radius),\n         :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians, partial),\n         :as (start angle degrees), :asr (start angle radians),\n         :ae (end angle degrees), :aer (end angle radians),\n         :dir (axis direction [dx dy dz]),\n         :eager (tessellate immediately).\n\nExamples:\n  (torus 20 10)                    — full torus\n  (torus 20 10 :c [0 0 5])         — repositioned\n  (torus 20 10 :a 180)             — half torus\n  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n  (torus 20 10 :eager)             — eager tessellation\n\nReturns a rojcad/shape abstract value.")
+  "(torus &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager :hide)\n\nCreate a torus.\n\nPositional: (torus rr tr)\nKeywords: :rr (ring radius), :tr (tube radius),\n         :c (center [x y z]),\n         :a (angle in degrees), :ar (angle in radians, partial),\n         :as (start angle degrees), :asr (start angle radians),\n         :ae (end angle degrees), :aer (end angle radians),\n         :dir (axis direction [dx dy dz]),\n         :eager (tessellate immediately).\n\nExamples:\n  (torus 20 10)                    # full torus\n  (torus 20 10 :c [0 0 5])         # repositioned\n  (torus 20 10 :a 180)             # half torus\n  (torus :rr 20 :tr 10 :as 0 :ae 180) # angled range\n  (torus :rr 20 :tr 10 :dir [0 1 0]) # oriented\n  (torus 20 10 :eager)             # eager tessellation\n\nReturns a rojcad/shape abstract value.")
 
 (wrap-c-fn extrude _extrude [shape & args]
   (var height nil) (var dx math/nan) (var dy math/nan) (var dz math/nan)
@@ -490,7 +490,7 @@
   (def s (_rect w d (if is-wire 1 0) plane ax ay az (if eager 1 0) (if hide 1 0)))
   s)
 (defmeta rect "2d-primitives"
-  "(rect &keys :w :d :h :wire :plane :at :eager :hide)\n\nCreate a rectangle.\nKeywords: :w (width), :d/:h (depth), :wire (output as wire),\n         :plane (keyword, default :xy), :at [x y z],\n         :eager, :hide\n\nExamples:\n  (rect 10 20)\n  (rect :w 10 :d 20 :plane :xz)\n  (rect 10 20 :wire)  — as wireframe\n\nReturns a rojcad/shape abstract value.")
+  "(rect &keys :w :d :h :wire :plane :at :eager :hide)\n\nCreate a rectangle.\nKeywords: :w (width), :d/:h (depth), :wire (output as wire),\n         :plane (keyword, default :xy), :at [x y z],\n         :eager, :hide\n\nExamples:\n  (rect 10 20)\n  (rect :w 10 :d 20 :plane :xz)\n  (rect 10 20 :wire)  # as wireframe\n\nReturns a rojcad/shape abstract value.")
 
 (wrap-c-fn circle _circle [& args]
   (var r nil)
@@ -579,7 +579,7 @@
     (def parts (string/split "|" entry))
     (tuple (parts 0) (parts 1) (keyword (parts 2)))))
 (defmeta list-fonts "text"
-  "(list-fonts)\n\nList available system fonts.\nReturns an array of [name type style] tuples,\nwhere type is the font file path and style is a keyword.\n\nExamples:\n  (list-fonts)  — returns @[[\"Arial\" \"/path/Arial.ttf\" :regular] ...]")
+  "(list-fonts)\n\nList available system fonts.\nReturns an array of [name type style] tuples,\nwhere type is the font file path and style is a keyword.\n\nExamples:\n  (list-fonts)  # returns @[[\"Arial\" \"/path/Arial.ttf\" :regular] ...]")
 
 (wrap-c-fn translate _translate [shape & args]
   (var dx nil) (var dy nil) (var dz nil)
@@ -641,7 +641,7 @@
   (def s (_scale shape factor ox oy oz (if eager 1 0) (if hide 1 0)))
   s)
 (defmeta scale "transforms"
-  "(scale shape factor &keys :o :eager :hide)\n\nUniformly scale a shape by a factor.\nKeywords: :o [x y z] (origin for scaling),\n         :eager, :hide\n\nExamples:\n  (scale box 2)                — double size\n  (scale box 2 :o [5 5 5])     — scale from center\n\nReturns a rojcad/shape abstract value.")
+  "(scale shape factor &keys :o :eager :hide)\n\nUniformly scale a shape by a factor.\nKeywords: :o [x y z] (origin for scaling),\n         :eager, :hide\n\nExamples:\n  (scale box 2)                # double size\n  (scale box 2 :o [5 5 5])     # scale from center\n\nReturns a rojcad/shape abstract value.")
 
 (wrap-c-fn mirror _mirror [shape ox oy oz dx dy dz & args]
   (var eager false) (var hide false)
@@ -652,7 +652,7 @@
   (def s (_mirror shape ox oy oz dx dy dz (if eager 1 0) (if hide 1 0)))
   s)
 (defmeta mirror "transforms"
-  "(mirror shape ox oy oz dx dy dz &keys :eager :hide)\n\nMirror a shape across a plane defined by a point and normal.\n:ox oy oz is a point on the plane.\n:dx dy dz is the plane normal.\nKeywords: :eager, :hide\n\nExamples:\n  (mirror box 0 0 0 1 0 0)  — mirror across YZ plane\n\nReturns a rojcad/shape abstract value.")
+  "(mirror shape ox oy oz dx dy dz &keys :eager :hide)\n\nMirror a shape across a plane defined by a point and normal.\n:ox oy oz is a point on the plane.\n:dx dy dz is the plane normal.\nKeywords: :eager, :hide\n\nExamples:\n  (mirror box 0 0 0 1 0 0)  # mirror across YZ plane\n\nReturns a rojcad/shape abstract value.")
 
 # ── Thin C-primitive wrappers ───────────────────────────────────────────────
 # Each wrapper saves the C JANET_FN then replaces the binding with a Janet
@@ -682,7 +682,7 @@
 (wrap-c-fn edge-hidden _edge-hidden [&opt value]
   (if (not= nil value) (_edge-hidden value) (_edge-hidden)))
 (defmeta edge-hidden "edge-styling"
-  "(edge-hidden &opt value)\n\nGet or set hidden edge visibility.\nCall with no arg to query, with true/false to set.\n\nExamples:\n  (edge-hidden true)   — show hidden edges\n  (edge-hidden)        — query\n\nReturns boolean.")
+  "(edge-hidden &opt value)\n\nGet or set hidden edge visibility.\nCall with no arg to query, with true/false to set.\n\nExamples:\n  (edge-hidden true)   # show hidden edges\n  (edge-hidden)        # query\n\nReturns boolean.")
 
 # Projection and overlay toggles
 
@@ -706,7 +706,7 @@
 (wrap-c-fn window-help-show _window-help-show [&opt value]
   (if (not= nil value) (_window-help-show value) (_window-help-show)))
 (defmeta window-help-show "view"
-  "(window-help-show &opt value)\n\nGet or set help window visibility.\nCall with no arg to query, with true/false to show/hide.\n\nExamples:\n  (window-help-show true)\n  (window-help-show)   — query")
+  "(window-help-show &opt value)\n\nGet or set help window visibility.\nCall with no arg to query, with true/false to show/hide.\n\nExamples:\n  (window-help-show true)\n  (window-help-show)   # query")
 (wrap-c-fn window-size _window-size [width height] (_window-size width height))
 (defmeta window-size "view"
   "(window-size width height)\n\nSet the application window size in pixels.\n\nExample: (window-size 1024 768)")
@@ -822,7 +822,7 @@
 
 (wrap-c-fn quit-requested _quit-requested [] (_quit-requested))
 (defmeta quit-requested "view"
-  "(quit-requested)\n\nCheck if the application should quit.\nReturns true once per quit request (Ctrl+Q or window close).\n\nExamples:\n  (quit-requested)  — returns true or nil\n\nReturns boolean or nil.")
+  "(quit-requested)\n\nCheck if the application should quit.\nReturns true once per quit request (Ctrl+Q or window close).\n\nExamples:\n  (quit-requested)  # returns true or nil\n\nReturns boolean or nil.")
 
 (put core-env 'on-select @{:value (fn [callback]
     (cond
@@ -831,7 +831,7 @@
       (error "on-select expects a function or nil"))
     nil)})
 (defmeta on-select "selection"
-  "(on-select callback)\n\nRegister a function to be called on selection events.\nPass nil to unregister.\n\nExamples:\n  (on-select (fn [s] (print \"selected: \" s)))\n  (on-select nil)  — unregister\n\nReturns nil.")
+  "(on-select callback)\n\nRegister a function to be called on selection events.\nPass nil to unregister.\n\nExamples:\n  (on-select (fn [s] (print \"selected: \" s)))\n  (on-select nil)  # unregister\n\nReturns nil.")
 
 (def _poll-selection-raw ((get core-env '_poll-selection-raw) :value))
 (put core-env 'poll-selection @{:value (fn []
@@ -848,7 +848,7 @@
         (when *on-select-callback* (*on-select-callback* event))
         event)))}) 
 (defmeta poll-selection "selection"
-  "(poll-selection)\n\nPoll for a selection event. Returns a shape if one is selected,\n:deselected if all deselected, [:deselected id] if a specific shape\nwas deselected, or nil if no event.\n\nThis is called internally by the event loop.\n\nExamples:\n  (poll-selection)  — returns shape, keyword, tuple, or nil")
+  "(poll-selection)\n\nPoll for a selection event. Returns a shape if one is selected,\n:deselected if all deselected, [:deselected id] if a specific shape\nwas deselected, or nil if no event.\n\nThis is called internally by the event loop.\n\nExamples:\n  (poll-selection)  # returns shape, keyword, tuple, or nil")
 
 # ── Shape query wrappers ─────────────────────────────────────────────────────
 
@@ -857,29 +857,29 @@
 (put core-env 'selected-shapes @{:value (fn []
     (tuple/slice (seq [id :in (_get-selected-ids)] (_get-shape id))))})
 (defmeta selected-shapes "queries"
-  "(selected-shapes)\n\nReturn an array of currently selected shapes in the viewer.\n\nExamples:\n  (selected-shapes)  — returns @[shape ...]\n\nReturns an array of rojcad/shape values.")
+  "(selected-shapes)\n\nReturn an array of currently selected shapes in the viewer.\n\nExamples:\n  (selected-shapes)  # returns @[shape ...]\n\nReturns an array of rojcad/shape values.")
 
 (def _get-registered-ids ((get core-env '_get-registered-ids) :value))
 (put core-env 'list-shapes @{:value (fn [&keys {:visible visible :hidden hidden}]
     (def filter (if hidden 2 (if visible 1 0)))
     (tuple/slice (seq [id :in (_get-registered-ids filter)] (_get-shape id))))})
 (defmeta list-shapes "queries"
-  "(list-shapes &keys :visible :hidden)\n\nList registered shapes, optionally filtered by visibility.\nKeywords: :visible (show only visible shapes),\n         :hidden (show only hidden shapes).\n\nExamples:\n  (list-shapes)              — all registered shapes\n  (list-shapes :visible)     — only visible shapes\n  (list-shapes :hidden)      — only hidden shapes\n\nReturns an array of rojcad/shape values.")
+  "(list-shapes &keys :visible :hidden)\n\nList registered shapes, optionally filtered by visibility.\nKeywords: :visible (show only visible shapes),\n         :hidden (show only hidden shapes).\n\nExamples:\n  (list-shapes)              # all registered shapes\n  (list-shapes :visible)     # only visible shapes\n  (list-shapes :hidden)      # only hidden shapes\n\nReturns an array of rojcad/shape values.")
 
 # ── Edge styling wrappers ────────────────────────────────────────────────────
 
 (wrap-c-fn edge-thickness _edge-thickness [&opt value]
   (if (not= nil value) (_edge-thickness value) (_edge-thickness)))
 (defmeta edge-thickness "edge-styling"
-  "(edge-thickness &opt value)\n\nGet or set the edge line thickness.\nCall with no arguments to query current thickness.\n\nExamples:\n  (edge-thickness 2)  — set thickness\n  (edge-thickness)    — get current thickness\n\nReturns the thickness value.")
+  "(edge-thickness &opt value)\n\nGet or set the edge line thickness.\nCall with no arguments to query current thickness.\n\nExamples:\n  (edge-thickness 2)  # set thickness\n  (edge-thickness)    # get current thickness\n\nReturns the thickness value.")
 (wrap-c-fn edge-color-inactive _edge-color-inactive [&opt r g b]
   (if r (_edge-color-inactive r g b) (_edge-color-inactive)))
 (defmeta edge-color-inactive "edge-styling"
-  "(edge-color-inactive &opt r g b)\n\nGet or set the color of edges on non-selected shapes.\nRGB values in 0-1 range. Call with no args to query.\n\nExamples:\n  (edge-color-inactive 0.5 0.5 0.5)  — grey inactive edges\n  (edge-color-inactive)              — get current color\n\nReturns [r g b] or nil.")
+  "(edge-color-inactive &opt r g b)\n\nGet or set the color of edges on non-selected shapes.\nRGB values in 0-1 range. Call with no args to query.\n\nExamples:\n  (edge-color-inactive 0.5 0.5 0.5)  # grey inactive edges\n  (edge-color-inactive)              # get current color\n\nReturns [r g b] or nil.")
 (wrap-c-fn edge-color-active _edge-color-active [&opt r g b]
   (if r (_edge-color-active r g b) (_edge-color-active)))
 (defmeta edge-color-active "edge-styling"
-  "(edge-color-active &opt r g b)\n\nGet or set the color of edges on the selected shape.\nRGB values in 0-1 range. Call with no args to query.\n\nExamples:\n  (edge-color-active 1 0 0)   — red active edges\n  (edge-color-active)         — get current color\n\nReturns [r g b] or nil.")
+  "(edge-color-active &opt r g b)\n\nGet or set the color of edges on the selected shape.\nRGB values in 0-1 range. Call with no args to query.\n\nExamples:\n  (edge-color-active 1 0 0)   # red active edges\n  (edge-color-active)         # get current color\n\nReturns [r g b] or nil.")
 
 # ── View control wrappers ────────────────────────────────────────────────────
 
@@ -896,7 +896,7 @@
 (wrap-c-fn view-angle _view-angle [yaw pitch &opt distance]
   (if (not= nil distance) (_view-angle yaw pitch distance) (_view-angle yaw pitch)))
 (defmeta view-angle "view"
-  "(view-angle yaw pitch &opt distance)\n\nSet the 3D viewport camera angle.\n\nyaw (radians), pitch (radians), distance (optional, default 100).\n\nExamples:\n  (view-angle math/pi 0)        — looking along -Z\n  (view-angle math/pi 0 200)    — further back\n  (view-angle 0 math/pi 2)      — top-down view\n\nReturns nil.")
+  "(view-angle yaw pitch &opt distance)\n\nSet the 3D viewport camera angle.\n\nyaw (radians), pitch (radians), distance (optional, default 100).\n\nExamples:\n  (view-angle math/pi 0)        # looking along -Z\n  (view-angle math/pi 0 200)    # further back\n  (view-angle 0 math/pi 2)      # top-down view\n\nReturns nil.")
 
 # view-angle metadata is set below with the presets
 
@@ -962,11 +962,19 @@
   (if (= :table (type binding))
     (do
       (def docs (get binding :doc))
-      (if docs (string docs) (string "No documentation for " sym)))
+      (if docs (string docs) (string "No documentation for " (string sym))))
     (string "No documentation for " sym)))
 
 (defmacro doc [sym]
   ~(,get-doc ',sym))
+
+# Override pp to print strings/buffers raw (unescaped) so doc-format
+# output and other string values display with proper line breaks.
+(def orig-pp pp)
+(defn pp [x]
+  (if (= :string (type x))
+    (do (buffer/push-string (dyn :out) x) (flush))
+    (orig-pp x)))
 
 (defn cad-fns []
   (def fns @[])

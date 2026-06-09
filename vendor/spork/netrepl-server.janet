@@ -57,7 +57,11 @@
     (nextenv :resume-value))
   (fn on-signal [f x]
     (case (fiber/status f)
-      :dead (do (put e '_ @{:value x}) (pp x))
+          :dead (do (put e '_ @{:value x})
+                    (if (= :string (type x))
+                      (do (buffer/push-string (dyn :out) x)
+                          (buffer/push-string (dyn :out) "\n"))
+                      (pp x)))
       (if (e :debug)
         (enter-debugger f x)
         (do (debug/stacktrace f x "") (eflush))))))
