@@ -59,14 +59,14 @@ The help window SHALL display how to connect to the REPL via netcat.
 
 #### Scenario: Connection info shown
 - **WHEN** the help window is visible
-- **THEN** it shows: nc 127.0.0.1 9365
+- **THEN** it shows: nc 127.0.0.1 9364
 
 ### Requirement: Help window displays CLI arguments
 The help window SHALL display available command-line arguments.
 
 #### Scenario: CLI args shown
 - **WHEN** the help window is visible
-- **THEN** it lists: --headless, --port, --eval
+- **THEN** it lists: --headless, --raw-port, --spork-port, --eval
 
 ### Requirement: Janet function window-help-toggle
 The system SHALL provide a `window-help-toggle` Janet function that toggles help visibility and returns the new state.

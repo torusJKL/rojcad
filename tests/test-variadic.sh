@@ -394,8 +394,8 @@ run_tc_test "window-size: string instead of integer"    '(window-size "big" "sma
 echo ""
 echo ":: TCP REPL interaction"
 
-# Start server on default port (--port flag has a pre-existing dyn timing bug)
-PORT=9365
+# Start server on default raw REPL port
+PORT=9364
 "$ROOT/target/debug/rojcad" --headless &
 SERVER_PID=$!
 sleep 3
