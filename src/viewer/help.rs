@@ -48,6 +48,12 @@ impl Help {
                         ui.monospace("Ctrl+7");
                         ui.label("Top / Bottom view");
                         ui.end_row();
+                        ui.monospace("Shift+Scroll");
+                        ui.label("Dolly forward / backward");
+                        ui.end_row();
+                        ui.monospace("Shift+RMB drag");
+                        ui.label("Dolly forward / backward");
+                        ui.end_row();
                         ui.monospace("Ctrl+Shift+");
                         ui.label("Toggle stats overlay");
                         ui.end_row();
