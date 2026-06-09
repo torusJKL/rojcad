@@ -1,4 +1,4 @@
-# rojcad Janet API Reference — 158ce73-dirty
+# rojcad Janet API Reference — v0.3.0-dirty
 
 ## Operations
 
@@ -509,6 +509,113 @@ Keywords: :rr (ring radius), :tr (tube radius),
 ```
 
 **Returns a rojcad/shape abstract value.**
+
+## Parametric Models
+
+### `build`
+
+**Usage:** `(build model & params)`
+
+Instantiate a parametric model by executing its body with the
+given parameter values. Old shapes from previous builds are
+purged automatically. Uses the existing `my-eval` shape-binding
+mechanism for auto-purge on re-def.
+
+Accepts a model record followed by positional parameter values
+matching the model's :params vector.
+
+**Examples:**
+```janet
+(def br (build bracket 100 50))
+(def br2 (build bracket 200 80))
+```
+
+**Returns a rojcad/shape abstract value. Signals an error on
+parameter count mismatch or model execution failure.**
+
+### `defmodel`
+
+**Usage:** `(defmodel name [params...] &keys :parts :result body...)`
+
+Define a parametric model. Binds a model record with :params, :body-fn, :source, :parts, :shapes, :shape-map, :current-params, and :result fields.
+
+Keywords: :parts (table of named parts {:part-name expr ...}),
+         :result (result expression, defaults to last body expression)
+
+When :parts is provided, a `parts` local variable is bound to the
+table of built shapes. The model's :result expression produces the
+final shape from these parts.
+
+Model records are pure Janet tables — they can be inspected,
+passed to `build`, and introspected with `graph`.
+
+**Examples:**
+```janet
+(defmodel bracket [w h]
+:parts {:base (box w h 30) :hole (cylinder 5 30)}
+:result (cut base hole))
+(defmodel cube [s]
+(box s s s))
+```
+
+**Returns nil (binds a model record as a side effect).**
+
+### `graph`
+
+**Usage:** `(graph model)`
+
+Return the structure of a parametric model as a table.
+The returned table has :name, :params, :current, :nodes,
+and :shape-map fields. The :nodes array contains source-form
+AST nodes with :type, :children, :form, and :id fields.
+Each node in a built model maps to its shape via :shape-map.
+
+**Examples:**
+```janet
+(graph bracket)
+```
+
+**Returns a table.**
+
+### `highlight`
+
+**Usage:** `(highlight model &opt part-id)`
+
+Highlight a named part of a built model in the viewer.
+The shape is shown (registered in the viewer) and rendered
+with active edges and a tinted mesh overlay.
+Without part-id, the entire result shape is highlighted.
+
+Part-ids correspond to keys in the model's :parts table
+or :result for the final output shape.
+
+**Examples:**
+```janet
+(highlight bracket :base)
+(highlight bracket)
+```
+
+**Returns nil. Signals an error if the model has not been built.**
+
+### `highlight-clear`
+
+**Usage:** `(highlight-clear &opt model part-id)`
+
+Remove highlighting and hide previously highlighted shapes.
+
+Call variants:
+  (highlight-clear)                  — clear viewer highlight only
+  (highlight-clear model)            — hide all highlighted parts
+  (highlight-clear model :part-name) — hide a specific part
+
+**Examples:**
+```janet
+(highlight-clear)
+(highlight-clear bracket)
+(highlight-clear bracket :base)
+```
+
+**Returns nil.**
 
 ## Sketch
 

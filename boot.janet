@@ -1000,7 +1000,8 @@
    "operations" "Operations"
    "wire-operations" "Wire Operations"
    "sketch" "Sketch"
-   "text" "Text"})
+   "text" "Text"
+   "parametric-models" "Parametric Models"})
 
 (defn group [&opt category]
   (if category

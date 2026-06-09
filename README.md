@@ -92,6 +92,38 @@ Rust API documentation can be built with:
 just doc
 ```
 
+## Parametric Models
+
+rojcad's `defmodel` macro lets you define reusable parametric models with named parts, then instantiate them with different parameter values.
+
+```janet
+# Define a parametric bracket model
+(defmodel bracket [w h r]
+  :parts {:base (box w h 30)
+          :hole (cylinder r 30)}
+  :result (cut base hole))
+
+# Build with specific dimensions
+(def br (build bracket 100 60 10))
+
+# Inspect the model's structure
+(graph bracket)
+
+# Highlight a named part in the viewer
+(highlight bracket :hole)
+
+# Clear highlighting
+(highlight-clear bracket :hole)
+
+# Rebuild with different parameters (old shapes auto-purge)
+(def br2 (build bracket 120 80 15))
+```
+
+Models compose — a model can call another model's `build` inside its body, creating a sub-model instance with its own tracked shapes.
+
+See the generated API docs (`just doc-janet`) for the full reference:
+`defmodel`, `build`, `graph`, `highlight`, `highlight-clear`.
+
 ## Architecture
 
 ```

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference — 158ce73-dirty</title>
+<title>rojcad Janet API Reference — v0.3.0-dirty</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -86,6 +86,12 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#cylinder">cylinder</a></li>
 <li class="fn"><a href="#sphere">sphere</a></li>
 <li class="fn"><a href="#torus">torus</a></li>
+<li class="cat"><a href="#parametric-models">Parametric Models</a></li>
+<li class="fn"><a href="#build">build</a></li>
+<li class="fn"><a href="#defmodel">defmodel</a></li>
+<li class="fn"><a href="#graph">graph</a></li>
+<li class="fn"><a href="#highlight">highlight</a></li>
+<li class="fn"><a href="#highlight-clear">highlight-clear</a></li>
 <li class="cat"><a href="#sketch">Sketch</a></li>
 <li class="fn"><a href="#arc-to">arc-to</a></li>
 <li class="fn"><a href="#build-wire">build-wire</a></li>
@@ -149,7 +155,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference — 158ce73-dirty</h1>
+<h1>rojcad Janet API Reference — v0.3.0-dirty</h1>
 <section id="operations">
 <h2>Operations</h2>
 <article id="extrude">
@@ -614,6 +620,98 @@ Keywords: :rr (ring radius), :tr (tube radius),
 (torus <span class="tok-n">20</span> <span class="tok-n">10</span> <span class="tok-k">:eager</span>)             # eager tessellation</code></pre>
 </div>
 <div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+</section>
+<section id="parametric-models">
+<h2>Parametric Models</h2>
+<article id="build">
+<h3>build</h3>
+<div class="usage">(build model &amp; params)</div>
+<div class="desc">
+<p>Instantiate a parametric model by executing its body with the
+given parameter values. Old shapes from previous builds are
+purged automatically. Uses the existing `my-eval` shape-binding
+mechanism for auto-purge on re-def.</p>
+<p>Accepts a model record followed by positional parameter values
+matching the model's :params vector.</p>
+</div>
+<div class="examples">
+<pre><code>(<span class="tok-sp">def</span> br (build bracket <span class="tok-n">100</span> <span class="tok-n">50</span>))
+(<span class="tok-sp">def</span> br2 (build bracket <span class="tok-n">200</span> <span class="tok-n">80</span>))</code></pre>
+</div>
+<div class="returns">Returns a rojcad/shape abstract value. Signals an error on
+parameter count mismatch or model execution failure.</div>
+</article>
+<article id="defmodel">
+<h3>defmodel</h3>
+<div class="usage">(defmodel name [params...] &amp;keys :parts :result body...)</div>
+<div class="desc">
+<p>Define a parametric model. Binds a model record with :params, :body-fn, :source, :parts, :shapes, :shape-map, :current-params, and :result fields.</p>
+<p>Keywords: :parts (table of named parts {:part-name expr ...}),
+         :result (result expression, defaults to last body expression)</p>
+<p>When :parts is provided, a `parts` local variable is bound to the
+table of built shapes. The model's :result expression produces the
+final shape from these parts.</p>
+<p>Model records are pure Janet tables — they can be inspected,
+passed to `build`, and introspected with `graph`.</p>
+</div>
+<div class="examples">
+<pre><code>(defmodel bracket [w h]
+<span class="tok-k">:parts</span> {<span class="tok-k">:base</span> (box w h <span class="tok-n">30</span>) <span class="tok-k">:hole</span> (cylinder <span class="tok-n">5</span> <span class="tok-n">30</span>)}
+<span class="tok-k">:result</span> (cut base hole))
+(defmodel cube [s]
+(box s s s))</code></pre>
+</div>
+<div class="returns">Returns nil (binds a model record as a side effect).</div>
+</article>
+<article id="graph">
+<h3>graph</h3>
+<div class="usage">(graph model)</div>
+<div class="desc">
+<p>Return the structure of a parametric model as a table.
+The returned table has :name, :params, :current, :nodes,
+and :shape-map fields. The :nodes array contains source-form
+AST nodes with :type, :children, :form, and :id fields.
+Each node in a built model maps to its shape via :shape-map.</p>
+</div>
+<div class="examples">
+<pre><code>(graph bracket)</code></pre>
+</div>
+<div class="returns">Returns a table.</div>
+</article>
+<article id="highlight">
+<h3>highlight</h3>
+<div class="usage">(highlight model &amp;opt part-id)</div>
+<div class="desc">
+<p>Highlight a named part of a built model in the viewer.
+The shape is shown (registered in the viewer) and rendered
+with active edges and a tinted mesh overlay.
+Without part-id, the entire result shape is highlighted.</p>
+<p>Part-ids correspond to keys in the model's :parts table
+or :result for the final output shape.</p>
+</div>
+<div class="examples">
+<pre><code>(highlight bracket <span class="tok-k">:base</span>)
+(highlight bracket)</code></pre>
+</div>
+<div class="returns">Returns nil. Signals an error if the model has not been built.</div>
+</article>
+<article id="highlight-clear">
+<h3>highlight-clear</h3>
+<div class="usage">(highlight-clear &amp;opt model part-id)</div>
+<div class="desc">
+<p>Remove highlighting and hide previously highlighted shapes.</p>
+<p>Call variants:
+  (highlight-clear)                  — clear viewer highlight only
+  (highlight-clear model)            — hide all highlighted parts
+  (highlight-clear model :part-name) — hide a specific part</p>
+</div>
+<div class="examples">
+<pre><code>(highlight-clear)
+(highlight-clear bracket)
+(highlight-clear bracket <span class="tok-k">:base</span>)</code></pre>
+</div>
+<div class="returns">Returns nil.</div>
 </article>
 </section>
 <section id="sketch">

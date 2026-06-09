@@ -290,3 +290,21 @@
           (when (not= s shape) (array/push new-global s)))
         (set hl-shapes new-global))))
   ((get-c-fn '_highlight-clear)))
+
+# ── Documentation metadata ──────────────────────────────────────────
+# Tag each function for the doc generation pipeline.
+
+(setmeta 'defmodel "parametric-models"
+  "(defmodel name [params...] &keys :parts :result body...)\n\nDefine a parametric model. Binds a model record with :params, :body-fn, :source, :parts, :shapes, :shape-map, :current-params, and :result fields.\n\nKeywords: :parts (table of named parts {:part-name expr ...}),\n         :result (result expression, defaults to last body expression)\n\nWhen :parts is provided, a `parts` local variable is bound to the\ntable of built shapes. The model's :result expression produces the\nfinal shape from these parts.\n\nModel records are pure Janet tables — they can be inspected,\npassed to `build`, and introspected with `graph`.\n\nExamples:\n  (defmodel bracket [w h]\n    :parts {:base (box w h 30) :hole (cylinder 5 30)}\n    :result (cut base hole))\n  (defmodel cube [s]\n    (box s s s))\n\nReturns nil (binds a model record as a side effect).")
+
+(setmeta 'build "parametric-models"
+  "(build model & params)\n\nInstantiate a parametric model by executing its body with the\ngiven parameter values. Old shapes from previous builds are\npurged automatically. Uses the existing `my-eval` shape-binding\nmechanism for auto-purge on re-def.\n\nAccepts a model record followed by positional parameter values\nmatching the model's :params vector.\n\nExamples:\n  (def br (build bracket 100 50))\n  (def br2 (build bracket 200 80))\n\nReturns a rojcad/shape abstract value. Signals an error on\nparameter count mismatch or model execution failure.")
+
+(setmeta 'graph "parametric-models"
+  "(graph model)\n\nReturn the structure of a parametric model as a table.\nThe returned table has :name, :params, :current, :nodes,\nand :shape-map fields. The :nodes array contains source-form\nAST nodes with :type, :children, :form, and :id fields.\nEach node in a built model maps to its shape via :shape-map.\n\nExamples:\n  (graph bracket)\n\nReturns a table.")
+
+(setmeta 'highlight "parametric-models"
+  "(highlight model &opt part-id)\n\nHighlight a named part of a built model in the viewer.\nThe shape is shown (registered in the viewer) and rendered\nwith active edges and a tinted mesh overlay.\nWithout part-id, the entire result shape is highlighted.\n\nPart-ids correspond to keys in the model's :parts table\nor :result for the final output shape.\n\nExamples:\n  (highlight bracket :base)\n  (highlight bracket)\n\nReturns nil. Signals an error if the model has not been built.")
+
+(setmeta 'highlight-clear "parametric-models"
+  "(highlight-clear &opt model part-id)\n\nRemove highlighting and hide previously highlighted shapes.\n\nCall variants:\n  (highlight-clear)                  — clear viewer highlight only\n  (highlight-clear model)            — hide all highlighted parts\n  (highlight-clear model :part-name) — hide a specific part\n\nExamples:\n  (highlight-clear)\n  (highlight-clear bracket)\n  (highlight-clear bracket :base)\n\nReturns nil.")
