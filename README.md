@@ -37,8 +37,8 @@ Then in the REPL:
 (def b (make-box 10 20 30))
 (def s (make-sphere 15 :center '(5 10 0)))
 (def result (cut b s))
-(hide b) (hide s)             # operands are still shown by default
-(write-step result "result.step")
+(hide b s)
+(write-step "result.step")
 ```
 
 ## CLI
@@ -123,42 +123,6 @@ Models compose — a model can call another model's `build` inside its body, cre
 
 See the generated API docs (`just doc-janet`) for the full reference:
 `defmodel`, `build`, `graph`, `highlight`, `highlight-clear`.
-
-## Architecture
-
-```
-┌──────────────────────────────────────────┐
-│           rojcad binary                  │
-│  ┌──────────┐  ┌──────────────────────┐  │
-│  │ main.rs  │  │  boot.janet          │  │
-│  │ (entry)  │  │  (TCP REPL server)   │  │
-│  └────┬─────┘  └──────────────────────┘  │
-│       │  include_str!()                  │
-│       ▼                                  │
-│  ┌──────────┐  ┌──────────────────────┐  │
-│  │ bridge.rs│◄─┤  bridge/bridge.c     │  │
-│  │ (extern  │  │  (Janet C API glue)  │  │
-│  │  "C"     │  └──────────┬───────────┘  │
-│  │  decls)  │             │              │
-│  └──────────┘             ▼              │
-│  ┌──────────┐  ┌──────────────────────┐  │
-│  │  cad.rs  │  │  types.rs            │  │
-│  │ (OCCT    │  │  (ShapeData,         │  │
-│  │  ops)    │  │   metadata)          │  │
-│  └────┬─────┘  └──────────────────────┘  │
-│       │                                  │
-│       ▼                                  │
-│  ┌──────────────────────────────────┐    │
-│  │  opencascade-rs (opencascade)    │    │
-│  │  └─ opencascade-sys (occt-sys)   │    │
-│  │     └─ OCCT (C++ library)        │    │
-│  └──────────────────────────────────┘    │
-└──────────────────────────────────────────┘
-```
-
-The 3D viewer runs on a background thread (wgpu + winit + egui) and is compiled
-out on macOS/iOS.  REPL ↔ viewer communication is via `mpsc` channels, with
-shared state in a `ShapeRegistry` (RwLock + atomic generation counter).
 
 ## Dependencies & Licenses
 
