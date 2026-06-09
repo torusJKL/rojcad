@@ -508,8 +508,7 @@ pub fn write_all_step(shapes: &[&ShapeData], path: &str) -> Result<(), String> {
         return Err("at least one shape is required to write a STEP file".to_string());
     }
     let refs: Vec<&Shape> = shapes.iter().map(|s| &s.shape).collect();
-    Shape::write_all_step(&refs, path)
-        .map_err(|e| format!("STEP export failed: {}", e))
+    Shape::write_all_step(&refs, path).map_err(|e| format!("STEP export failed: {}", e))
 }
 
 /// Write a shape to an STL file.
