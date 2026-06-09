@@ -55,6 +55,7 @@ jobs:
           cp doc/janet-api.md doc/janet-api.html _site/latest/
           cp -r target/doc/* "_site/$VERSION/rust/"
           cp -r target/doc/* _site/latest/rust/
+          echo '<meta http-equiv="refresh" content="0; url=latest/janet-api.html">' > _site/index.html
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
