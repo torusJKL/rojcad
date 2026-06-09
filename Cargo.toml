@@ -3,7 +3,7 @@ members = ["."]
 
 [package]
 name = "rojcad"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Headless parametric CAD system with embedded Janet DSL"
 license = "GPL-3.0-only"
