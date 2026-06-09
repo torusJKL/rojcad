@@ -35,7 +35,7 @@
   (def binding (get core-env fn-name))
   (when (and binding (= :function (type (binding :value))))
     (let [orig-fn (binding :value)]
-      (put core-env fn-name @{:value (fn [& args]
+      (put (get core-env fn-name) :value (fn [& args]
         (def result (apply orig-fn args))
         (when *model-context*
           (when (= :rojcad/shape (type result))
@@ -44,7 +44,7 @@
             (each s result
               (when (= :rojcad/shape (type s))
                 (array/push (*model-context* :shapes) s)))))
-        result)}))))
+        result)))))
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
