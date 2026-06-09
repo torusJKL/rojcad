@@ -613,7 +613,10 @@
       (case (args i)
         :eager (set eager true)
         :hide (set hide true)
-        :a (set angle (* (args (++ i)) (/ math/pi 180)))
+        :a (let [v (args (++ i))]
+             (when (not= :number (type v))
+               (error (string "expected number for :a, got " (type v))))
+             (set angle (* v (/ math/pi 180))))
         :ar (set angle (args (++ i)))
         :x (do (set ax 1) (set ay 0) (set az 0))
         :y (do (set ax 0) (set ay 1) (set az 0))
