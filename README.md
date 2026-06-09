@@ -21,11 +21,14 @@ cd rojcad
 # Build (first run compiles OCCT from source — 10-15 min)
 just build
 
-# Start the TCP REPL server (port 9365 by default)
+# Start the TCP REPL servers (raw on 9364, spork on 9365)
 just run
 
-# In another terminal:
-nc 127.0.0.1 9365
+# In another terminal — raw REPL (basic):
+nc 127.0.0.1 9364
+
+# Or spork REPL (line editing, tab completion, history):
+janet -e "(import spork/netrepl) (netrepl/client)"
 ```
 
 Then in the REPL:
@@ -43,7 +46,8 @@ Then in the REPL:
 | Flag | Description |
 |------|-------------|
 | `--headless` | Disable the 3D viewer |
-| `--port <PORT>` | TCP REPL port (default: **9365**) |
+| `--raw-port <PORT>` | Raw TCP REPL port (default: **9364**) |
+| `--spork-port <PORT>` | Spork netrepl REPL port (default: **9365**) |
 | `--eval <EXPR>` | Run Janet code after boot |
 
 ## Common just recipes

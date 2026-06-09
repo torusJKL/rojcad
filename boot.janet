@@ -997,7 +997,8 @@
       result)
     (string "compile error: " (get compiled :error) " line:" (get compiled :line))))
 
-(def port (if (dyn '*netrepl-port*) (dyn '*netrepl-port*) 9365))
+(def raw-port *raw-repl-port*)
+(def spork-port *spork-repl-port*)
 
 # ── Doc generation ────────────────────────────────────────────────────────
 
@@ -1346,15 +1347,17 @@
   (:close stream)
   (eprint "● client disconnected"))
 
-(def listen
+(def raw-listen
   (do
-    (def listen-fiber (fiber/new (fn [] (net/listen addr port))))
+    (def listen-fiber (fiber/new (fn [] (net/listen addr raw-port))))
     (def listen-val (resume listen-fiber))
     (def listen-status (fiber/status listen-fiber))
     (if (= listen-status :dead) listen-val
-      (do (eprint "rojcad: failed to listen on " addr ":" port) (os/exit 1)))))
+      (do (eprint "rojcad: failed to listen on " addr ":" raw-port) (os/exit 1)))))
 
-(eprint "◆ rojcad ready — connect via: nc " addr " " port)
+(eprint "◆ rojcad ready - (" *rojcad-version* ")")
+(eprint "◆ raw REPL (nc): " addr " " raw-port)
+(eprint "◆ spork REPL: " addr " " spork-port)
 
 # ── View angle presets (data-driven) ─────────────────────────
 
@@ -1431,7 +1434,15 @@
 
 (defn accept-loop []
   (while true
-    (def conn (net/accept listen))
+    (def conn (net/accept raw-listen))
     (ev/go (fn [] (connect-handler conn)))))
 
 (ev/go (fiber/new accept-loop))
+
+# Start spork netrepl server on separate fiber.
+# Use run-server (not server) because it blocks the fiber until shutdown,
+# keeping the disconnect-all defer in server-impl from running prematurely.
+(ev/go (fiber/new (fn []
+  (def [ok val] (protect (netrepl/run-server addr spork-port core-env)))
+  (when (not ok)
+    (eprint "rojcad: spork server on " addr ":" spork-port " failed: " val)))))

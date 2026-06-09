@@ -16,8 +16,15 @@ Standard Janet macros (`defmacro`, `defn`, `def-`, `->`, `each`, `for`, `loop`, 
 
 **Updating `upstream.janet`**: The file is the upstream boot.janet with the build-only image-generation footer removed (the last ~140 lines that `slurp` source files and `spit` a C header — only needed during upstream's own build, not at runtime). When updating to a newer Janet version, fetch the new `src/boot/boot.janet` from the matching tag and trim from the `### Bootstrap` section onward.
 
-## Default port is 9365
-The TCP REPL listens on port **9365** by default (override with `--port <PORT>` or `--port=<PORT>`). The README incorrectly says 9000.
+## Default ports are 9364 (raw) and 9365 (spork)
+The raw TCP REPL listens on port **9364** by default (override with `--raw-port <PORT>` or `--raw-port=<PORT>`).
+The spork netrepl protocol REPL listens on port **9365** by default (override with `--spork-port <PORT>` or `--spork-port=<PORT>`).
+The README incorrectly says 9000.
+
+## Vendored spork
+`vendor/spork/` contains a server-only subset of spork (msg.janet, ev-utils.janet, netrepl-server.janet).
+The client/getline/rawterm parts are excluded (not needed server-side).
+When updating, fetch from https://github.com/janet-lang/spork and verify the server still works.
 
 ## CLI flags
 `--headless` disables the 3D viewer. `--eval <EXPR>` or `--eval=<EXPR>` runs Janet code after boot, then exits.

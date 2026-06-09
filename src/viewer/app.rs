@@ -1612,11 +1612,9 @@ impl ViewerApp {
             state.grid_renderer.render(&mut pass);
 
             // Mesh surfaces (depth test: Less, writes depth)
-            state.surface_drawer.render(
-                &mut pass,
-                &state.selected_ids,
-                state.highlighted_shape,
-            );
+            state
+                .surface_drawer
+                .render(&mut pass, &state.selected_ids, state.highlighted_shape);
 
             // Shape edges (depth test: Less with negative bias toward camera,
             // rendered AFTER meshes so edges overlay mesh surfaces)
