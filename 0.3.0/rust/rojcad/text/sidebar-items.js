@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FontAspect","Segment"],"fn":["collect_font_files","contour_to_edges","font_lookup","get_font_name_from_face","glyph_outlines","layout_text","list_system_fonts","read_font_name","resolve_font_path","scan_font_dirs","seg_to_edges","split_outer_holes","text_to_shape","text_to_solid"],"struct":["Contour","FontData","GlyphBuilder","PositionedGlyph"]};

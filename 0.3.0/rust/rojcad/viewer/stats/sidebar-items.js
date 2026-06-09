@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["VIEW_PRESETS","VIEW_TOLERANCE"],"fn":["detect_view_preset","format_num"],"struct":["Stats","ViewPreset"]};
