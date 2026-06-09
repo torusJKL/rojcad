@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference — v0.3.0-dirty</title>
+<title>rojcad Janet API Reference — dd69810</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -155,7 +155,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference — v0.3.0-dirty</h1>
+<h1>rojcad Janet API Reference — dd69810</h1>
 <section id="operations">
 <h2>Operations</h2>
 <article id="extrude">
@@ -252,13 +252,16 @@ was deselected, or nil if no event.</div>
 </article>
 <article id="write-step">
 <h3>write-step</h3>
-<div class="usage">(write-step shape path)</div>
+<div class="usage">(write-step path &amp; shapes)</div>
 <div class="desc">
 </div>
 <div class="examples">
-<pre><code>(write-step my-shape <span class="tok-s">"/tmp/model.step"</span>)</code></pre>
+<pre><code>(write-step <span class="tok-s">"/tmp/model.step"</span>)                          # all visible
+(write-step <span class="tok-s">"/tmp/model.step"</span> my-shape)                  # single shape
+(write-step <span class="tok-s">"/tmp/model.step"</span> box-a sphere-b cylinder-c) # multiple shapes</code></pre>
 </div>
-<div class="returns">Export a shape to a STEP file at the given path.
+<div class="returns">Export one or more shapes to a STEP file at the given path.
+With no shape arguments, exports all currently visible shapes.
 Returns nil on success, signals an error on failure.</div>
 </article>
 <article id="write-stl">

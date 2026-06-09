@@ -1,4 +1,4 @@
-# rojcad Janet API Reference — v0.3.0-dirty
+# rojcad Janet API Reference — dd69810
 
 ## Operations
 
@@ -106,16 +106,19 @@ Read a STEP file from disk and return a shape.
 
 ### `write-step`
 
-**Usage:** `(write-step shape path)`
+**Usage:** `(write-step path & shapes)`
 
 
 
 **Examples:**
 ```janet
-(write-step my-shape "/tmp/model.step")
+(write-step "/tmp/model.step")                          # all visible
+(write-step "/tmp/model.step" my-shape)                  # single shape
+(write-step "/tmp/model.step" box-a sphere-b cylinder-c) # multiple shapes
 ```
 
-**Export a shape to a STEP file at the given path.
+**Export one or more shapes to a STEP file at the given path.
+With no shape arguments, exports all currently visible shapes.
 Returns nil on success, signals an error on failure.**
 
 ### `write-stl`
