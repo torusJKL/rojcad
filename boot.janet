@@ -904,13 +904,16 @@
     (set k (next core-env k)))
   (sort-syms fns))
 
-(defn doc [sym]
+(defn get-doc [sym]
   (def binding (get core-env sym))
   (if (= :table (type binding))
     (do
       (def docs (get binding :doc))
       (if docs (string docs) (string "No documentation for " sym)))
     (string "No documentation for " sym)))
+
+(defmacro doc [sym]
+  ~(,get-doc ',sym))
 
 (defn cad-fns []
   (def fns @[])
@@ -1111,7 +1114,7 @@
             (var fi 0)
             (while (< fi (length fns))
               (def fn-name (get fns fi))
-              (def fn-doc (doc fn-name))
+              (def fn-doc (get-doc fn-name))
               (def doc-arr (split-docstring fn-doc))
               (def usage (get doc-arr 0))
               (def body-text (get doc-arr 1))
@@ -1141,7 +1144,7 @@
           (var fi 0)
           (while (< fi (length other-fns))
             (def fn-name (get other-fns fi))
-            (def fn-doc (doc fn-name))
+            (def fn-doc (get-doc fn-name))
             (def doc-arr (split-docstring fn-doc))
             (def usage (get doc-arr 0))
             (def body-text (get doc-arr 1))
@@ -1243,7 +1246,7 @@
             (var fi 0)
             (while (< fi (length fns))
               (def fn-name (get fns fi))
-              (def fn-doc (doc fn-name))
+              (def fn-doc (get-doc fn-name))
               (def doc-arr (split-docstring fn-doc))
               (def usage (get doc-arr 0))
               (def body-text (get doc-arr 1))
@@ -1279,7 +1282,7 @@
           (var fi 0)
           (while (< fi (length other-fns))
             (def fn-name (get other-fns fi))
-            (def fn-doc (doc fn-name))
+            (def fn-doc (get-doc fn-name))
             (def doc-arr (split-docstring fn-doc))
             (def usage (get doc-arr 0))
             (def body-text (get doc-arr 1))
