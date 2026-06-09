@@ -94,7 +94,7 @@ extern const char *rust_shape_type(void *data);
 extern int rust_init_read_step(void *dest, const char *path, int eager);
 
 /* Export */
-extern int rust_write_step(void *data, const char *path);
+extern int rust_write_all_step(void **shapes, int num_shapes, const char *path);
 extern int rust_write_stl(void *data, const char *path);
 
 /* Visibility */
@@ -1349,13 +1349,51 @@ JANET_FN(_cad_edge_color_active,
 }
 
 JANET_FN(cad_write_step,
-         "(write-step shape path)",
-         "")
+         "(write-step path & shapes)",
+         "Export one or more shapes to a STEP file at the given path.\n\n"
+         "With no shape arguments, exports all currently visible shapes.\n"
+         "Returns nil on success, signals an error on failure.\n\n"
+         "Examples:\n"
+         "  (write-step \"/tmp/out.step\")           # all visible\n"
+         "  (write-step \"/tmp/out.step\" my-shape)  # single shape\n"
+         "  (write-step \"/tmp/out.step\" a b c)     # multiple shapes")
 {
-    janet_arity(argc, 2, 2);
-    void *data = unwrap_shape_or_panic(argv[0], 0);
-    const uint8_t *path_bytes = janet_unwrap_string(argv[1]);
-    int result = rust_write_step(data, (const char *)path_bytes);
+    janet_arity(argc, 1, -1);
+    const uint8_t *path_bytes = janet_unwrap_string(argv[0]);
+    void *shape_ptrs[256];
+    int num_shapes;
+
+    if (argc == 1) {
+        size_t count;
+        uint64_t *ids = rust_get_registered_shape_ids(1, &count);
+        if (count == 0) {
+            janet_panic("no visible shapes to export");
+        }
+        if (count > 256) {
+            rust_free_u64_array(ids, count);
+            janet_panic("too many visible shapes for STEP export (max 256)");
+        }
+        for (size_t i = 0; i < count; i++) {
+            void *ptr = rust_get_shape_pointer(ids[i]);
+            if (!ptr) {
+                rust_free_u64_array(ids, count);
+                janet_panic("shape pointer lookup failed");
+            }
+            shape_ptrs[i] = ptr;
+        }
+        rust_free_u64_array(ids, count);
+        num_shapes = (int)count;
+    } else {
+        num_shapes = argc - 1;
+        if (num_shapes > 256) {
+            janet_panic("too many shapes for STEP export (max 256)");
+        }
+        for (int i = 0; i < num_shapes; i++) {
+            shape_ptrs[i] = unwrap_shape_or_panic(argv[i + 1], i + 1);
+        }
+    }
+
+    int result = rust_write_all_step(shape_ptrs, num_shapes, (const char *)path_bytes);
     if (result != 0) {
         const char *msg = rust_take_last_error();
         janet_panic(msg);

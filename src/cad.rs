@@ -502,10 +502,13 @@ pub fn read_step(path: &str, eager: bool) -> Result<ShapeData, String> {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-/// Write a shape to a STEP file.
-pub fn write_step(data: &ShapeData, path: &str) -> Result<(), String> {
-    data.shape
-        .write_step(path)
+/// Write one or more shapes to a STEP file using a single writer.
+pub fn write_all_step(shapes: &[&ShapeData], path: &str) -> Result<(), String> {
+    if shapes.is_empty() {
+        return Err("at least one shape is required to write a STEP file".to_string());
+    }
+    let refs: Vec<&Shape> = shapes.iter().map(|s| &s.shape).collect();
+    Shape::write_all_step(&refs, path)
         .map_err(|e| format!("STEP export failed: {}", e))
 }
 
@@ -941,22 +944,38 @@ mod tests {
     }
 
     #[test]
-    fn test_write_step_roundtrip() {
-        // 10.6: Test STEP export round-trip
+    fn test_write_all_step_single() {
         let sd = unwrap_box(10.0, 20.0, 30.0, None, false);
         let path = "/tmp/test_rojcad_box.step";
-        assert!(write_step(&sd, path).is_ok());
+        assert!(write_all_step(&[&sd], path).is_ok());
         assert!(std::path::Path::new(path).exists());
-        // Clean up
         let _ = std::fs::remove_file(path);
     }
 
     #[test]
+    fn test_write_all_step_multiple() {
+        let s1 = unwrap_box(10.0, 20.0, 30.0, None, false);
+        let s2 = unwrap_sphere(10.0, None, None, false);
+        let s3 = make_cylinder(5.0, 15.0, None, false).unwrap();
+        let path = "/tmp/test_rojcad_multi.step";
+        assert!(write_all_step(&[&s1, &s2, &s3], path).is_ok());
+        assert!(std::path::Path::new(path).exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_write_all_step_empty() {
+        let path = "/tmp/test_rojcad_empty.step";
+        let result = write_all_step(&[], path);
+        assert!(result.is_err());
+        assert!(!std::path::Path::new(path).exists());
+    }
+
+    #[test]
     fn test_read_step_roundtrip() {
-        // Read back a STEP file written by write_step
         let sd = unwrap_box(10.0, 20.0, 30.0, None, false);
         let path = "/tmp/test_rojcad_roundtrip.step";
-        assert!(write_step(&sd, path).is_ok());
+        assert!(write_all_step(&[&sd], path).is_ok());
         let imported = read_step(path, false).expect("should read back STEP file");
         assert!(imported.shape_id > 0);
         assert!(imported.visible);

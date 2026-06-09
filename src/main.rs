@@ -1579,14 +1579,23 @@ pub unsafe extern "C" fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_in
 
 // ── Export ──────────────────────────────────────────────────────────────────
 
-/// Write a shape to a STEP file. Returns 0 on success, 1 on failure.
+/// Write one or more shapes to a STEP file. Returns 0 on success, 1 on failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char) -> c_int {
+pub unsafe extern "C" fn rust_write_all_step(
+    shapes: *mut *mut c_void,
+    num_shapes: c_int,
+    path: *const c_char,
+) -> c_int {
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    let shape_data = unsafe { &*(data as *const ShapeData) };
-    match cad::write_step(shape_data, &path_str) {
+    let num = num_shapes as usize;
+    let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
+    let shape_refs: Vec<&ShapeData> = shapes_slice
+        .iter()
+        .map(|p| unsafe { &*(*p as *const ShapeData) })
+        .collect();
+    match cad::write_all_step(&shape_refs, &path_str) {
         Ok(()) => 0,
         Err(msg) => {
             set_last_error(msg);

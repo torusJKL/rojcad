@@ -260,7 +260,7 @@ unsafe extern "C" {
 
     pub fn rust_shape_type(data: *mut c_void) -> *const c_char;
 
-    pub fn rust_write_step(data: *mut c_void, path: *const c_char) -> c_int;
+    pub fn rust_write_all_step(shapes: *mut *mut c_void, num_shapes: c_int, path: *const c_char) -> c_int;
     pub fn rust_write_stl(data: *mut c_void, path: *const c_char) -> c_int;
 
     pub fn rust_init_read_step(dest: *mut c_void, path: *const c_char, eager: c_int);

@@ -799,9 +799,10 @@
 
 # ── I/O wrappers ────────────────────────────────────────────────────────────
 
-(wrap-c-fn write-step _write-step [shape path] (_write-step shape path))
+(wrap-c-fn write-step _write-step [path & shapes]
+  (apply _write-step path shapes))
 (defmeta write-step "io"
-  "(write-step shape path)\n\nExport a shape to a STEP file at the given path.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step my-shape \"/tmp/model.step\")")
+  "(write-step path & shapes)\n\nExport one or more shapes to a STEP file at the given path.\nWith no shape arguments, exports all currently visible shapes.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step \"/tmp/model.step\")                          # all visible\n  (write-step \"/tmp/model.step\" my-shape)                  # single shape\n  (write-step \"/tmp/model.step\" box-a sphere-b cylinder-c) # multiple shapes")
 
 (wrap-c-fn write-stl _write-stl [shape path] (_write-stl shape path))
 (defmeta write-stl "io"

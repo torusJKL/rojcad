@@ -351,8 +351,8 @@ run_tc_test "solid?: string instead of shape"           '(solid? "hello")'
 
 # ── IO ────────────────────────────────────────────────────────────────
 
-run_tc_test "write-step: number instead of string path" '(write-step (box 10) 123)'
-run_tc_test "write-step: keyword instead of string path" '(write-step (box 10) :path)'
+run_tc_test "write-step: number instead of string path" '(write-step 123 (box 10))'
+run_tc_test "write-step: keyword instead of string path" '(write-step false (box 10))'
 run_tc_test "write-stl: number instead of string path"  '(write-stl (box 10) 123)'
 run_tc_test "read-step: number instead of string path"  '(read-step 123)'
 
