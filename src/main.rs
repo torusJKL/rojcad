@@ -30,11 +30,11 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
-    SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, WINDOW_FULLSCREEN,
-    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, init_edge_color_defaults,
-    pack_color, register_shape_pointer,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, HELP_EXAMPLE, INACTIVE_EDGE_COLOR, LAST_SELECTION,
+    LAST_SELECTION_ACTION, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES,
+    SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData,
+    WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry,
+    init_edge_color_defaults, pack_color, register_shape_pointer,
 };
 use crate::viewer::ViewerConfig;
 
@@ -1868,6 +1868,15 @@ pub unsafe extern "C" fn rust_help_overlay_set(value: c_int) {
     SHOW_HELP_OVERLAY.store(value != 0, Ordering::SeqCst);
 }
 
+/// Set the Quick Example expression string from Janet at boot time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_set_example(path: *const c_char) {
+    let s = unsafe { CStr::from_ptr(path) }
+        .to_str()
+        .expect("help-set-example: invalid UTF-8");
+    HELP_EXAMPLE.set(s.to_string()).ok();
+}
+
 // ── View fit ───────────────────────────────────────────────────────────────────
 
 /// Fit camera to bounding box union of explicitly provided shapes.
@@ -2267,8 +2276,9 @@ fn main() {
         ""
     };
     let boot_prefix = format!(
-        "(def *rojcad-version* {:?})\n(def *raw-repl-port* {})\n(def *spork-repl-port* {})\n",
+        "(def *rojcad-version* {:?})\n(def *rojcad-os* {:?})\n(def *raw-repl-port* {})\n(def *spork-repl-port* {})\n",
         format!("{}{}", version, version_suffix),
+        std::env::consts::OS,
         raw_port,
         spork_port
     );

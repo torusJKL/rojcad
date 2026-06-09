@@ -1528,3 +1528,10 @@
   (def [ok val] (protect (netrepl/run-server addr spork-port core-env)))
   (when (not ok)
     (eprint "rojcad: spork server on " addr ":" spork-port " failed: " val)))))
+
+# ── Register help window Quick Example ──────────────────────────────────────
+# Show a concrete workflow when the user first opens the help window.
+
+(if (= *rojcad-os* "windows")
+  (help-set-example "(def mybox (box 10))\n(write-step \"C:\\temp\\model.step\")")
+  (help-set-example "(def mybox (box 10))\n(write-step \"/tmp/model.step\")"))

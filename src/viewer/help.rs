@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::types::SHOW_HELP_OVERLAY;
+use crate::types::{HELP_EXAMPLE, SHOW_HELP_OVERLAY};
 
 pub struct Help;
 
@@ -48,12 +48,6 @@ impl Help {
                         ui.monospace("Ctrl+7");
                         ui.label("Top / Bottom view");
                         ui.end_row();
-                        ui.monospace("Shift+Scroll");
-                        ui.label("Dolly forward / backward");
-                        ui.end_row();
-                        ui.monospace("Shift+RMB drag");
-                        ui.label("Dolly forward / backward");
-                        ui.end_row();
                         ui.monospace("Ctrl+Shift+");
                         ui.label("Toggle stats overlay");
                         ui.end_row();
@@ -98,11 +92,18 @@ impl Help {
 
                 ui.strong("Connecting to REPL");
                 ui.separator();
-                ui.label("The raw TCP REPL listens on port 9364 (default).");
                 ui.label("Connect with:");
                 ui.monospace("  nc 127.0.0.1 9364");
 
                 ui.add_space(8.0);
+
+                if let Some(example) = HELP_EXAMPLE.get() {
+                    ui.strong("Quick Example");
+                    ui.separator();
+                    ui.monospace(example);
+                    ui.label("Export all visible shapes to a STEP file");
+                    ui.add_space(8.0);
+                }
 
                 ui.strong("Command Line Arguments");
                 ui.separator();

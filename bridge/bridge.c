@@ -142,6 +142,7 @@ extern void rust_stats_overlay_set(int value);
 /* Help overlay */
 extern int rust_help_overlay_toggle(void);
 extern int rust_help_overlay_showing(void);
+extern void rust_help_set_example(const char *path);
 
 /* View angle */
 extern void rust_view_set_angles(double yaw, double pitch, int has_distance, double distance);
@@ -1124,6 +1125,20 @@ JANET_FN(cad_help_set,
     return janet_wrap_true();
 }
 
+JANET_FN(cad_help_set_example,
+         "(help-set-example path)",
+         "Register the example expression shown in the help window's "
+         "Quick Example section.\n\n"
+         "Called during boot to set the expression; calling again replaces it.\n\n"
+         "Example: (help-set-example \"(def mybox (box 10))\")\n"
+         "         (help-set-example \"(write-step \\\"/tmp/model.step\\\")\")")
+{
+    janet_arity(argc, 1, 1);
+    const uint8_t *str = janet_getstring(argv, 0);
+    rust_help_set_example((const char *)str);
+    return janet_wrap_nil();
+}
+
 JANET_FN(cad_window_size,
          "(window-size width height)",
          "Resize the viewer window to the given logical pixel dimensions.\n\n"
@@ -2100,6 +2115,7 @@ void cad_register_functions(JanetTable *env) {
         {"window-help-toggle",     cad_help_toggle,            cad_help_toggle_docstring_},
         {"window-help-show?",      cad_help_showing,           cad_help_showing_docstring_},
         {"window-help-show",       cad_help_set,               cad_help_set_docstring_},
+        {"help-set-example",       cad_help_set_example,       cad_help_set_example_docstring_},
         {"window-size",            cad_window_size,            cad_window_size_docstring_},
         {"window-size?",           cad_window_size_query,      cad_window_size_query_docstring_},
         {"window-fullscreen",      cad_window_fullscreen,      cad_window_fullscreen_docstring_},
