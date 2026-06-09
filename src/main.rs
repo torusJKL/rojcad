@@ -2,8 +2,9 @@
 //!
 //! This binary embeds the Janet interpreter, registers CAD functions
 //! (box, sphere, cylinder, cone, torus, cut, common, shape-type, hide, show,
-//! visible?, write-step, write-stl), and starts a TCP REPL server on port 9365
-//! (configurable via --port).
+//! visible?, write-step, write-stl), and starts two TCP REPL servers:
+//! a raw-text REPL on port 9364 (configurable via --raw-port) and
+//! a spork netrepl protocol server on port 9365 (configurable via --spork-port).
 
 #![allow(
     non_upper_case_globals,
@@ -1115,6 +1116,73 @@ pub unsafe extern "C" fn rust_init_fuse(
     }
 }
 
+/// Create a compound from multiple shapes, storing the result at dest.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_compound(
+    dest: *mut c_void,
+    shapes: *mut *mut c_void,
+    num_shapes: c_int,
+    eager: c_int,
+) -> c_int {
+    let eager = eager != 0;
+    let num = num_shapes as usize;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
+        let shape_refs: Vec<&ShapeData> = shapes_slice
+            .iter()
+            .map(|p| unsafe { &*(*p as *const ShapeData) })
+            .collect();
+        cad::make_compound(&shape_refs, eager)
+    }));
+    match result {
+        Ok(Ok(shape_data)) => {
+            let shape_id = shape_data.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, shape_data);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_compound".to_string());
+            1
+        }
+    }
+}
+
+/// Set a shape's render color (in-place mutation, no new shape).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_set_color(data: *mut c_void, r: c_double, g: c_double, b: c_double) {
+    let shape_data = unsafe { &mut *(data as *mut ShapeData) };
+    cad::set_color(shape_data, r, g, b);
+}
+
+/// Get a shape's render color. Returns 1 if set, 0 if nil.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_color(
+    data: *mut c_void,
+    r: *mut c_double,
+    g: *mut c_double,
+    b: *mut c_double,
+) -> c_int {
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    match cad::get_color(shape_data) {
+        Some(c) => {
+            unsafe {
+                *r = c[0];
+                *g = c[1];
+                *b = c[2];
+            }
+            1
+        }
+        None => 0,
+    }
+}
+
 /// Translate a shape, storing the result at dest.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_init_translate(
@@ -1520,7 +1588,10 @@ pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char)
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_step(shape_data, &path_str) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(msg) => {
+            set_last_error(msg);
+            1
+        }
     }
 }
 
@@ -1533,7 +1604,10 @@ pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) 
     let shape_data = unsafe { &*(data as *const ShapeData) };
     match cad::write_stl(shape_data, &path_str) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(msg) => {
+            set_last_error(msg);
+            1
+        }
     }
 }
 
@@ -1909,6 +1983,29 @@ pub unsafe extern "C" fn rust_window_maximized_query() -> c_int {
     c_int::from(WINDOW_MAXIMIZED.load(Ordering::SeqCst))
 }
 
+// ── Highlight FFI ────────────────────────────────────────────────────────────
+
+/// Send a highlight command to the viewer for the given shape.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_shape(data: *mut c_void) {
+    if data.is_null() {
+        return;
+    }
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    let id = shape_data.shape_id;
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::HighlightShape { id });
+    }
+}
+
+/// Send a clear-highlight command to the viewer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_clear() {
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::ClearHighlight);
+    }
+}
+
 // ── C bridge registration forward declaration ────────────────────────────────
 
 unsafe extern "C" {
@@ -1917,38 +2014,46 @@ unsafe extern "C" {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-fn parse_port_arg() -> Option<u16> {
-    let mut args = std::env::args().peekable();
-    while let Some(arg) = args.next() {
-        if let Some(port_str) = arg.strip_prefix("--port=") {
-            let p: u16 = port_str.parse().unwrap_or_else(|_| {
-                eprintln!("rojcad: invalid port '{}'", port_str);
-                std::process::exit(1);
-            });
-            if !(1..=65535).contains(&p) {
-                eprintln!("rojcad: port must be between 1 and 65535, got {}", p);
-                std::process::exit(1);
+macro_rules! make_port_parser {
+    ($name:ident, $flag:expr) => {
+        fn $name() -> Option<u16> {
+            let eq_flag = format!("{}=", $flag);
+            let mut args = std::env::args().peekable();
+            while let Some(arg) = args.next() {
+                if let Some(port_str) = arg.strip_prefix(&eq_flag) {
+                    let p: u16 = port_str.parse().unwrap_or_else(|_| {
+                        eprintln!("rojcad: invalid {} '{}'", $flag, port_str);
+                        std::process::exit(1);
+                    });
+                    if !(1..=65535).contains(&p) {
+                        eprintln!("rojcad: {} must be between 1 and 65535, got {}", $flag, p);
+                        std::process::exit(1);
+                    }
+                    return Some(p);
+                }
+                if arg.as_str() == $flag {
+                    let next = args.next().unwrap_or_else(|| {
+                        eprintln!("rojcad: {} requires a value", $flag);
+                        std::process::exit(1);
+                    });
+                    let p: u16 = next.parse().unwrap_or_else(|_| {
+                        eprintln!("rojcad: invalid {} '{}'", $flag, next);
+                        std::process::exit(1);
+                    });
+                    if !(1..=65535).contains(&p) {
+                        eprintln!("rojcad: {} must be between 1 and 65535, got {}", $flag, p);
+                        std::process::exit(1);
+                    }
+                    return Some(p);
+                }
             }
-            return Some(p);
+            None
         }
-        if arg == "--port" {
-            let next = args.next().unwrap_or_else(|| {
-                eprintln!("rojcad: --port requires a value");
-                std::process::exit(1);
-            });
-            let p: u16 = next.parse().unwrap_or_else(|_| {
-                eprintln!("rojcad: invalid port '{}'", next);
-                std::process::exit(1);
-            });
-            if !(1..=65535).contains(&p) {
-                eprintln!("rojcad: port must be between 1 and 65535, got {}", p);
-                std::process::exit(1);
-            }
-            return Some(p);
-        }
-    }
-    None
+    };
 }
+
+make_port_parser!(parse_spork_port_arg, "--spork-port");
+make_port_parser!(parse_raw_port_arg, "--raw-port");
 
 fn parse_eval_args() -> Vec<String> {
     let mut exprs = Vec::new();
@@ -2012,7 +2117,9 @@ fn parse_size_args() -> (Option<u32>, Option<u32>) {
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
-    let port: u16 = parse_port_arg().unwrap_or(9365);
+    let spork_port: u16 = parse_spork_port_arg().unwrap_or(9365);
+    let raw_port: u16 = parse_raw_port_arg().unwrap_or(9364);
+
     let eval_exprs: Vec<String> = parse_eval_args();
     let (cli_width, cli_height) = parse_size_args();
     let maximized = cli_width.is_none() && cli_height.is_none();
@@ -2063,15 +2170,8 @@ fn main() {
         cad_register_functions(env);
     }
 
-    // Set the netrepl port as a Janet dynamic variable so boot.janet
-    // can read it via (dyn '*netrepl-port*') instead of hardcoding.
-    // Only set when explicitly provided; boot.janet falls back to 9365.
-    if 9365 != port {
-        unsafe {
-            let port_name = CString::new("*netrepl-port*").unwrap();
-            bridge::janet_setdyn(port_name.as_ptr(), bridge::janet_wrap_number(port as f64));
-        }
-    }
+    // Port values are injected directly into boot.janet via a prefix string
+    // (see boot code assembly below).
 
     // Create channel for REPL→Viewer commands
     let (repl_tx, repl_rx) = mpsc::channel::<ReplToViewer>();
@@ -2085,20 +2185,98 @@ fn main() {
         None
     };
 
-    // Embed and run boot.janet
+    // Embed and run upstream.janet (standard Janet macros) before boot.janet,
+    // so that rojcad boot code can optionally use macros like defn, each, ->, etc.
+    // Pre-define boot/args and boot/config symbols (referenced by upstream.janet for
+    // CLI arg parsing and core image generation — not used in rojcad's embedded build).
+    let upstream_base = include_str!("../upstream.janet");
+    let upstream_code = format!("(def boot/args @[\"rojcad\" \"\" \"\"])\n{}", upstream_base);
+    let upstream_c = CString::new(upstream_code).unwrap_or_else(|_| CString::new("").unwrap());
+    let upstream_name_c = CString::new("upstream.janet").unwrap();
+
+    let mut result = bridge::Janet(0);
+    let status = unsafe {
+        bridge::janet_dostring(
+            env,
+            upstream_c.as_ptr(),
+            upstream_name_c.as_ptr(),
+            &mut result,
+        )
+    };
+
+    if status != 0 {
+        eprintln!("rojcad: failed to load upstream.janet");
+        unsafe {
+            bridge::janet_deinit();
+        }
+        std::process::exit(1);
+    }
+
+    // Load vendored spork modules — concatenated into one source to avoid
+    // Janet module-resolution issues (bootstrap mode + janet_dostring).
+    // msg.janet and ev-utils.janet provide the low-level protocol helpers;
+    // netrepl-server.janet provides the server entry points.
+    // The client/getline/rawterm parts of spork are excluded (not needed server-side).
+    let spork_source = concat!(
+        include_str!("../vendor/spork/msg.janet"),
+        "\n",
+        include_str!("../vendor/spork/ev-utils.janet"),
+        "\n",
+        include_str!("../vendor/spork/netrepl-server.janet"),
+        "\n(def netrepl/server server)\n(def netrepl/server-single server-single)\n(def netrepl/run-server run-server)\n(def netrepl/run-server-single run-server-single)",
+    );
+    let spork_c = CString::new(spork_source).unwrap_or_else(|_| CString::new("").unwrap());
+    let spork_name_c = CString::new("vendor/spork/spork.janet").unwrap();
+    let mut spork_result = bridge::Janet(0);
+    let spork_status = unsafe {
+        bridge::janet_dostring(
+            env,
+            spork_c.as_ptr(),
+            spork_name_c.as_ptr(),
+            &mut spork_result,
+        )
+    };
+    if spork_status != 0 {
+        eprintln!("rojcad: warning: failed to load vendored spork");
+    }
+
+    // Embed and run boot.janet (rojcad REPL server)
+    // Prefix the port values as global defs so boot.janet can read them.
     let boot_base = include_str!("../boot.janet");
-    let boot_code = if !eval_exprs.is_empty() {
-        // Append --eval expression(s) as raw Janet code at end of boot.janet.
-        format!("{}\n\n{}\n", boot_base, eval_exprs.join("\n"))
+
+    // Embed and append model.janet (parametric model runtime)
+    let model_base = include_str!("../boot/model.janet");
+    let version = env!("CARGO_PKG_VERSION");
+    let version_suffix = if !std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| o.stdout.is_empty())
+        .unwrap_or(false)
+    {
+        "-dirty"
     } else {
-        boot_base.to_string()
+        ""
+    };
+    let boot_prefix = format!(
+        "(def *rojcad-version* {:?})\n(def *raw-repl-port* {})\n(def *spork-repl-port* {})\n",
+        format!("{}{}", version, version_suffix),
+        raw_port,
+        spork_port
+    );
+    let boot_with_model = format!("{}{}\n\n{}\n", boot_prefix, boot_base, model_base);
+
+    let boot_code = if !eval_exprs.is_empty() {
+        // Append --eval expression(s) as raw Janet code at end of boot.
+        format!("{}\n\n{}\n", boot_with_model, eval_exprs.join("\n"))
+    } else {
+        boot_with_model
     };
     let boot_c = CString::new(boot_code).unwrap_or_else(|_| CString::new("").unwrap());
-    let name_c = CString::new("boot.janet").unwrap();
+    let boot_name_c = CString::new("boot.janet").unwrap();
 
     let mut result = bridge::Janet(0);
     let status =
-        unsafe { bridge::janet_dostring(env, boot_c.as_ptr(), name_c.as_ptr(), &mut result) };
+        unsafe { bridge::janet_dostring(env, boot_c.as_ptr(), boot_name_c.as_ptr(), &mut result) };
 
     if status != 0 {
         eprintln!("rojcad: failed to load boot.janet");
@@ -2109,6 +2287,7 @@ fn main() {
     }
 
     // The event loop runs automatically via the Janet VM.
+    // The two-phase boot loads upstream macros first, then rojcad boot code.
     // boot.janet has a (forever ...) loop that blocks indefinitely.
     // If we reach here (shouldn't under normal operation), clean up.
     unsafe {

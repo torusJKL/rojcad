@@ -1,68 +1,59 @@
-# rojcad Janet API Reference — 94b0b3f-dirty
+# rojcad Janet API Reference — 158ce73-dirty
 
 ## Operations
 
 ### `extrude`
 
-**Usage:** `(extrude shape &keys :h :z :x :y :dir :both :eager :hide)`
+**Usage:** `(extrude shape &keys :h :x :y :z :dir :both :eager :hide)`
 
-Extrude a Face into a Solid.
-
-Keywords: :h (height, required), :z/:x/:y (cardinal axis),
-         :dir [dx dy dz] (custom direction),
+Extrude a shape or wire along a direction.
+Keywords: :h (height), :x/:y/:z (axis shortcuts),
+         :dir [dx dy dz] (direction vector),
          :both (extrude both sides),
-         :eager (tessellate immediately), :hide (skip auto-show).
-
-Default direction is the face normal.
+         :eager, :hide
 
 **Examples:**
 ```janet
-(extrude face :h 20)               — along face normal
-(extrude face :h 20 :z)            — along Z axis
-(extrude face :h 10 :both)         — both sides
-(extrude face :h 5 :dir [0 0 -1])  — custom direction
+(extrude wire :h 10)
+(extrude wire :h 10 :x)
+(extrude wire :h 10 :dir [0 0 1] :both)
 ```
 
-**Returns a rojcad/shape abstract value (SOLID).**
+**Returns a rojcad/shape abstract value.**
 
 ### `extrude-polygon`
 
-**Usage:** `(extrude-polygon points height &keys :h :plane :at :eager :hide)`
+**Usage:** `(extrude-polygon points height &keys :plane :at :eager :hide)`
 
-Create a Solid by extruding a polygon from points.
-
-Positional: (extrude-polygon points height)
-Points is an array of [x y] tuples.
-Keywords: :h (height), :plane (workplane, default :xy),
-         :at (position [x y z]),
-         :eager (tessellate immediately), :hide (skip auto-show).
+Extrude a polygon defined by a list of 2D points.
+Keywords: :plane (keyword, default :xy), :at [x y z],
+         :eager, :hide
 
 **Examples:**
 ```janet
-(extrude-polygon [[0 0][10 0][10 10][0 10]] 20)
-(extrude-polygon [[0 0][10 0][10 10]] :h 5)
+(extrude-polygon [[0 0] [10 0] [10 10] [0 10]] 5)
+(extrude-polygon [[0 0] [10 0] [5 10]] 5 :eager)
 ```
 
-**Returns a rojcad/shape abstract value (SOLID).**
+**Returns a rojcad/shape abstract value.**
 
 ### `revolve`
 
 **Usage:** `(revolve shape &keys :a :ar :c :dir :eager :hide)`
 
-Revolve a Face into a Solid.
-
-Angle via :a (degrees) or :ar (radians).
-Axis via :c (point [x y z], default [0 0 0]) and :dir (direction, default [0 0 1]).
-Keywords: :eager (tessellate immediately), :hide (skip auto-show).
+Revolve a shape around an axis to create a solid.
+Keywords: :a (angle in degrees), :ar (angle in radians),
+         :c [x y z] (axis origin), :dir [dx dy dz] (axis direction),
+         :eager, :hide
 
 **Examples:**
 ```janet
-(revolve face :a 360)                     — full revolution about Z
-(revolve face :a 180)                     — half revolution
-(revolve face :a 180 :c [0 0 0] :dir [0 1 0]) — about Y axis
+(revolve shape :a 90)
+(revolve shape :ar math/pi)
+(revolve shape :c [0 0 0] :dir [0 1 0] :a 180)
 ```
 
-**Returns a rojcad/shape abstract value (SOLID).**
+**Returns a rojcad/shape abstract value.**
 
 ## Selection
 
@@ -70,21 +61,31 @@ Keywords: :eager (tessellate immediately), :hide (skip auto-show).
 
 **Usage:** `(on-select callback)`
 
-Register a Janet function to be called when a shape is selected in the viewer. The function receives the same value as (poll-selection): a shape ID (integer), :deselected, or [:deselected id]. Pass nil to unregister the callback.
+Register a function to be called on selection events.
+Pass nil to unregister.
 
-Example:
-  (on-select (fn [event] (print "selection: " event)))
+**Examples:**
+```janet
+(on-select (fn [s] (print "selected: " s)))
+(on-select nil)  # unregister
+```
+
+**Returns nil.**
 
 ### `poll-selection`
 
 **Usage:** `(poll-selection)`
 
-Check for a pending selection event from the viewer.
+This is called internally by the event loop.
 
-If a callback was registered via (on-select), it will be invoked automatically with the result.
+**Examples:**
+```janet
+(poll-selection)  # returns shape, keyword, tuple, or nil
+```
 
-**Returns nil if no event, the shape ID (integer) if a shape was selected, a tuple [:deselected id] if a shape was toggled off,
- or :deselected if the entire selection was cleared.**
+**Poll for a selection event. Returns a shape if one is selected,
+:deselected if all deselected, [:deselected id] if a specific shape
+was deselected, or nil if no event.**
 
 ## I/O
 
@@ -94,9 +95,12 @@ If a callback was registered via (on-select), it will be invoked automatically w
 
 Read a STEP file from disk and return a shape.
 
-Example:
-  (read-step "/tmp/model.step")       — load from file
-  (read-step "/tmp/model.step" :eager) — load and tessellate
+**Examples:**
+```janet
+(read-step "/tmp/model.step")       -- load from file
+(read-step "/tmp/model.step" :eager) -- load and tessellate
+(read-step "/tmp/model.step" :hide)  -- load without showing
+```
 
 **Returns a rojcad/shape abstract value. Signals an error on failure.**
 
@@ -106,7 +110,13 @@ Example:
 
 
 
-**Export a shape to a STEP file at the given path. Returns nil on success, signals an error on failure.**
+**Examples:**
+```janet
+(write-step my-shape "/tmp/model.step")
+```
+
+**Export a shape to a STEP file at the given path.
+Returns nil on success, signals an error on failure.**
 
 ### `write-stl`
 
@@ -114,7 +124,13 @@ Example:
 
 
 
-**Export a shape to an STL file at the given path. Returns nil on success, signals an error on failure.**
+**Examples:**
+```janet
+(write-stl my-shape "/tmp/model.stl")
+```
+
+**Export a shape to an STL file at the given path.
+Returns nil on success, signals an error on failure.**
 
 ## View
 
@@ -122,68 +138,61 @@ Example:
 
 **Usage:** `(projection-perspective &opt value)`
 
-Get or set the camera projection mode.
+Get or set perspective projection mode.
+Call with no arg to query, with true/false to set.
 
-Called with no arguments, returns true if perspective mode is active, false if orthographic.
-Called with one boolean argument, sets the mode.
-
-Example: (projection-perspective)        — query
-         (projection-perspective true)    — perspective
-         (projection-perspective false)   — orthographic
+Example: (projection-perspective true)
 
 ### `projection-toggle`
 
 **Usage:** `(projection-toggle)`
 
-Example: (projection-toggle)
+Toggle between orthographic and perspective projection.
 
-**Toggle camera projection between perspective and orthographic. Returns true if now in perspective mode, false if orthographic.**
+Example: (projection-toggle)
 
 ### `quit-requested`
 
 **Usage:** `(quit-requested)`
 
-Check if the application should quit.
 
-This is a one-shot check -- returns true only once per quit request.
 
-**Returns true if Ctrl+Q was pressed or the window was closed.
-Used by boot.janet to exit the event loop.**
+**Examples:**
+```janet
+(quit-requested)  # returns true or nil
+```
+
+**Returns boolean or nil.**
 
 ### `stats-overlay`
 
 **Usage:** `(stats-overlay &opt value)`
 
-Get or set the stats overlay visibility.
+Get or set the stats-for-nerds overlay.
+Call with no arg to query, with true/false to toggle.
 
-Called with no arguments, returns true if the overlay is visible, false if hidden.
-Called with one boolean argument, sets the visibility.
-
-Example: (stats-overlay)        — query
-         (stats-overlay true)    — show overlay
-         (stats-overlay false)   — hide overlay
-
-The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.
+Example: (stats-overlay true)
 
 ### `view-angle`
 
-**Usage:** `(view-angle yaw pitch ; distance)`
+**Usage:** `(view-angle yaw pitch &opt distance)`
 
-Set camera to arbitrary yaw/pitch angles (radians).
+Set the 3D viewport camera angle.
 
-Animates the 3D camera over 0.5s to the given orientation.
-Yaw and pitch are in radians. An optional third argument sets
-the camera distance (zoom); omitted preserves the current distance.
+yaw (radians), pitch (radians), distance (optional, default 100).
 
 **Examples:**
 ```janet
-(view-angle 0 1.57)      — top view (yaw=0, pitch=~90°)
-(view-angle 0 0 100)     — look along +X at distance 100
+(view-angle math/pi 0)        # looking along -Z
+(view-angle math/pi 0 200)    # further back
+(view-angle 0 math/pi 2)      # top-down view
 ```
+
+**Returns nil.**
 
 ### `view-back`
 
-**Usage:** `(view-back ; distance)`
+**Usage:** `(view-view-back ; distance)`
 
 Set camera to back view (looking along -Z toward origin).
 Yaw=-π/2, Pitch=0. Animates over 0.5s.
@@ -197,7 +206,7 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-bottom`
 
-**Usage:** `(view-bottom ; distance)`
+**Usage:** `(view-view-bottom ; distance)`
 
 Set camera to bottom view (looking along -Y toward origin).
 Yaw=0, Pitch=-π/2. Animates over 0.5s.
@@ -211,49 +220,36 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-fit`
 
-**Usage:** `(view-fit shape & shapes ; reset)`
+**Usage:** `(view-fit & shapes)`
 
-Fit camera to the bounding box of one or more shapes.
-
-Animates the 3D camera over 0.5s to frame the union bounding
-box of the given shapes. The current orbit angle is preserved.
-
-Use :reset to return to the default isometric angle
-(yaw=0, pitch=0.4).
+Fit the camera to frame one or more shapes.
 
 **Examples:**
 ```janet
 (view-fit my-shape)
-(view-fit box1 cylinder2)
-(view-fit :reset part1 part2)
+(view-fit shape-a shape-b)
 ```
+
+**Returns nil.**
 
 ### `view-fit-all`
 
-**Usage:** `(view-fit-all ; hidden ; reset)`
+**Usage:** `(view-fit-all &keys :hidden :reset)`
 
-Fit camera to the bounding box of shapes.
-
-By default only visible shapes are framed. Use :hidden to include hidden shapes as well.
-Animates the 3D camera over 0.5s to frame the union bounding box.
-The current orbit angle is preserved.
-If no shapes are found, resets the camera to default position.
-
-Keywords:
-  :hidden  — include hidden shapes in the bounding box
-  :reset   — return to the default isometric angle
+Fit the camera to frame all shapes in the scene.
+Keywords: :hidden (include hidden shapes), :reset (reset orientation)
 
 **Examples:**
 ```janet
 (view-fit-all)
-(view-fit-all :reset)
 (view-fit-all :hidden)
-(view-fit-all :hidden :reset)
 ```
+
+**Returns nil.**
 
 ### `view-front`
 
-**Usage:** `(view-front ; distance)`
+**Usage:** `(view-view-front ; distance)`
 
 Set camera to front view (looking along +Z toward origin).
 Yaw=π/2, Pitch=0. Animates over 0.5s.
@@ -267,7 +263,7 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-iso`
 
-**Usage:** `(view-iso ; distance)`
+**Usage:** `(view-view-iso ; distance)`
 
 Set camera to isometric view (looking from (1,1,1) direction).
 Yaw=π/4, Pitch=asin(1/√3) ≈ 0.615 rad. Animates over 0.5s.
@@ -281,7 +277,7 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-left`
 
-**Usage:** `(view-left ; distance)`
+**Usage:** `(view-view-left ; distance)`
 
 Set camera to left view (looking along -X toward origin).
 Yaw=π, Pitch=0. Animates over 0.5s.
@@ -295,7 +291,7 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-right`
 
-**Usage:** `(view-right ; distance)`
+**Usage:** `(view-view-right ; distance)`
 
 Set camera to right view (looking along +X toward origin).
 Yaw=0, Pitch=0. Animates over 0.5s.
@@ -309,7 +305,7 @@ Optional distance sets zoom level; omitted preserves current.
 
 ### `view-top`
 
-**Usage:** `(view-top ; distance)`
+**Usage:** `(view-view-top ; distance)`
 
 Set camera to top view (looking along +Y toward origin).
 Yaw=0, Pitch=π/2. Animates over 0.5s.
@@ -325,43 +321,36 @@ Optional distance sets zoom level; omitted preserves current.
 
 **Usage:** `(window-fullscreen value)`
 
-Enter or exit fullscreen mode.
+Set fullscreen mode. Pass true to enter, false to exit.
 
-Pass true to enter borderless fullscreen, false to return to windowed mode.
-
-**Examples:**
-```janet
-(window-fullscreen true)   ; enter fullscreen
-(window-fullscreen false)  ; exit fullscreen
-```
+Example: (window-fullscreen true)
 
 ### `window-fullscreen?`
 
 **Usage:** `(window-fullscreen?)`
 
-Return true if the viewer is in fullscreen mode, false otherwise.
+Return true if the window is in fullscreen mode.
 
-Example:
-  (window-fullscreen?)   ; returns true or false
+Example: (window-fullscreen?)
 
 ### `window-help-show`
 
 **Usage:** `(window-help-show &opt value)`
 
-Get or set the help window visibility.
+Get or set help window visibility.
+Call with no arg to query, with true/false to show/hide.
 
-Called with no arguments, returns true if visible, false if hidden.
-Called with one boolean argument, sets the visibility.
-
-Example: (window-help-show)        — query
-         (window-help-show true)    — show
-         (window-help-show false)   — hide
+**Examples:**
+```janet
+(window-help-show true)
+(window-help-show)   # query
+```
 
 ### `window-help-show?`
 
 **Usage:** `(window-help-show?)`
 
-Return true if the help window is currently visible, false if hidden.
+Return true if the help window is currently visible.
 
 Example: (window-help-show?)
 
@@ -369,58 +358,47 @@ Example: (window-help-show?)
 
 **Usage:** `(window-help-toggle)`
 
-Example: (window-help-toggle)
+Toggle the floating help window.
 
-**Toggle the help window visibility. Returns true if now visible, false if hidden.**
+Example: (window-help-toggle)
 
 ### `window-maximized`
 
 **Usage:** `(window-maximized value)`
 
-Enter or exit maximized state.
+Set maximized state. Pass true to maximize, false to restore.
 
-Pass true to maximize, false to restore to windowed.
-
-**Examples:**
-```janet
-(window-maximized true)   ; maximize
-(window-maximized false)  ; restore
-```
+Example: (window-maximized true)
 
 ### `window-maximized?`
 
 **Usage:** `(window-maximized?)`
 
-Return true if the viewer window is maximized, false otherwise.
+Return true if the window is maximized.
 
-Example:
-  (window-maximized?)   ; returns true or false
+Example: (window-maximized?)
 
 ### `window-size`
 
 **Usage:** `(window-size width height)`
 
-Resize the viewer window to the given logical pixel dimensions.
+Set the application window size in pixels.
 
-Both width and height must be positive integers.
-
-Example:
-  (window-size 800 600)    ; resize to 800x600
+Example: (window-size 1024 768)
 
 ### `window-size?`
 
 **Usage:** `(window-size?)`
 
-Return the current viewer window dimensions as a tuple [width height] in logical pixels.
+Get the current window size as [width height].
 
-Example:
-  (window-size?)    ; e.g., returns [1024 768]
+Example: (window-size?)
 
 ## Primitives
 
 ### `box`
 
-**Usage:** `(box width depth height &keys :w :d :h :c :pl :ph :eager :hide)`
+**Usage:** `(box &keys :w :d :h :c :pl :ph :eager :hide)`
 
 Create a box or cube.
 
@@ -432,47 +410,44 @@ Keywords: :w :d :h (dimensions), :c (center [x y z]),
 
 **Examples:**
 ```janet
-(box 10 20 30)           — box at origin
-(box 10 20 30 :c [5 5 5]) — centered box
-(box 5)                  — 5x5x5 cube
-(box :pl [0 0 0] :ph [10 20 30]) — from corners
-(box :w 10 :d 20 :h 30) — keyword style
-(box 10 :eager)          — eager tessellation
-(box 10 :hide)           — create without showing
+(box 10 20 30)           # box at origin
+(box 10 20 30 :c [5 5 5]) # centered box
+(box 5)                  # 5x5x5 cube
+(box :pl [0 0 0] :ph [10 20 30]) # from corners
+(box :w 10 :d 20 :h 30) # keyword style
+(box 10 :eager)          # eager tessellation
+(box 10 :hide)           # create without showing
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `cone`
 
-**Usage:** `(cone bottom-radius height &keys :br :tr :h :c :a :ar :eager)`
+**Usage:** `(cone &keys :br :tr :h :c :a :ar :eager :hide)`
 
 Create a cone or truncated cone.
-
-Positional: (cone br h) for full cone, (cone br tr h) for truncated.
-Keywords: :br (bottom radius), :tr (top radius), :h (height),
-         :c (center [x y z]),
-         :a (angle in degrees), :ar (angle in radians, partial cone),
-         :eager (tessellate immediately).
+Keywords: :br (base radius), :tr (top radius, default 0),
+         :h (height), :c (center [x y z]),
+         :a (angle in degrees), :ar (angle in radians),
+         :eager, :hide
 
 **Examples:**
 ```janet
-(cone 5 10)                — full cone, br=5, h=10
-(cone 5 3 10)              — truncated cone
-(cone 5 10 :a 180)         — half cone
-(cone :br 5 :h 10)         — keyword style
-(cone 5 10 :eager)         — eager tessellation
+(cone 5 10)                   # cone radius 5 height 10
+(cone 5 2 10)                 # truncated cone
+(cone :br 5 :tr 2 :h 10)      # keyword style
+(cone 5 10 :eager)            # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `cylinder`
 
-**Usage:** `(cylinder radius height &keys :r :h :c :dir :fp :tp :eager)`
+**Usage:** `(cylinder &keys :r :h :c :dir :fp :tp :eager :hide)`
 
 Create a cylinder.
 
-Positional: (cylinder radius height) — along Z axis, base at Z=0
+Positional: (cylinder radius height) - along Z axis, base at Z=0
 Keywords: :r (radius), :h (height), :c (center [x y z]),
          :dir (direction [dx dy dz]),
          :fp (from-point [x y z]), :tp (to-point [x y z]).
@@ -480,40 +455,37 @@ Keywords: :r (radius), :h (height), :c (center [x y z]),
 
 **Examples:**
 ```janet
-(cylinder 5 10)                       — simple
-(cylinder 5 10 :c [0 0 5])            — centered
-(cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point
-(cylinder :r 5 :h 10)                 — keyword style
-(cylinder 5 10 :eager)                — eager tessellation
+(cylinder 5 10)                       # simple
+(cylinder 5 10 :c [0 0 5])            # centered
+(cylinder :fp [0 0 0] :tp [0 0 10] :r 5) # point-to-point
+(cylinder :r 5 :h 10)                 # keyword style
+(cylinder 5 10 :eager)                # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `sphere`
 
-**Usage:** `(sphere radius &keys :r :c :a :ar :eager)`
+**Usage:** `(sphere &keys :r :c :a :ar :eager :hide)`
 
 Create a sphere.
-
-Positional: (sphere radius)
 Keywords: :r (radius), :c (center [x y z]),
          :a (angle in degrees), :ar (angle in radians),
-         :eager (tessellate immediately).
+         :eager, :hide
 
 **Examples:**
 ```janet
-(sphere 10)               — full sphere at origin
-(sphere 10 :c [1 2 3])    — repositioned
-(sphere 10 :a 180)        — hemisphere
-(sphere :r 10)            — keyword style
-(sphere 10 :eager)        — eager tessellation
+(sphere 5)                    # radius 5 at origin
+(sphere :r 5 :c [1 2 3])      # centered
+(sphere 5 :a 90)              # hemisphere
+(sphere 5 :eager)             # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `torus`
 
-**Usage:** `(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager)`
+**Usage:** `(torus &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager :hide)`
 
 Create a torus.
 
@@ -528,12 +500,12 @@ Keywords: :rr (ring radius), :tr (tube radius),
 
 **Examples:**
 ```janet
-(torus 20 10)                    — full torus
-(torus 20 10 :c [0 0 5])         — repositioned
-(torus 20 10 :a 180)             — half torus
-(torus :rr 20 :tr 10 :as 0 :ae 180) — angled range
-(torus :rr 20 :tr 10 :dir [0 1 0]) — oriented
-(torus 20 10 :eager)             — eager tessellation
+(torus 20 10)                    # full torus
+(torus 20 10 :c [0 0 5])         # repositioned
+(torus 20 10 :a 180)             # half torus
+(torus :rr 20 :tr 10 :as 0 :ae 180) # angled range
+(torus :rr 20 :tr 10 :dir [0 1 0]) # oriented
+(torus 20 10 :eager)             # eager tessellation
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -546,27 +518,32 @@ Keywords: :rr (ring radius), :tr (tube radius),
 
 
 
-**Draw a circular arc from current cursor through (x2, y2) to (x3, y3). Returns a new sketch.**
+**Draw a circular arc through (x2, y2) to (x3, y3).
+Returns a new sketch.**
 
 ### `build-wire`
 
 **Usage:** `(build-wire sketch &keys :eager :hide)`
 
-Return the sketch as an unclosed Wire. Does not close the loop.
-
+Return the sketch as an unclosed Wire.
 Keywords: :eager, :hide
 
-**Returns a rojcad/shape abstract value (WIRE).**
+**Examples:**
+```janet
+(-> (sketch) (line-to 10 0) (line-to 10 10) (build-wire))
+```
 
 ### `close-sketch`
 
 **Usage:** `(close-sketch sketch &keys :eager :hide)`
 
-Close the sketch and return a Face. Adds a closing edge if needed.
-
+Close the sketch and return a Face.
 Keywords: :eager, :hide
 
-**Returns a rojcad/shape abstract value (FACE).**
+**Examples:**
+```janet
+(-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))
+```
 
 ### `line-dx`
 
@@ -574,7 +551,8 @@ Keywords: :eager, :hide
 
 
 
-**Draw a horizontal line by dx units. Returns a new sketch.**
+**Draw a horizontal line by dx units.
+Returns a new sketch.**
 
 ### `line-dx-dy`
 
@@ -582,7 +560,8 @@ Keywords: :eager, :hide
 
 
 
-**Draw a line by (dx, dy) offset. Returns a new sketch.**
+**Draw a line by (dx, dy) offset.
+Returns a new sketch.**
 
 ### `line-dy`
 
@@ -590,7 +569,8 @@ Keywords: :eager, :hide
 
 
 
-**Draw a vertical line by dy units. Returns a new sketch.**
+**Draw a vertical line by dy units.
+Returns a new sketch.**
 
 ### `line-to`
 
@@ -598,7 +578,8 @@ Keywords: :eager, :hide
 
 
 
-**Draw a line from the current cursor to (x, y). Returns a new sketch.**
+**Draw a line from current cursor to (x, y).
+Returns a new sketch.**
 
 ### `move-to`
 
@@ -606,45 +587,41 @@ Keywords: :eager, :hide
 
 
 
-**Move the sketch cursor to (x, y) without drawing. Returns a new sketch.**
+**Move the sketch cursor to (x, y) without drawing.
+Returns a new sketch.**
 
 ### `sketch`
 
 **Usage:** `(sketch &keys :plane :at)`
 
-Create a new sketch on a workplane.
 
-Keywords: :plane (workplane, default :xy), :at (position [x y z]).
 
 **Examples:**
 ```janet
-(sketch)                              — XY plane at origin
-(sketch :plane :xz :at [10 0 5])      — XZ plane at [10, 0, 5]
-Combine with -> for threading:
-(-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))
+(sketch)
+(sketch :plane :xz :at [10 0 5])
 ```
 
-**Returns a rojcad/sketch abstract value. Each sketch operation returns
-a new sketch — no mutation.**
+**Create a new sketch on a workplane.
+Keywords: :plane (keyword, default :xy), :at (array [x y z]).
+Returns a rojcad/sketch abstract value.**
 
 ## 2D Primitives
 
 ### `circle`
 
-**Usage:** `(circle radius &keys :r :wire :plane :at :eager :hide)`
+**Usage:** `(circle &keys :r :wire :plane :at :eager :hide)`
 
 Create a circle.
-
-Positional: (circle radius)
-Keywords: :r (radius), :wire (return Wire instead of Face),
-         :plane (workplane, default :xy), :at (position [x y z]),
-         :eager (tessellate immediately), :hide (skip auto-show).
+Keywords: :r (radius), :wire (output as wire),
+         :plane (keyword, default :xy), :at [x y z],
+         :eager, :hide
 
 **Examples:**
 ```janet
-(circle 5)                       — on XY plane
-(circle :r 5 :wire)              — circle wire
-(circle :r 5 :plane :xz)         — on XZ plane
+(circle 5)
+(circle :r 5 :plane :xz)
+(circle 5 :wire)
 ```
 
 **Returns a rojcad/shape abstract value.**
@@ -654,39 +631,35 @@ Keywords: :r (radius), :wire (return Wire instead of Face),
 **Usage:** `(polygon &keys :pts :wire :plane :at :eager :hide)`
 
 Create a polygon from a list of 2D points.
-
-Keywords: :pts (array of [x y] tuples), :wire (return Wire instead of Face),
-         :plane (workplane, default :xy), :at (position [x y z]),
-         :eager (tessellate immediately), :hide (skip auto-show).
+Keywords: :pts (array of [x y] points), :wire (output as wire),
+         :plane (keyword, default :xy), :at [x y z],
+         :eager, :hide
 
 **Examples:**
 ```janet
-(polygon :pts [[0 0] [10 0] [10 10] [0 10]])  — square on XY
-(polygon :pts [[0 0] [10 0] [10 10]] :wire)    — L-shaped wire
+(polygon :pts [[0 0] [10 0] [5 10]])
+(polygon :pts [[0 0] [10 0] [10 10] [0 10]] :wire)
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `rect`
 
-**Usage:** `(rect width depth &keys :w :d :h :wire :plane :at :eager :hide)`
+**Usage:** `(rect &keys :w :d :h :wire :plane :at :eager :hide)`
 
 Create a rectangle.
-
-Positional: (rect w d)
-Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),
-         :plane (workplane, default :xy), :at (position [x y z]),
-         :eager (tessellate immediately), :hide (skip auto-show).
+Keywords: :w (width), :d/:h (depth), :wire (output as wire),
+         :plane (keyword, default :xy), :at [x y z],
+         :eager, :hide
 
 **Examples:**
 ```janet
-(rect 10 20)                     — on XY plane
-(rect :w 10 :d 20 :wire)         — rect wire
-(rect :w 10 :h 20)               — :h alias for :d
-(rect :w 10 :d 20 :plane :xz :at [5 0 0]) — on XZ plane
+(rect 10 20)
+(rect :w 10 :d 20 :plane :xz)
+(rect 10 20 :wire)  # as wireframe
 ```
 
-**Returns a rojcad/shape abstract value (FACE by default, WIRE with :wire).**
+**Returns a rojcad/shape abstract value.**
 
 ## Text
 
@@ -694,53 +667,49 @@ Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),
 
 **Usage:** `(list-fonts)`
 
-List available system fonts.
 
-Scans standard OS font directories and returns an array of
-[name path aspect] tuples for each discovered TTF/OTF font.
-Aspect is :regular, :bold, :italic, or :bold-italic.
 
 **Examples:**
 ```janet
-(list-fonts)  — all system fonts
-(keep [name path] (list-fonts)) — just names and paths
+(list-fonts)  # returns @[["Arial" "/path/Arial.ttf" :regular] ...]
 ```
 
-**Returns an array of tuples.**
+**List available system fonts.
+Returns an array of [name type style] tuples,
+where type is the font file path and style is a keyword.**
 
 ### `text`
 
-**Usage:** `(text string font-path size &keys :depth :plane :at :eager :hide)`
+**Usage:** `(text str font size &keys :depth :both :plane :at :eager :hide)`
 
-Create a 2D or 3D text shape from a TrueType/OpenType font.
-
-Positional: (text "Hello" "DejaVuSans.ttf" 10)
-Keywords: :depth (extrude 3D text), :plane ("xy"/"xz"/"yz"...),
-         :at (position [x y z]), :eager, :hide.
-
-Without :depth returns a Face. With :depth returns an extruded Solid.
+Create 2D text from a TrueType/OpenType font.
+:font is a font name string, :size is the font size.
+Keywords: :depth, :both (extrude both sides),
+         :plane (keyword), :at [x y z],
+         :eager, :hide
 
 **Examples:**
 ```janet
-(text "Hi" "font.ttf" 10)              — 2D text face
-(text "Hi" "font.ttf" 10 :depth 5)     — 3D extruded text
-(text "Hi" "font.ttf" 10 :plane "xz") — on XZ plane
-(text "Hi" "font.ttf" 10 :at [5 0 0])  — positioned
+(text "Hello" "Arial" 10)
+(text "Hello" "Arial" 10 :depth 5)
 ```
 
 **Returns a rojcad/shape abstract value.**
 
 ### `text3d`
 
-**Usage:** `(text3d string font-path size depth &keys :plane :at :both :eager :hide)`
+**Usage:** `(text3d str font size depth &keys :both :plane :at :eager :hide)`
 
-Create a 3D extruded text shape.
+Create 3D text (extruded) from a TrueType/OpenType font.
+:font is a font name string, :size is the font size.
+Keywords: :both (extrude both sides),
+         :plane (keyword), :at [x y z],
+         :eager, :hide
 
-Positional: (text3d "Hello" "DejaVuSans.ttf" 10 5)
-Keywords: :plane ("xy"/"xz"/"yz"...), :at (position [x y z]),
-         :both (extrude symetrically), :eager, :hide.
-
-Equivalent to (text ... :depth depth).
+**Examples:**
+```janet
+(text3d "Hello" "Arial" 10 5)
+```
 
 **Returns a rojcad/shape abstract value.**
 
@@ -748,60 +717,54 @@ Equivalent to (text ... :depth depth).
 
 ### `hide`
 
-**Usage:** `(hide shape)`
+**Usage:** `(hide & shapes)`
 
-Set a shape's visible flag to false. The shape stays registered in the viewer but is no longer rendered.
+Set shapes' visible flag to false.
+Shapes stay registered but are no longer rendered.
 
 **Examples:**
 ```janet
-(hide b)         — shape disappears from viewer
-(show b)         — reappears without re-tessellating
+(hide my-shape)
+(hide shape-a shape-b)
 ```
 
 **Returns nil.**
 
 ### `purge`
 
-**Usage:** `(purge shape)`
+**Usage:** `(purge & shapes)`
 
-Remove a shape from the viewer registry and mark it as purged.
-The shape will no longer be rendered. To also unbind the Janet variable,
-use (purge shape) followed by (def name nil).
+Remove shapes from the viewer registry and mark them as purged.
+They will no longer be rendered. Use (def name nil) to unbind.
 
 **Examples:**
 ```janet
-(purge b)          — remove b from viewer
-(purge b) (def b nil) (gc)  — full cleanup
+(purge my-shape)
 ```
 
 **Returns nil.**
 
 ### `registry-remove`
 
-**Usage:** `(registry-remove shape)`
+**Usage:** `(registry-remove & shapes)`
 
-Immediately remove a shape from the viewer registry and mark it as purged.
-The shape will no longer be rendered. The underlying OCCT shape memory
+Immediately remove shapes from the viewer registry.
+Used internally by `purge`. The underlying OCCT shape memory
 is freed when Janet's GC collects the shape value.
-
-This is used internally by the `purge` macro.
 
 **Returns nil.**
 
 ### `show`
 
-**Usage:** `(show shape)`
+**Usage:** `(show & shapes)`
 
-Register a shape in the viewer and make it visible.
-
-If the shape has not been tessellated, tessellation happens automatically.
+Register shapes in the viewer and make them visible.
 Calling show on an already-visible shape is a no-op.
 
 **Examples:**
 ```janet
-(def b (box 10))
-(show b)         — tessellates if needed, registers, makes visible
-(show b)         — second call is a no-op (already visible)
+(show my-shape)
+(show shape-a shape-b)
 ```
 
 **Returns nil.**
@@ -812,141 +775,194 @@ Calling show on an already-visible shape is a no-op.
 
 **Usage:** `(wire-chamfer wire &keys :d :eager :hide)`
 
-Bevel all vertices of a closed Wire by a distance.
+Bevel all vertices of a closed Wire by distance :d.
+Keywords: :d (required), :eager, :hide
 
-Keywords: :d (distance, required), :eager, :hide
-
-**Returns a rojcad/shape abstract value (WIRE).**
+**Examples:**
+```janet
+(wire-chamfer my-wire :d 2)
+```
 
 ### `wire-fillet`
 
 **Usage:** `(wire-fillet wire &keys :r :eager :hide)`
 
-Round all vertices of a closed Wire by a radius.
+Round all vertices of a closed Wire by radius :r.
+Keywords: :r (required), :eager, :hide
 
-Keywords: :r (radius, required), :eager, :hide
-
-**Returns a rojcad/shape abstract value (WIRE).**
+**Examples:**
+```janet
+(wire-fillet my-wire :r 2)
+```
 
 ### `wire-offset`
 
 **Usage:** `(wire-offset wire &keys :d :eager :hide)`
 
-Create a parallel offset of a closed Wire by a distance.
+Create a parallel offset of a closed Wire by distance :d.
+Keywords: :d (required), :eager, :hide
 
-Keywords: :d (distance, required), :eager, :hide
-
-**Returns a rojcad/shape abstract value (WIRE).**
+**Examples:**
+```janet
+(wire-offset my-wire :d 2)
+```
 
 ### `wire-to-face`
 
 **Usage:** `(wire-to-face wire &keys :eager :hide)`
 
-Convert a Wire shape into a Face by filling its boundary.
-
+Convert a Wire into a Face by filling its boundary.
 Keywords: :eager, :hide
 
-**Returns a rojcad/shape abstract value (FACE).**
+**Examples:**
+```janet
+(wire-to-face my-wire)
+```
 
 ## Booleans
 
 ### `common`
 
-**Usage:** `(common shape-a shape-b &keys :eager)`
+**Usage:** `(common first & keys shapes ; :eager ; :hide)`
 
-Signals an error if the shapes do not intersect.
-Keywords: :eager (tessellate immediately).
+Intersect shapes (boolean common / intersection).
+Keywords: :eager, :hide
 
-**Intersect shape-a with shape-b. Returns a new rojcad/shape representing the shared volume.**
+**Examples:**
+```janet
+(common box sphere)
+(common box sphere :eager)
+```
+
+**Returns a rojcad/shape abstract value.**
 
 ### `cut`
 
-**Usage:** `(cut shape-a shape-b &keys :eager)`
+**Usage:** `(cut tool & keys shapes ; :eager ; :hide)`
 
-Signals an error if the shapes do not intersect or produce an empty result.
-Keywords: :eager (tessellate immediately).
+Subtract shapes from a tool shape (boolean cut).
+Keywords: :eager, :hide
 
-**Subtract shape-b from shape-a. Returns a new rojcad/shape representing the resulting solid.**
+**Examples:**
+```janet
+(cut box sphere)
+(cut box sphere :eager)
+```
+
+**Returns a rojcad/shape abstract value.**
 
 ### `fuse`
 
-**Usage:** `(fuse shape-a shape-b &keys :eager)`
+**Usage:** `(fuse first & keys shapes ; :eager ; :hide)`
 
-Signals an error if the operation produces an empty result.
-Keywords: :eager (tessellate immediately).
+Combine shapes (boolean fuse / union).
+Keywords: :eager, :hide
 
-**Combine shape-a and shape-b into a single solid. Returns a new rojcad/shape representing the union of both shapes.**
+**Examples:**
+```janet
+(fuse box sphere)
+(fuse box sphere :eager)
+```
+
+**Returns a rojcad/shape abstract value.**
 
 ## Queries
 
 ### `face?`
 
-**Usage:** `(face? shape)`
+**Usage:** `(face? & shapes)`
 
-Return true if the shape is a Face.
+Check if one or more shapes are Faces.
+
+**Examples:**
+```janet
+(face? my-shape)  # returns true or false
+```
+
+**Returns boolean or array of booleans.**
 
 ### `list-shapes`
 
 **Usage:** `(list-shapes &keys :visible :hidden)`
 
-Return a tuple of all registered ShapeData abstract values, optionally filtered by visibility.
-
-With no arguments, returns all registered shapes.
-With :visible, returns only visible shapes.
-With :hidden, returns only hidden shapes.
-If both :visible and :hidden are given, :hidden takes precedence.
-
-Only shapes that have been shown (registered in the viewer) are included.
+List registered shapes, optionally filtered by visibility.
+Keywords: :visible (show only visible shapes),
+         :hidden (show only hidden shapes).
 
 **Examples:**
 ```janet
-(list-shapes)                    — all registered shapes
-(list-shapes :visible)           — visible shapes only
-(list-shapes :hidden)            — hidden shapes only
-(each s (list-shapes) (print s)) — print all shapes
+(list-shapes)              # all registered shapes
+(list-shapes :visible)     # only visible shapes
+(list-shapes :hidden)      # only hidden shapes
 ```
 
-**Returns a tuple of rojcad/shape abstract values.**
+**Returns an array of rojcad/shape values.**
 
 ### `selected-shapes`
 
 **Usage:** `(selected-shapes)`
 
-Return a tuple of ShapeData abstract values currently selected in the 3D viewer.
+Return an array of currently selected shapes in the viewer.
 
 **Examples:**
 ```janet
-(selected-shapes)                     — get selected shapes
-(each s (selected-shapes) (hide s))   — hide all selected
+(selected-shapes)  # returns @[shape ...]
 ```
 
-**Returns a tuple of rojcad/shape abstract values.**
+**Returns an array of rojcad/shape values.**
 
 ### `shape-type`
 
-**Usage:** `(shape-type shape)`
+**Usage:** `(shape-type & shapes)`
 
 
 
-**Return the OCCT topological type of a shape as a keyword. Returns :solid, :face, :edge, :wire, :shell, :vertex, :compound, :compound-solid, or :shape.**
+**Examples:**
+```janet
+(shape-type my-shape)      # returns :solid
+(shape-type shape-a shape-b) # returns @[:solid :face]
+```
+
+**Returns a keyword or array of keywords.**
 
 ### `solid?`
 
-**Usage:** `(solid? shape)`
+**Usage:** `(solid? & shapes)`
 
-Return true if the shape is a Solid.
+Check if one or more shapes are Solids.
+
+**Examples:**
+```janet
+(solid? my-shape)  # returns true or false
+```
+
+**Returns boolean or array of booleans.**
 
 ### `visible?`
 
-**Usage:** `(visible? shape)`
+**Usage:** `(visible? & shapes)`
 
-Return true if the shape's visible flag is set, false otherwise.
+Check if one or more shapes are visible.
+
+**Examples:**
+```janet
+(visible? my-shape)  # returns true or false
+```
+
+**Returns boolean or array of booleans.**
 
 ### `wire?`
 
-**Usage:** `(wire? shape)`
+**Usage:** `(wire? & shapes)`
 
-Return true if the shape is a Wire.
+Check if one or more shapes are Wires.
+
+**Examples:**
+```janet
+(wire? my-shape)  # returns true or false
+```
+
+**Returns boolean or array of booleans.**
 
 ## Edge Styling
 
@@ -954,76 +970,93 @@ Return true if the shape is a Wire.
 
 **Usage:** `(edge-active-show?)`
 
-Return true if edges on the selected shape are currently visible, false if hidden.
+Return true if edges on the selected shape are visible.
+
+Example: (edge-active-show?)
 
 ### `edge-color-active`
 
 **Usage:** `(edge-color-active &opt r g b)`
 
-Get or set the active (selected) edge color as RGB values in [0, 1].
+Get or set the color of edges on the selected shape.
+RGB values in 0-1 range. Call with no args to query.
 
-Called with no arguments, returns the current color as a tuple '(r g b).
-Called with three numeric arguments (r g b), sets the color.
+**Examples:**
+```janet
+(edge-color-active 1 0 0)   # red active edges
+(edge-color-active)         # get current color
+```
 
-Example: (edge-color-active 0.3 0.5 1.0)  — light blue
-         (edge-color-active)               — query
+**Returns [r g b] or nil.**
 
 ### `edge-color-inactive`
 
 **Usage:** `(edge-color-inactive &opt r g b)`
 
-Get or set the inactive edge color as RGB values in [0, 1].
+Get or set the color of edges on non-selected shapes.
+RGB values in 0-1 range. Call with no args to query.
 
-Called with no arguments, returns the current color as a tuple '(r g b).
-Called with three numeric arguments (r g b), sets the color.
+**Examples:**
+```janet
+(edge-color-inactive 0.5 0.5 0.5)  # grey inactive edges
+(edge-color-inactive)              # get current color
+```
 
-Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey
-         (edge-color-inactive)               — query
+**Returns [r g b] or nil.**
 
 ### `edge-hidden`
 
 **Usage:** `(edge-hidden &opt value)`
 
-Get or set visibility of hidden (occluded) edges.
+Get or set hidden edge visibility.
+Call with no arg to query, with true/false to set.
 
-Called with no arguments, returns true if hidden edges are shown, false if hidden.
-Called with one boolean argument, sets the visibility.
+**Examples:**
+```janet
+(edge-hidden true)   # show hidden edges
+(edge-hidden)        # query
+```
 
-Example: (edge-hidden)        — query
-         (edge-hidden true)    — show hidden edges
-         (edge-hidden false)   — hide hidden edges
+**Returns boolean.**
 
 ### `edge-hidden-show?`
 
 **Usage:** `(edge-hidden-show?)`
 
-Return true if hidden (occluded) edges are currently visible, false if hidden.
+Return true if hidden edges are visible.
+
+Example: (edge-hidden-show?)
 
 ### `edge-hidden-toggle`
 
 **Usage:** `(edge-hidden-toggle)`
 
-Example: (edge-hidden-toggle)
+Toggle visibility of hidden edges (edges occluded by the shape).
 
-**Toggle visibility of hidden (occluded) edges. Returns true if hidden edges are now visible, false if hidden.**
+Example: (edge-hidden-toggle)
 
 ### `edge-inactive-show?`
 
 **Usage:** `(edge-inactive-show?)`
 
-Return true if edges on non-selected shapes are currently visible, false if hidden.
+Return true if edges on non-selected shapes are visible.
+
+Example: (edge-inactive-show?)
 
 ### `edge-thickness`
 
 **Usage:** `(edge-thickness &opt value)`
 
-Get or set the edge line thickness in NDC units.
+Get or set the edge line thickness.
+Call with no arguments to query current thickness.
 
-Called with no arguments, returns the current thickness.
-Called with one numeric argument, sets the thickness and returns it.
+**Examples:**
+```janet
+(edge-thickness 2)  # set thickness
+(edge-thickness)    # get current thickness
+```
 
-Example: (edge-thickness 0.008) — thicker lines
-         (edge-thickness)      — query
+**Returns the thickness value.**
 
 ### `edge-toggle-active`
 
@@ -1031,7 +1064,8 @@ Example: (edge-thickness 0.008) — thicker lines
 
 Example: (edge-toggle-active)
 
-**Toggle visibility of edges on the selected shape. Returns true if active edges are now visible, false if hidden.**
+**Toggle visibility of edges on the selected shape.
+Returns true if active edges are now visible, false if hidden.**
 
 ### `edge-toggle-inactive`
 
@@ -1039,83 +1073,119 @@ Example: (edge-toggle-active)
 
 Example: (edge-toggle-inactive)
 
-**Toggle visibility of edges on non-selected shapes. Returns true if inactive edges are now visible, false if hidden.**
+**Toggle visibility of edges on non-selected shapes.
+Returns true if inactive edges are now visible, false if hidden.**
 
 ## Transforms
 
 ### `mirror`
 
-**Usage:** `(mirror shape ox oy oz dx dy dz &keys :eager)`
+**Usage:** `(mirror shape ox oy oz dx dy dz &keys :eager :hide)`
 
-Create a mirrored copy of shape about an axis.
-
-Positional: (mirror shape ox oy oz dx dy dz)
-Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.
-Keywords: :eager (tessellate immediately).
+Mirror a shape across a plane defined by a point and normal.
+:ox oy oz is a point on the plane.
+:dx dy dz is the plane normal.
+Keywords: :eager, :hide
 
 **Examples:**
 ```janet
-(mirror box 0 0 0 1 0 0)       — mirror across X axis through origin
-(mirror box 5 0 0 0 1 0)       — mirror across Y axis through (5,0,0)
-(mirror box 0 0 0 1 0 0 :eager) — eager tessellation
+(mirror box 0 0 0 1 0 0)  # mirror across YZ plane
 ```
 
-**Returns a new rojcad/shape abstract value. The original shape is unchanged.**
+**Returns a rojcad/shape abstract value.**
 
 ### `rotate`
 
-**Usage:** `(rotate shape &keys :a :ar :x :y :z :r :eager)`
+**Usage:** `(rotate shape &keys :a :ar :x :y :z :r :eager :hide)`
 
-Create a rotated copy of shape.
-
-Angle is specified via :a (degrees) or :ar (radians).
-Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).
-:eager (tessellate immediately).
+Rotate a shape around an axis.
+Keywords: :a (angle in degrees), :ar (angle in radians),
+         :x/:y/:z (axis shortcuts),
+         :r [dx dy dz] (rotation axis vector),
+         :eager, :hide
 
 **Examples:**
 ```janet
-(rotate box :a 45 :z)           — 45 degrees about Z
-(rotate box :ar 1.5708 :x)      — pi/2 radians about X
-(rotate box :a 90 :r [1 1 0])   — 90 degrees about custom axis
-(rotate box :a 90 :z :eager)    — eager tessellation
+(rotate box :z :a 90)
+(rotate box :x :ar math/pi)
+(rotate box :r [0 1 0] :a 45)
 ```
 
-**Returns a new rojcad/shape abstract value. The original shape is unchanged.**
+**Returns a rojcad/shape abstract value.**
 
 ### `scale`
 
-**Usage:** `(scale shape factor &keys :o :eager)`
+**Usage:** `(scale shape factor &keys :o :eager :hide)`
 
-Create a uniformly scaled copy of shape.
-
-Positional: (scale shape factor)
-Keywords: :o [x y z] (center point, defaults to origin),
-         :eager (tessellate immediately).
+Uniformly scale a shape by a factor.
+Keywords: :o [x y z] (origin for scaling),
+         :eager, :hide
 
 **Examples:**
 ```janet
-(scale box 2.0)                — 2x about origin
-(scale box 2.0 :o [5 5 5])     — 2x about custom point
-(scale box 2.0 :eager)         — eager tessellation
+(scale box 2)                # double size
+(scale box 2 :o [5 5 5])     # scale from center
 ```
 
-**Returns a new rojcad/shape abstract value. The original shape is unchanged.**
+**Returns a rojcad/shape abstract value.**
 
 ### `translate`
 
-**Usage:** `(translate shape dx dy dz &keys :t :eager)`
+**Usage:** `(translate shape dx dy dz &keys :t :eager :hide)`
 
-Create a translated copy of shape.
-
+Translate (move) a shape by a vector.
 Positional: (translate shape dx dy dz)
-Keywords: :t [dx dy dz], :eager (tessellate immediately).
+Keywords: :t [dx dy dz], :eager, :hide
 
 **Examples:**
 ```janet
-(translate box 5 0 0)               — move 5 units in X
-(translate box :t [1 2 3])          — keyword style
-(translate box 5 0 0 :eager)        — eager tessellation
+(translate box 10 0 0)
+(translate box :t [10 0 0])
 ```
 
-**Returns a new rojcad/shape abstract value. The original shape is unchanged.**
+**Returns a rojcad/shape abstract value.**
+
+## Other
+
+### `color`
+
+**Usage:** `(color shape r g b)`
+
+
+
+**Examples:**
+```janet
+(color my-shape 1 0 0)    # red
+(-> (box 10) (color 0 1 0))  # green box
+```
+
+**Returns the shape.**
+
+### `compound`
+
+**Usage:** `(compound & shapes &keys :color :eager :hide)`
+
+Combine multiple shapes into a single compound shape.
+Keywords: :color [r g b], :eager, :hide
+
+**Examples:**
+```janet
+(compound sphere cone)
+(compound box sphere :color [1 0 0])
+```
+
+**Returns a rojcad/shape abstract value.**
+
+### `get-color`
+
+**Usage:** `(get-color shape)`
+
+Get a shape's render color as an array [r g b], or nil if unset.
+
+**Examples:**
+```janet
+(get-color my-shape)  # returns [r g b] or nil
+```
+
+**Returns an array or nil.**
 

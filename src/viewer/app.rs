@@ -179,10 +179,19 @@ pub struct CadMesh {
     pub index_buffer: wgpu::Buffer,
     pub num_indices: u32,
     pub shape_id: ShapeId,
+    #[allow(dead_code)]
+    pub color_buffer: wgpu::Buffer,
+    pub color_bind_group: wgpu::BindGroup,
 }
 
 impl CadMesh {
-    pub fn new(device: &wgpu::Device, mesh: &MeshData, shape_id: ShapeId) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        mesh: &MeshData,
+        shape_id: ShapeId,
+        color: Option<[f64; 3]>,
+        color_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         debug_assert_eq!(
             mesh.normals.len(),
             mesh.vertices.len(),
@@ -211,11 +220,31 @@ impl CadMesh {
             usage: wgpu::BufferUsages::INDEX,
         });
 
+        // Per-mesh color uniform
+        let c = color.unwrap_or([0.75, 0.75, 0.75]);
+        let color_uniform: [f32; 4] = [c[0] as f32, c[1] as f32, c[2] as f32, 1.0];
+        let color_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("cad_mesh_{}_color", shape_id)),
+            contents: bytemuck::bytes_of(&color_uniform),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("cad_mesh_{}_color_bg", shape_id)),
+            layout: color_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: color_buffer.as_entire_binding(),
+            }],
+        });
+
         CadMesh {
             vertex_buffer,
             index_buffer,
             num_indices: mesh.indices.len() as u32,
             shape_id,
+            color_buffer,
+            color_bind_group,
         }
     }
 }
@@ -266,6 +295,7 @@ pub struct SurfaceDrawer {
     highlight_pipeline: wgpu::RenderPipeline,
     uniform_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
+    color_bind_group_layout: wgpu::BindGroupLayout,
     meshes: Vec<CadMesh>,
 }
 
@@ -296,6 +326,21 @@ impl SurfaceDrawer {
             }],
         });
 
+        let color_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("surface_color_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("surface_uniform_bind_group"),
             layout: &bind_group_layout,
@@ -307,7 +352,7 @@ impl SurfaceDrawer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("surface_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout, &color_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -331,6 +376,7 @@ impl SurfaceDrawer {
             highlight_pipeline,
             uniform_bind_group,
             uniform_buffer,
+            color_bind_group_layout,
             meshes: Vec::new(),
         }
     }
@@ -402,15 +448,26 @@ impl SurfaceDrawer {
         self.meshes = meshes;
     }
 
-    pub fn render(&self, pass: &mut wgpu::RenderPass, selected_ids: &HashSet<ShapeId>) {
+    pub fn color_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.color_bind_group_layout
+    }
+
+    pub fn render(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        selected_ids: &HashSet<ShapeId>,
+        highlighted_id: Option<ShapeId>,
+    ) {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         for mesh in &self.meshes {
-            let is_selected = selected_ids.contains(&mesh.shape_id);
-            if is_selected {
+            let use_highlight = selected_ids.contains(&mesh.shape_id)
+                || highlighted_id.is_some_and(|hid| hid == mesh.shape_id);
+            if use_highlight {
                 pass.set_pipeline(&self.highlight_pipeline);
             } else {
                 pass.set_pipeline(&self.render_pipeline);
             }
+            pass.set_bind_group(1, &mesh.color_bind_group, &[]);
             pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
@@ -808,6 +865,7 @@ pub struct ViewerState {
     egui_renderer: egui_wgpu::Renderer,
     stats: Stats,
     help: Help,
+    highlighted_shape: Option<ShapeId>,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -1024,6 +1082,7 @@ impl ApplicationHandler for ViewerApp {
             egui_renderer,
             stats: Stats::new(),
             help: Help::new(),
+            highlighted_shape: None,
         });
     }
 
@@ -1358,6 +1417,14 @@ impl ViewerApp {
                     state.window.set_maximized(mx);
                     WINDOW_MAXIMIZED.store(mx, Ordering::SeqCst);
                 }
+                ReplToViewer::HighlightShape { id } => {
+                    state.highlighted_shape = Some(id);
+                    REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
+                ReplToViewer::ClearHighlight => {
+                    state.highlighted_shape = None;
+                    REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
             }
         }
     }
@@ -1433,24 +1500,26 @@ impl ViewerApp {
             let visible = registry.visible_shapes();
 
             // Rebuild surface meshes
+            let color_layout = state.surface_drawer.color_bind_group_layout();
             let meshes: Vec<CadMesh> = visible
                 .iter()
                 .filter_map(|entry| {
-                    entry
-                        .mesh
-                        .as_ref()
-                        .map(|m| CadMesh::new(&state.device, m, entry.shape_id))
+                    entry.mesh.as_ref().map(|m| {
+                        CadMesh::new(&state.device, m, entry.shape_id, entry.color, color_layout)
+                    })
                 })
                 .collect();
             state.surface_drawer.set_meshes(meshes);
 
             // Build SegmentInstance arrays for instanced line rendering
             let selected_ids = &state.selected_ids;
+            let highlighted_id = state.highlighted_shape;
             let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
             let mut active_instances: Vec<SegmentInstance> = Vec::new();
 
             for entry in &visible {
-                let is_active = selected_ids.contains(&entry.shape_id);
+                let is_active = selected_ids.contains(&entry.shape_id)
+                    || highlighted_id.is_some_and(|hid| hid == entry.shape_id);
                 let target = if is_active {
                     &mut active_instances
                 } else {
@@ -1543,7 +1612,9 @@ impl ViewerApp {
             state.grid_renderer.render(&mut pass);
 
             // Mesh surfaces (depth test: Less, writes depth)
-            state.surface_drawer.render(&mut pass, &state.selected_ids);
+            state
+                .surface_drawer
+                .render(&mut pass, &state.selected_ids, state.highlighted_shape);
 
             // Shape edges (depth test: Less with negative bias toward camera,
             // rendered AFTER meshes so edges overlay mesh surfaces)

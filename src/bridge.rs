@@ -211,6 +211,19 @@ unsafe extern "C" {
     pub fn rust_init_cut(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
     pub fn rust_init_common(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
     pub fn rust_init_fuse(dest: *mut c_void, a: *mut c_void, b: *mut c_void);
+    pub fn rust_init_compound(
+        dest: *mut c_void,
+        shapes: *mut *mut c_void,
+        num_shapes: c_int,
+        eager: c_int,
+    ) -> c_int;
+    pub fn rust_set_color(data: *mut c_void, r: c_double, g: c_double, b: c_double);
+    pub fn rust_get_color(
+        data: *mut c_void,
+        r: *mut c_double,
+        g: *mut c_double,
+        b: *mut c_double,
+    ) -> c_int;
     pub fn rust_init_translate(
         dest: *mut c_void,
         data: *mut c_void,
@@ -286,6 +299,10 @@ unsafe extern "C" {
 
     pub fn rust_list_fonts(count_out: *mut c_int) -> *mut *mut c_char;
     pub fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_int);
+
+    // Highlight functions
+    pub fn rust_highlight_shape(data: *mut c_void);
+    pub fn rust_highlight_clear();
 }
 
 // ── JanetReg struct ───────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 /**
- * bridge.c — C glue layer between Janet C API and Rust CAD functions.
+ * bridge.c -- C glue layer between Janet C API and Rust CAD functions.
  *
  * 1. Defines the `rojcad/shape` Janet abstract type with finalizer + tostring
  * 2. Implements JANET_FN wrappers for each CAD operation
@@ -9,6 +9,7 @@
  */
 
 #include <janet.h>
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -24,7 +25,7 @@ extern const char *rust_shape_type_string(void *data);
 /* Retrieve the last CAD error message as a C string (caller frees) */
 extern const char *rust_take_last_error(void);
 
-/* Shape constructors — return 0 on success, 1 on error */
+/* Shape constructors -- return 0 on success, 1 on error */
 extern int rust_init_box(void *dest,
                            double width, double depth, double height,
                            const double *cx, const double *cy, const double *cz,
@@ -74,6 +75,11 @@ extern int rust_init_torus(void *dest,
 extern int rust_init_cut(void *dest, void *a, void *b, int eager);
 extern int rust_init_common(void *dest, void *a, void *b, int eager);
 extern int rust_init_fuse(void *dest, void *a, void *b, int eager);
+extern int rust_init_compound(void *dest, void **shapes, int num_shapes, int eager);
+
+/* Shape color */
+extern void rust_set_color(void *data, double r, double g, double b);
+extern int rust_get_color(void *data, double *r, double *g, double *b);
 
 /* Transformation operations */
 extern int rust_init_translate(void *dest, void *data, double dx, double dy, double dz, int eager);
@@ -193,6 +199,10 @@ extern void rust_sketch_build_wire(void *shape_dest, void *src);
 extern int rust_is_wire(void *data);
 extern int rust_is_face(void *data);
 extern int rust_is_solid(void *data);
+
+/* Highlight */
+extern void rust_highlight_shape(void *data);
+extern void rust_highlight_clear(void);
 
 /* Text */
 extern int rust_init_text(void *dest, const char *text, const char *font_path,
@@ -339,7 +349,7 @@ static int has_eager(const Janet *argv, int32_t argc) {
 }
 
 /* If :hide keyword is present, mark shape as not visible.
- * Safe to call on unregistered shapes — just sets visible=false. */
+ * Safe to call on unregistered shapes -- just sets visible=false. */
 static void maybe_hide(void *data, const Janet *argv, int32_t argc) {
     if (find_keyword(argv, argc, "hide") >= 0) {
         rust_shape_hide(data);
@@ -370,562 +380,428 @@ static void *alloc_shape(void) {
  * JANET_FN_D(CNAME, USAGE, DOCSTRING), which creates a static docstring
  * combining USAGE and DOCSTRING separated by "\n\n". */
 
-JANET_FN(cad_box,
-         "(box width depth height &keys :w :d :h :c :pl :ph :eager :hide)",
-         "Create a box or cube.\n\n"
-         "Positional: (box w d h) or (box size) for a cube.\n"
-         "Keywords: :w :d :h (dimensions), :c (center [x y z]),\n"
-         "         :pl :ph (opposite corners [x y z]).\n"
-         "         :eager (tessellate immediately).\n"
-         "         :hide (skip automatic show on def).\n\n"
-         "Examples:\n"
-         "  (box 10 20 30)           — box at origin\n"
-         "  (box 10 20 30 :c [5 5 5]) — centered box\n"
-         "  (box 5)                  — 5x5x5 cube\n"
-         "  (box :pl [0 0 0] :ph [10 20 30]) — from corners\n"
-         "  (box :w 10 :d 20 :h 30) — keyword style\n"
-         "  (box 10 :eager)          — eager tessellation\n"
-         "  (box 10 :hide)           — create without showing\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_box,
+         "(_mkbox w d h cx cy cz eager hide)",
+         "Create a box. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
 {
-    double cx, cy, cz, pl[3], ph[3];
-    int has_c, has_pl, has_ph;
-    int eager = has_eager(argv, argc);
-
-    /* Count positional args (stop at first keyword) */
-    int pos_count = 0;
-    for (int i = 0; i < argc; i++) {
-        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
-        pos_count++;
-    }
-
-    has_pl = kw_array_3(argv, argc, "pl", &pl[0], &pl[1], &pl[2]);
-    has_ph = kw_array_3(argv, argc, "ph", &ph[0], &ph[1], &ph[2]);
-
-    if (has_pl || has_ph) {
-        if (!has_pl || !has_ph) {
-            janet_panic("box: :pl and :ph must both be provided");
-        }
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box_from_corners(shape, pl[0], pl[1], pl[2], ph[0], ph[1], ph[2], eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    double w = 0, d = 0, h = 0;
-    int has_w, has_d, has_h;
-    has_w = kw_double(argv, argc, "w", &w);
-    has_d = kw_double(argv, argc, "d", &d);
-    has_h = kw_double(argv, argc, "h", &h);
-    has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-
-    if (has_w && has_d && has_h) {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    if (has_w || has_d || has_h) {
-        janet_panic("box: specify :w, :d, :h together, or use positional args");
-    }
-
-    if (pos_count == 1) {
-        double size = janet_unwrap_number(argv[0]);
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cube(shape, size,
-                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    if (pos_count >= 3) {
-        w = janet_unwrap_number(argv[0]);
-        d = janet_unwrap_number(argv[1]);
-        h = janet_unwrap_number(argv[2]);
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_box(shape, w, d, h,
-                      has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    janet_panicf("box: expected 1 or 3 positional arguments, got %d", argc);
-}
-
-JANET_FN(cad_sphere,
-         "(sphere radius &keys :r :c :a :ar :eager)",
-         "Create a sphere.\n\n"
-         "Positional: (sphere radius)\n"
-         "Keywords: :r (radius), :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians),\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (sphere 10)               — full sphere at origin\n"
-         "  (sphere 10 :c [1 2 3])    — repositioned\n"
-         "  (sphere 10 :a 180)        — hemisphere\n"
-         "  (sphere :r 10)            — keyword style\n"
-         "  (sphere 10 :eager)        — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
-{
-    double radius, cx, cy, cz, angle;
-    int has_c, has_a;
-    int eager = has_eager(argv, argc);
-
-    has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    has_a = kw_double(argv, argc, "a", &angle);
-    if (has_a) {
-        angle *= (M_PI / 180.0);
-    } else {
-        has_a = kw_double(argv, argc, "ar", &angle);
-    }
-
-    /* Try keyword :r first, then positional */
-    if (!kw_double(argv, argc, "r", &radius)) {
-        if (argc < 1) janet_panic("sphere: radius is required");
-        radius = janet_unwrap_number(argv[0]);
-    }
+    janet_arity(argc, 8, 8);
+    double w = janet_getnumber(argv, 0);
+    double d = janet_getnumber(argv, 1);
+    double h = janet_getnumber(argv, 2);
+    double cx = janet_getnumber(argv, 3);
+    double cy = janet_getnumber(argv, 4);
+    double cz = janet_getnumber(argv, 5);
+    int eager_val = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
     void *shape = alloc_shape();
-    CAD_CHECK(rust_init_sphere(shape, radius,
-                     has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                     has_a ? &angle : NULL, eager));
-    maybe_hide(shape, argv, argc);
+    CAD_CHECK(rust_init_box(shape, w, d, h,
+                   isnan(cx) ? NULL : &cx,
+                   isnan(cy) ? NULL : &cy,
+                   isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_cylinder,
-         "(cylinder radius height &keys :r :h :c :dir :fp :tp :eager)",
-         "Create a cylinder.\n\n"
-         "Positional: (cylinder radius height) — along Z axis, base at Z=0\n"
-         "Keywords: :r (radius), :h (height), :c (center [x y z]),\n"
-         "         :dir (direction [dx dy dz]),\n"
-         "         :fp (from-point [x y z]), :tp (to-point [x y z]).\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (cylinder 5 10)                       — simple\n"
-         "  (cylinder 5 10 :c [0 0 5])            — centered\n"
-         "  (cylinder :fp [0 0 0] :tp [0 0 10] :r 5) — point-to-point\n"
-         "  (cylinder :r 5 :h 10)                 — keyword style\n"
-         "  (cylinder 5 10 :eager)                — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_cube,
+         "(_mkcube size cx cy cz eager hide)",
+         "Create a cube. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
 {
-    double cx, cy, cz, dir[3], fp[3], tp[3];
-    int has_c, has_dir, has_fp, has_tp;
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 6, 6);
+    double size = janet_getnumber(argv, 0);
+    double cx = janet_getnumber(argv, 1);
+    double cy = janet_getnumber(argv, 2);
+    double cz = janet_getnumber(argv, 3);
+    int eager_val = janet_truthy(argv[4]);
+    int hide_val = janet_truthy(argv[5]);
 
-    has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
-    has_fp = kw_array_3(argv, argc, "fp", &fp[0], &fp[1], &fp[2]);
-    has_tp = kw_array_3(argv, argc, "tp", &tp[0], &tp[1], &tp[2]);
-
-    /* Check for from-point / to-point mode */
-    if (has_fp || has_tp) {
-        if (!has_fp || !has_tp) {
-            janet_panic("cylinder: :fp and :tp must both be provided");
-        }
-        double r;
-        if (!kw_double(argv, argc, "r", &r)) {
-            janet_panic("cylinder: :r (radius) is required with :fp/:tp");
-        }
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder_from_points(shape, fp[0], fp[1], fp[2], tp[0], tp[1], tp[2], r, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    double radius, height;
-
-    /* Get radius and height: try keywords first, then positional */
-    if (!kw_double(argv, argc, "r", &radius)) {
-        if (argc < 1) janet_panic("cylinder: radius is required");
-        radius = janet_unwrap_number(argv[0]);
-    }
-    if (!kw_double(argv, argc, "h", &height)) {
-        if (argc < 2) janet_panic("cylinder: height is required");
-        height = janet_unwrap_number(argv[1]);
-    }
-
-    if (has_dir) {
-        double ox = has_c ? cx : 0.0, oy = has_c ? cy : 0.0, oz = has_c ? cz : 0.0;
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder_point_dir(shape, ox, oy, oz, radius, dir[0], dir[1], dir[2], height, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cylinder(shape, radius, height,
-                           has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cube(shape, size,
+                   isnan(cx) ? NULL : &cx,
+                   isnan(cy) ? NULL : &cy,
+                   isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_cone,
-         "(cone bottom-radius height &keys :br :tr :h :c :a :ar :eager)",
-         "Create a cone or truncated cone.\n\n"
-         "Positional: (cone br h) for full cone, (cone br tr h) for truncated.\n"
-         "Keywords: :br (bottom radius), :tr (top radius), :h (height),\n"
-         "         :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians, partial cone),\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (cone 5 10)                — full cone, br=5, h=10\n"
-         "  (cone 5 3 10)              — truncated cone\n"
-         "  (cone 5 10 :a 180)         — half cone\n"
-         "  (cone :br 5 :h 10)         — keyword style\n"
-         "  (cone 5 10 :eager)         — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_init_box_from_corners,
+         "(_mkbox_from_corners x1 y1 z1 x2 y2 z2 eager hide)",
+         "Create a box from opposite corners. (thin primitive)\n\nAll args positional.")
 {
-    double cx, cy, cz, angle;
-    int eager = has_eager(argv, argc);
-    int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    int has_a = kw_double(argv, argc, "a", &angle);
-    if (has_a) {
-        angle *= (M_PI / 180.0);
-    } else {
-        has_a = kw_double(argv, argc, "ar", &angle);
-    }
+    janet_arity(argc, 8, 8);
+    double x1 = janet_getnumber(argv, 0);
+    double y1 = janet_getnumber(argv, 1);
+    double z1 = janet_getnumber(argv, 2);
+    double x2 = janet_getnumber(argv, 3);
+    double y2 = janet_getnumber(argv, 4);
+    double z2 = janet_getnumber(argv, 5);
+    int eager_val = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
-    double br = 0, tr = 0, h = 0;
-    int has_br, has_tr, has_h;
-
-    has_br = kw_double(argv, argc, "br", &br);
-    has_tr = kw_double(argv, argc, "tr", &tr);
-    has_h = kw_double(argv, argc, "h", &h);
-
-    if (has_br && has_h) {
-        if (!has_tr) tr = 0.0;
-        goto create;
-    }
-    if (has_br || has_h) {
-        janet_panic("cone: provide :br, :h, and optionally :tr, or use positional args");
-    }
-
-    /* Count positional args (stop at first keyword) */
-    int pos_count = 0;
-    for (int i = 0; i < argc; i++) {
-        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
-        pos_count++;
-    }
-
-    /* Positional mode */
-    if (pos_count == 2) {
-        br = janet_unwrap_number(argv[0]);
-        tr = 0.0;
-        h = janet_unwrap_number(argv[1]);
-    } else if (pos_count == 3) {
-        br = janet_unwrap_number(argv[0]);
-        tr = janet_unwrap_number(argv[1]);
-        h = janet_unwrap_number(argv[2]);
-    } else {
-        janet_panicf("cone: expected 2 or 3 positional arguments, got %d", pos_count);
-    }
-
-create:
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_cone(shape, br, tr, h,
-                       has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                       has_a ? &angle : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_box_from_corners(shape, x1, y1, z1, x2, y2, z2, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_torus,
-         "(torus ring-radius tube-radius &keys :rr :tr :c :a :ar :as :asr :ae :aer :dir :eager)",
-         "Create a torus.\n\n"
-         "Positional: (torus rr tr)\n"
-         "Keywords: :rr (ring radius), :tr (tube radius),\n"
-         "         :c (center [x y z]),\n"
-         "         :a (angle in degrees), :ar (angle in radians, partial),\n"
-         "         :as (start angle degrees), :asr (start angle radians),\n"
-         "         :ae (end angle degrees), :aer (end angle radians),\n"
-         "         :dir (axis direction [dx dy dz]),\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (torus 20 10)                    — full torus\n"
-         "  (torus 20 10 :c [0 0 5])         — repositioned\n"
-         "  (torus 20 10 :a 180)             — half torus\n"
-         "  (torus :rr 20 :tr 10 :as 0 :ae 180) — angled range\n"
-         "  (torus :rr 20 :tr 10 :dir [0 1 0]) — oriented\n"
-         "  (torus 20 10 :eager)             — eager tessellation\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_sphere,
+         "(_sphere radius cx cy cz angle eager hide)",
+         "Create a sphere. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz/angle.")
 {
-    double cx, cy, cz, dir[3], angle, a_start, a_end;
-    int eager = has_eager(argv, argc);
-    int has_c = kw_array_3(argv, argc, "c", &cx, &cy, &cz);
-    int has_dir = kw_array_3(argv, argc, "dir", &dir[0], &dir[1], &dir[2]);
-    int has_a = kw_double(argv, argc, "a", &angle);
-    if (has_a) {
-        angle *= (M_PI / 180.0);
-    } else {
-        has_a = kw_double(argv, argc, "ar", &angle);
-    }
-    int has_as = kw_double(argv, argc, "as", &a_start);
-    if (has_as) {
-        a_start *= (M_PI / 180.0);
-    } else {
-        has_as = kw_double(argv, argc, "asr", &a_start);
-    }
-    int has_ae = kw_double(argv, argc, "ae", &a_end);
-    if (has_ae) {
-        a_end *= (M_PI / 180.0);
-    } else {
-        has_ae = kw_double(argv, argc, "aer", &a_end);
-    }
+    janet_arity(argc, 7, 7);
+    double radius = janet_getnumber(argv, 0);
+    double cx = janet_getnumber(argv, 1);
+    double cy = janet_getnumber(argv, 2);
+    double cz = janet_getnumber(argv, 3);
+    double angle = janet_getnumber(argv, 4);
+    int eager = janet_truthy(argv[5]);
+    int hide_val = janet_truthy(argv[6]);
 
-    double rr = 0, tr = 0;
-    int has_rr, has_tr;
-
-    has_rr = kw_double(argv, argc, "rr", &rr);
-    has_tr = kw_double(argv, argc, "tr", &tr);
-
-    if (has_rr && has_tr) {
-        goto create;
-    }
-    if (has_rr || has_tr) {
-        janet_panic("torus: :rr and :tr must be provided together");
-    }
-
-    /* Positional mode */
-    if (argc < 2) janet_panic("torus: ring-radius and tube-radius are required");
-    rr = janet_unwrap_number(argv[0]);
-    tr = janet_unwrap_number(argv[1]);
-
-create:
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_torus(shape, rr, tr,
-                        has_c ? &cx : NULL, has_c ? &cy : NULL, has_c ? &cz : NULL,
-                        has_dir ? &dir[0] : NULL,
-                        has_dir ? &dir[1] : NULL,
-                        has_dir ? &dir[2] : NULL,
-                        has_a ? &angle : NULL,
-                        has_as ? &a_start : NULL,
-                        has_ae ? &a_end : NULL, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_sphere(shape, radius,
+                     isnan(cx) ? NULL : &cx,
+                     isnan(cy) ? NULL : &cy,
+                     isnan(cz) ? NULL : &cz,
+                     isnan(angle) ? NULL : &angle,
+                     eager));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_cut,
-         "(cut shape-a shape-b &keys :eager)",
-         "Subtract shape-b from shape-a. Returns a new rojcad/shape "
-         "representing the resulting solid.\n\n"
-         "Signals an error if the shapes do not intersect or produce "
-         "an empty result.\n"
-         "Keywords: :eager (tessellate immediately).")
+JANET_FN(_cad_init_cylinder,
+         "(_init-cylinder r h cx cy cz eager hide)",
+         "Create a cylinder. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz center.")
 {
-    janet_arity(argc, 2, 3);
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 7, 7);
+    double r = janet_getnumber(argv, 0);
+    double h = janet_getnumber(argv, 1);
+    double cx = janet_getnumber(argv, 2);
+    double cy = janet_getnumber(argv, 3);
+    double cz = janet_getnumber(argv, 4);
+    int eager_val = janet_truthy(argv[5]);
+    int hide_val = janet_truthy(argv[6]);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder(shape, r, h,
+                       isnan(cx) ? NULL : &cx,
+                       isnan(cy) ? NULL : &cy,
+                       isnan(cz) ? NULL : &cz, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_init_cylinder_from_points,
+         "(_init-cylinder-from-points x1 y1 z1 x2 y2 z2 r eager hide)",
+         "Create a cylinder between two points. (thin primitive)\n\nAll args positional.")
+{
+    janet_arity(argc, 9, 9);
+    double x1 = janet_getnumber(argv, 0);
+    double y1 = janet_getnumber(argv, 1);
+    double z1 = janet_getnumber(argv, 2);
+    double x2 = janet_getnumber(argv, 3);
+    double y2 = janet_getnumber(argv, 4);
+    double z2 = janet_getnumber(argv, 5);
+    double r = janet_getnumber(argv, 6);
+    int eager_val = janet_truthy(argv[7]);
+    int hide_val = janet_truthy(argv[8]);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder_from_points(shape, x1, y1, z1, x2, y2, z2, r, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_init_cylinder_point_dir,
+         "(_init-cylinder-point-dir px py pz r dx dy dz h eager hide)",
+         "Create a cylinder at point with direction. (thin primitive)\n\nAll args positional.")
+{
+    janet_arity(argc, 10, 10);
+    double px = janet_getnumber(argv, 0);
+    double py = janet_getnumber(argv, 1);
+    double pz = janet_getnumber(argv, 2);
+    double r = janet_getnumber(argv, 3);
+    double dx = janet_getnumber(argv, 4);
+    double dy = janet_getnumber(argv, 5);
+    double dz = janet_getnumber(argv, 6);
+    double h = janet_getnumber(argv, 7);
+    int eager_val = janet_truthy(argv[8]);
+    int hide_val = janet_truthy(argv[9]);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cylinder_point_dir(shape, px, py, pz, r, dx, dy, dz, h, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_cone,
+         "(_cone br tr h cx cy cz angle eager hide)",
+         "Create a cone. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz/angle.")
+{
+    janet_arity(argc, 9, 9);
+    double br = janet_getnumber(argv, 0);
+    double tr = janet_getnumber(argv, 1);
+    double h = janet_getnumber(argv, 2);
+    double cx = janet_getnumber(argv, 3);
+    double cy = janet_getnumber(argv, 4);
+    double cz = janet_getnumber(argv, 5);
+    double angle = janet_getnumber(argv, 6);
+    int eager = janet_truthy(argv[7]);
+    int hide_val = janet_truthy(argv[8]);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_cone(shape, br, tr, h,
+                     isnan(cx) ? NULL : &cx,
+                     isnan(cy) ? NULL : &cy,
+                     isnan(cz) ? NULL : &cz,
+                     isnan(angle) ? NULL : &angle,
+                     eager));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_init_torus,
+         "(_init-torus rr tr cx cy cz zx zy zz angle a_start a_end eager hide)",
+         "Create a torus. (thin primitive)\n\n"
+         "All args positional. NaN sentinel for optional cx/cy/cz/dir/angle/range.")
+{
+    janet_arity(argc, 13, 13);
+    double rr = janet_getnumber(argv, 0);
+    double tr = janet_getnumber(argv, 1);
+    double cx = janet_getnumber(argv, 2);
+    double cy = janet_getnumber(argv, 3);
+    double cz = janet_getnumber(argv, 4);
+    double zx = janet_getnumber(argv, 5);
+    double zy = janet_getnumber(argv, 6);
+    double zz = janet_getnumber(argv, 7);
+    double angle = janet_getnumber(argv, 8);
+    double a_start = janet_getnumber(argv, 9);
+    double a_end = janet_getnumber(argv, 10);
+    int eager_val = janet_truthy(argv[11]);
+    int hide_val = janet_truthy(argv[12]);
+
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_torus(shape, rr, tr,
+                    isnan(cx) ? NULL : &cx,
+                    isnan(cy) ? NULL : &cy,
+                    isnan(cz) ? NULL : &cz,
+                    isnan(zx) ? NULL : &zx,
+                    isnan(zy) ? NULL : &zy,
+                    isnan(zz) ? NULL : &zz,
+                    isnan(angle) ? NULL : &angle,
+                    isnan(a_start) ? NULL : &a_start,
+                    isnan(a_end) ? NULL : &a_end, eager_val));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_cut,
+         "(_cut a b eager hide)",
+         "Subtract shape-b from shape-a. (thin primitive)")
+{
+    janet_arity(argc, 4, 4);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
+    int eager = janet_truthy(argv[2]);
+    int hide_val = janet_truthy(argv[3]);
 
     void *result = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
     if (!result) {
         janet_panic("failed to allocate shape");
     }
     CAD_CHECK(rust_init_cut(result, a, b, eager));
-    maybe_hide(result, argv, argc);
+    if (hide_val) rust_shape_hide(result);
     return janet_wrap_abstract(result);
 }
 
-JANET_FN(cad_common,
-         "(common shape-a shape-b &keys :eager)",
-         "Intersect shape-a with shape-b. Returns a new rojcad/shape "
-         "representing the shared volume.\n\n"
-         "Signals an error if the shapes do not intersect.\n"
-         "Keywords: :eager (tessellate immediately).")
+JANET_FN(_cad_common,
+         "(_common a b eager hide)",
+         "Intersect shape-a with shape-b. (thin primitive)")
 {
-    janet_arity(argc, 2, 3);
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 4, 4);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
+    int eager = janet_truthy(argv[2]);
+    int hide_val = janet_truthy(argv[3]);
 
     void *result = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
     if (!result) {
         janet_panic("failed to allocate shape");
     }
     CAD_CHECK(rust_init_common(result, a, b, eager));
-    maybe_hide(result, argv, argc);
+    if (hide_val) rust_shape_hide(result);
     return janet_wrap_abstract(result);
 }
 
-JANET_FN(cad_fuse,
-         "(fuse shape-a shape-b &keys :eager)",
-         "Combine shape-a and shape-b into a single solid. Returns a new rojcad/shape "
-         "representing the union of both shapes.\n\n"
-         "Signals an error if the operation produces an empty result.\n"
-         "Keywords: :eager (tessellate immediately).")
+JANET_FN(_cad_fuse,
+         "(_fuse a b eager hide)",
+         "Combine shape-a and shape-b. (thin primitive)")
 {
-    janet_arity(argc, 2, 3);
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 4, 4);
     void *a = unwrap_shape_or_panic(argv[0], 0);
     void *b = unwrap_shape_or_panic(argv[1], 1);
+    int eager = janet_truthy(argv[2]);
+    int hide_val = janet_truthy(argv[3]);
 
     void *result = janet_abstract(&rojcad_shape_type, rust_shape_data_size());
     if (!result) {
         janet_panic("failed to allocate shape");
     }
     CAD_CHECK(rust_init_fuse(result, a, b, eager));
-    maybe_hide(result, argv, argc);
+    if (hide_val) rust_shape_hide(result);
     return janet_wrap_abstract(result);
 }
 
-JANET_FN(cad_translate,
-         "(translate shape dx dy dz &keys :t :eager)",
-         "Create a translated copy of shape.\n\n"
-         "Positional: (translate shape dx dy dz)\n"
-         "Keywords: :t [dx dy dz], :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (translate box 5 0 0)               — move 5 units in X\n"
-         "  (translate box :t [1 2 3])          — keyword style\n"
-         "  (translate box 5 0 0 :eager)        — eager tessellation\n\n"
-         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+JANET_FN(_cad_compound,
+         "(compound shapes eager hide)",
+         "Create a compound from a tuple of shapes. (thin primitive)")
 {
-    double dx, dy, dz;
-    void *data;
-    int eager = has_eager(argv, argc);
+    janet_arity(argc, 3, 3);
+    int eager = janet_truthy(argv[1]);
+    int hide_val = janet_truthy(argv[2]);
 
-    if (kw_array_3(argv, argc, "t", &dx, &dy, &dz)) {
-        /* Keyword style: find the shape as the first non-keyword arg */
-        if (argc < 1) janet_panic("translate: shape is required");
-        data = unwrap_shape_or_panic(argv[0], 0);
+    const Janet *parts;
+    int32_t n;
+    if (janet_checktype(argv[0], JANET_TUPLE)) {
+        parts = janet_unwrap_tuple(argv[0]);
+        n = janet_tuple_length(parts);
+    } else if (janet_checktype(argv[0], JANET_ARRAY)) {
+        JanetArray *arr = janet_unwrap_array(argv[0]);
+        parts = arr->data;
+        n = arr->count;
     } else {
-        janet_arity(argc, 4, 4);
-        data = unwrap_shape_or_panic(argv[0], 0);
-        if (!janet_checktype(argv[1], JANET_NUMBER) ||
-            !janet_checktype(argv[2], JANET_NUMBER) ||
-            !janet_checktype(argv[3], JANET_NUMBER)) {
-            janet_panic("translate: dx, dy, dz must be numbers");
-        }
-        dx = janet_unwrap_number(argv[1]);
-        dy = janet_unwrap_number(argv[2]);
-        dz = janet_unwrap_number(argv[3]);
+        janet_panicf("expected tuple or array of shapes, got %t", argv[0]);
+        return janet_wrap_nil();
     }
+
+    if (n < 2) {
+        janet_panic("compound requires at least 2 shapes");
+    }
+
+    void *shape_ptrs[64];
+    if (n > 64) janet_panic("too many shapes for compound (max 64)");
+    for (int32_t i = 0; i < n; i++) {
+        shape_ptrs[i] = unwrap_shape_or_panic(parts[i], i);
+    }
+
+    void *result = alloc_shape();
+    CAD_CHECK(rust_init_compound(result, shape_ptrs, n, eager));
+    if (hide_val) rust_shape_hide(result);
+    return janet_wrap_abstract(result);
+}
+
+JANET_FN(_cad_set_color,
+         "(_cad_set_color shape r g b)",
+         "Set a shape's render color. (thin primitive)")
+{
+    janet_arity(argc, 4, 4);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double r = janet_getnumber(argv, 1);
+    double g = janet_getnumber(argv, 2);
+    double b = janet_getnumber(argv, 3);
+    rust_set_color(data, r, g, b);
+    return argv[0];
+}
+
+JANET_FN(_cad_get_color,
+         "(_cad_get_color shape)",
+         "Get a shape's render color, or nil if unset. (thin primitive)")
+{
+    janet_arity(argc, 1, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double r, g, b;
+    if (rust_get_color(data, &r, &g, &b)) {
+        Janet parts[3];
+        parts[0] = janet_wrap_number(r);
+        parts[1] = janet_wrap_number(g);
+        parts[2] = janet_wrap_number(b);
+        return janet_wrap_tuple(parts);
+    }
+    return janet_wrap_nil();
+}
+
+JANET_FN(_cad_translate,
+         "(_translate shape dx dy dz eager hide)",
+         "Create a translated copy of shape. (thin primitive)")
+{
+    janet_arity(argc, 6, 6);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double dx = janet_getnumber(argv, 1);
+    double dy = janet_getnumber(argv, 2);
+    double dz = janet_getnumber(argv, 3);
+    int eager = janet_truthy(argv[4]);
+    int hide_val = janet_truthy(argv[5]);
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_translate(shape, data, dx, dy, dz, eager));
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_rotate,
-         "(rotate shape &keys :a :ar :x :y :z :r :eager)",
-         "Create a rotated copy of shape.\n\n"
-         "Angle is specified via :a (degrees) or :ar (radians).\n"
-         "Axis is specified via :x, :y, :z (cardinal), or :r [dx dy dz] (custom).\n"
-         ":eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (rotate box :a 45 :z)           — 45 degrees about Z\n"
-         "  (rotate box :ar 1.5708 :x)      — pi/2 radians about X\n"
-         "  (rotate box :a 90 :r [1 1 0])   — 90 degrees about custom axis\n"
-         "  (rotate box :a 90 :z :eager)    — eager tessellation\n\n"
-         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+JANET_FN(_cad_rotate,
+         "(_rotate shape ax ay az angle eager hide)",
+         "Create a rotated copy of shape. (thin primitive)")
 {
-    if (argc < 2) janet_panic("rotate: shape and angle are required");
+    janet_arity(argc, 7, 7);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    int eager = has_eager(argv, argc);
-
-    double angle;
-
-    if (kw_double(argv, argc, "ar", &angle)) {
-        /* radians — pass through as-is */
-    } else if (kw_double(argv, argc, "a", &angle)) {
-        angle *= (M_PI / 180.0);
-    } else {
-        janet_panic("rotate: specify angle via :a (degrees) or :ar (radians)");
-    }
-
-    double ax, ay, az;
-    if (find_keyword(argv, argc, "x") >= 0) {
-        ax = 1.0; ay = 0.0; az = 0.0;
-    } else if (find_keyword(argv, argc, "y") >= 0) {
-        ax = 0.0; ay = 1.0; az = 0.0;
-    } else if (find_keyword(argv, argc, "z") >= 0) {
-        ax = 0.0; ay = 0.0; az = 1.0;
-    } else if (kw_array_3(argv, argc, "r", &ax, &ay, &az)) {
-        /* custom axis */
-    } else {
-        janet_panic("rotate: specify axis via :x, :y, :z, or :r [dx dy dz]");
-    }
+    double ax = janet_getnumber(argv, 1);
+    double ay = janet_getnumber(argv, 2);
+    double az = janet_getnumber(argv, 3);
+    double angle = janet_getnumber(argv, 4);
+    int eager = janet_truthy(argv[5]);
+    int hide_val = janet_truthy(argv[6]);
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_rotate(shape, data, ax, ay, az, angle, eager));
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_scale,
-         "(scale shape factor &keys :o :eager)",
-         "Create a uniformly scaled copy of shape.\n\n"
-         "Positional: (scale shape factor)\n"
-         "Keywords: :o [x y z] (center point, defaults to origin),\n"
-         "         :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (scale box 2.0)                — 2x about origin\n"
-         "  (scale box 2.0 :o [5 5 5])     — 2x about custom point\n"
-         "  (scale box 2.0 :eager)         — eager tessellation\n\n"
-         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+JANET_FN(_cad_scale,
+         "(_scale shape factor cx cy cz eager hide)",
+         "Create a uniformly scaled copy of shape. (thin primitive)\n\n"
+         "NaN sentinel for optional cx/cy/cz center point.")
 {
-    if (argc < 2) janet_panic("scale: shape and factor are required");
+    janet_arity(argc, 7, 7);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    if (!janet_checktype(argv[1], JANET_NUMBER)) {
-        janet_panic("scale: factor must be a number");
-    }
-    double factor = janet_unwrap_number(argv[1]);
-    int eager = has_eager(argv, argc);
-
-    double cx, cy, cz;
-    int has_o = kw_array_3(argv, argc, "o", &cx, &cy, &cz);
+    double factor = janet_getnumber(argv, 1);
+    double cx = janet_getnumber(argv, 2);
+    double cy = janet_getnumber(argv, 3);
+    double cz = janet_getnumber(argv, 4);
+    int eager = janet_truthy(argv[5]);
+    int hide_val = janet_truthy(argv[6]);
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_scale(shape, data, factor,
-                    has_o ? &cx : NULL,
-                    has_o ? &cy : NULL,
-                    has_o ? &cz : NULL, eager));
-    maybe_hide(shape, argv, argc);
+                    isnan(cx) ? NULL : &cx,
+                    isnan(cy) ? NULL : &cy,
+                    isnan(cz) ? NULL : &cz, eager));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_mirror,
-         "(mirror shape ox oy oz dx dy dz &keys :eager)",
-         "Create a mirrored copy of shape about an axis.\n\n"
-         "Positional: (mirror shape ox oy oz dx dy dz)\n"
-         "Where (ox, oy, oz) is a point on the axis and (dx, dy, dz) is the axis direction.\n"
-         "Keywords: :eager (tessellate immediately).\n\n"
-         "Examples:\n"
-         "  (mirror box 0 0 0 1 0 0)       — mirror across X axis through origin\n"
-         "  (mirror box 5 0 0 0 1 0)       — mirror across Y axis through (5,0,0)\n"
-         "  (mirror box 0 0 0 1 0 0 :eager) — eager tessellation\n\n"
-         "Returns a new rojcad/shape abstract value. The original shape is unchanged.")
+JANET_FN(_cad_mirror,
+         "(_mirror shape ox oy oz dx dy dz eager hide)",
+         "Create a mirrored copy of shape. (thin primitive)")
 {
-    if (argc < 7) janet_panic("mirror: shape and 6 coordinates are required");
+    janet_arity(argc, 9, 9);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    int eager = has_eager(argv, argc);
-    if (!janet_checktype(argv[1], JANET_NUMBER) ||
-        !janet_checktype(argv[2], JANET_NUMBER) ||
-        !janet_checktype(argv[3], JANET_NUMBER) ||
-        !janet_checktype(argv[4], JANET_NUMBER) ||
-        !janet_checktype(argv[5], JANET_NUMBER) ||
-        !janet_checktype(argv[6], JANET_NUMBER)) {
-        janet_panic("mirror: all coordinates must be numbers");
-    }
-    double ox = janet_unwrap_number(argv[1]);
-    double oy = janet_unwrap_number(argv[2]);
-    double oz = janet_unwrap_number(argv[3]);
-    double dx = janet_unwrap_number(argv[4]);
-    double dy = janet_unwrap_number(argv[5]);
-    double dz = janet_unwrap_number(argv[6]);
+    double ox = janet_getnumber(argv, 1);
+    double oy = janet_getnumber(argv, 2);
+    double oz = janet_getnumber(argv, 3);
+    double dx = janet_getnumber(argv, 4);
+    double dy = janet_getnumber(argv, 5);
+    double dz = janet_getnumber(argv, 6);
+    int eager = janet_truthy(argv[7]);
+    int hide_val = janet_truthy(argv[8]);
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_mirror(shape, data, ox, oy, oz, dx, dy, dz, eager));
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
@@ -935,8 +811,8 @@ JANET_FN(cad_purge,
          "The shape will no longer be rendered. To also unbind the Janet variable,\n"
          "use (purge shape) followed by (def name nil).\n\n"
          "Examples:\n"
-         "  (purge b)          — remove b from viewer\n"
-         "  (purge b) (def b nil) (gc)  — full cleanup\n\n"
+         "  (purge b)          # remove b from viewer\n"
+         "  (purge b) (def b nil) (gc)  # full cleanup\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -964,8 +840,8 @@ JANET_FN(cad_show,
          "Calling show on an already-visible shape is a no-op.\n\n"
          "Examples:\n"
          "  (def b (box 10))\n"
-         "  (show b)         — tessellates if needed, registers, makes visible\n"
-         "  (show b)         — second call is a no-op (already visible)\n\n"
+         "  (show b)         # tessellates if needed, registers, makes visible\n"
+         "  (show b)         # second call is a no-op (already visible)\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -979,8 +855,8 @@ JANET_FN(cad_hide,
          "Set a shape's visible flag to false. The shape stays registered"
          " in the viewer but is no longer rendered.\n\n"
          "Examples:\n"
-         "  (hide b)         — shape disappears from viewer\n"
-         "  (show b)         — reappears without re-tessellating\n\n"
+         "  (hide b)         # shape disappears from viewer\n"
+         "  (show b)         # reappears without re-tessellating\n\n"
          "Returns nil.")
 {
     janet_arity(argc, 1, 1);
@@ -1013,37 +889,42 @@ JANET_FN(cad_visible_q,
     return visible ? janet_wrap_true() : janet_wrap_false();
 }
 
-/* Global callback for selection events */
-static Janet on_select_callback = {0};
-
-JANET_FN(cad_on_select,
-         "(on-select callback)",
-         "Register a Janet function to be called when a shape is selected"
-         " in the viewer. The function receives the same value as"
-         " (poll-selection): a shape ID (integer), :deselected, or"
-         " [:deselected id]. Pass nil to unregister the callback.\n\n"
-         "Example:\n"
-         "  (on-select (fn [event] (print \"selection: \" event)))")
+JANET_FN(_cad_highlight_shape,
+         "_highlight-shape shape",
+         "Highlight a shape in the viewer. (thin primitive)")
 {
     janet_arity(argc, 1, 1);
-    if (janet_checktype(argv[0], JANET_NIL)) {
-        on_select_callback = janet_wrap_nil();
-    } else if (janet_checktype(argv[0], JANET_FUNCTION)) {
-        on_select_callback = argv[0];
-    } else {
-        janet_panic("on-select expects a function or nil");
-    }
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    rust_highlight_shape(data);
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_poll_selection,
-         "(poll-selection)",
-         "Check for a pending selection event from the viewer.\n\n"
-         "Returns nil if no event, the shape ID (integer) if a shape was"
-         " selected, a tuple [:deselected id] if a shape was toggled off,\n"
-         " or :deselected if the entire selection was cleared.\n\n"
-         "If a callback was registered via (on-select), it will be"
-         " invoked automatically with the result.")
+JANET_FN(_cad_highlight_clear,
+         "_highlight-clear",
+         "Clear shape highlighting in the viewer. (thin primitive)")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    rust_highlight_clear();
+    return janet_wrap_nil();
+}
+
+JANET_FN(_cad_quit_requested,
+         "_quit-requested",
+         "Check if the application should quit. (thin primitive)\n\n"
+         "Returns true if Ctrl+Q was pressed or the window was closed.\n"
+         "This is a one-shot check -- returns true only once per quit request.")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+    return rust_quit_requested() ? janet_wrap_true() : janet_wrap_false();
+}
+
+JANET_FN(_cad_poll_selection_raw,
+         "_poll-selection-raw",
+         "Low-level poll for selection events. (thin primitive)\n\n"
+         "Returns nil if no event, or a tuple [action id] where\n"
+         "action is 1 (selected), 2 (deselected), or 3 (cleared).")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
@@ -1052,42 +933,10 @@ JANET_FN(cad_poll_selection,
     if (action == 0) {
         return janet_wrap_nil();
     }
-
-    Janet event;
-    if (action == 3) {
-        /* Cleared */
-        event = janet_ckeywordv("deselected");
-    } else if (action == 2) {
-        /* Toggled off — return [:deselected id] */
-        Janet parts[2];
-        parts[0] = janet_ckeywordv("deselected");
-        parts[1] = janet_wrap_number((double)id);
-        event = janet_wrap_tuple(janet_tuple_n(parts, 2));
-    } else {
-        /* Toggled on (action == 1) — return shape id (backward compat) */
-        event = janet_wrap_number((double)id);
-    }
-
-    /* Invoke the stored callback if registered */
-    if (janet_checktype(on_select_callback, JANET_FUNCTION)) {
-        JanetFunction *fn = janet_unwrap_function(on_select_callback);
-        Janet args[] = { event };
-        janet_call(fn, 1, args);
-    }
-
-    return event;
-}
-
-JANET_FN(cad_quit_requested,
-         "(quit-requested)",
-         "Check if the application should quit.\n\n"
-         "Returns true if Ctrl+Q was pressed or the window was closed.\n"
-         "Used by boot.janet to exit the event loop.\n\n"
-         "This is a one-shot check -- returns true only once per quit request.")
-{
-    janet_arity(argc, 0, 0);
-    (void)argv;
-    return rust_quit_requested() ? janet_wrap_true() : janet_wrap_false();
+    Janet parts[2];
+    parts[0] = janet_wrap_number((double)action);
+    parts[1] = janet_wrap_number((double)id);
+    return janet_wrap_tuple(janet_tuple_n(parts, 2));
 }
 
 JANET_FN(cad_edge_toggle_inactive,
@@ -1165,9 +1014,9 @@ JANET_FN(cad_edge_hidden,
          "Called with no arguments, returns true if hidden edges are shown, "
          "false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (edge-hidden)        — query\n"
-         "         (edge-hidden true)    — show hidden edges\n"
-         "         (edge-hidden false)   — hide hidden edges")
+         "Example: (edge-hidden)        # query\n"
+         "         (edge-hidden true)    # show hidden edges\n"
+         "         (edge-hidden false)   # hide hidden edges")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1197,9 +1046,9 @@ JANET_FN(cad_projection_perspective,
          "Called with no arguments, returns true if perspective mode is active, "
          "false if orthographic.\n"
          "Called with one boolean argument, sets the mode.\n\n"
-         "Example: (projection-perspective)        — query\n"
-         "         (projection-perspective true)    — perspective\n"
-         "         (projection-perspective false)   — orthographic")
+         "Example: (projection-perspective)        # query\n"
+         "         (projection-perspective true)    # perspective\n"
+         "         (projection-perspective false)   # orthographic")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1217,9 +1066,9 @@ JANET_FN(cad_stats_overlay,
          "Called with no arguments, returns true if the overlay is visible, "
          "false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (stats-overlay)        — query\n"
-         "         (stats-overlay true)    — show overlay\n"
-         "         (stats-overlay false)   — hide overlay\n\n"
+         "Example: (stats-overlay)        # query\n"
+         "         (stats-overlay true)    # show overlay\n"
+         "         (stats-overlay false)   # hide overlay\n\n"
          "The overlay can also be toggled with Ctrl+Shift+Alt+S in the viewer window.")
 {
     janet_arity(argc, 0, 1);
@@ -1261,9 +1110,9 @@ JANET_FN(cad_help_set,
          "Get or set the help window visibility.\n\n"
          "Called with no arguments, returns true if visible, false if hidden.\n"
          "Called with one boolean argument, sets the visibility.\n\n"
-         "Example: (window-help-show)        — query\n"
-         "         (window-help-show true)    — show\n"
-         "         (window-help-show false)   — hide")
+         "Example: (window-help-show)        # query\n"
+         "         (window-help-show true)    # show\n"
+         "         (window-help-show false)   # hide")
 {
     janet_arity(argc, 0, 1);
     if (argc == 0) {
@@ -1358,17 +1207,11 @@ JANET_FN(cad_window_maximized_query,
     return result ? janet_wrap_true() : janet_wrap_false();
 }
 
-JANET_FN(cad_view_fit,
-         "(view-fit shape & shapes ; reset)",
-         "Fit camera to the bounding box of one or more shapes.\n\n"
-         "Animates the 3D camera over 0.5s to frame the union bounding\n"
-         "box of the given shapes. The current orbit angle is preserved.\n\n"
-         "Use :reset to return to the default isometric angle\n"
-         "(yaw=0, pitch=0.4).\n\n"
-         "Examples:\n"
-         "  (view-fit my-shape)\n"
-         "  (view-fit box1 cylinder2)\n"
-         "  (view-fit :reset part1 part2)")
+JANET_FN(_cad_view_fit,
+         "_view-fit (shape & shapes ; reset)",
+         "Fit camera to shapes. (thin primitive)\n\n"
+         "Like view-fit but without keyword parsing.\n"
+         ":reset keyword must be among the args.")
 {
     int shape_count = 0;
     int reset = 0;
@@ -1385,7 +1228,7 @@ JANET_FN(cad_view_fit,
     }
 
     if (shape_count < 1) {
-        janet_panic("expected at least one shape");
+        janet_panic("_view-fit: expected at least one shape");
     }
 
     void **shape_ptrs = janet_malloc((size_t)shape_count * sizeof(void *));
@@ -1405,22 +1248,11 @@ JANET_FN(cad_view_fit,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_view_fit_all,
-         "(view-fit-all ; hidden ; reset)",
-         "Fit camera to the bounding box of shapes.\n\n"
-         "By default only visible shapes are framed. "
-         "Use :hidden to include hidden shapes as well.\n"
-         "Animates the 3D camera over 0.5s to frame the union bounding box.\n"
-         "The current orbit angle is preserved.\n"
-         "If no shapes are found, resets the camera to default position.\n\n"
-         "Keywords:\n"
-         "  :hidden  — include hidden shapes in the bounding box\n"
-         "  :reset   — return to the default isometric angle\n\n"
-         "Examples:\n"
-         "  (view-fit-all)\n"
-         "  (view-fit-all :reset)\n"
-         "  (view-fit-all :hidden)\n"
-         "  (view-fit-all :hidden :reset)")
+JANET_FN(_cad_view_fit_all,
+         "_view-fit-all ; hidden ; reset",
+         "Fit camera to all shapes. (thin primitive)\n\n"
+         "Like view-fit-all but without keyword parsing.\n"
+         ":hidden and :reset keywords are detected directly.")
 {
     int reset = 0;
     int include_hidden = 0;
@@ -1438,15 +1270,10 @@ JANET_FN(cad_view_fit_all,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_view_angle,
-         "(view-angle yaw pitch ; distance)",
-         "Set camera to arbitrary yaw/pitch angles (radians).\n\n"
-         "Animates the 3D camera over 0.5s to the given orientation.\n"
-         "Yaw and pitch are in radians. An optional third argument sets\n"
-         "the camera distance (zoom); omitted preserves the current distance.\n\n"
-         "Examples:\n"
-         "  (view-angle 0 1.57)      — top view (yaw=0, pitch=~90°)\n"
-         "  (view-angle 0 0 100)     — look along +X at distance 100")
+JANET_FN(_cad_view_angle,
+         "_view-angle yaw pitch ; distance",
+         "Set camera angles. (thin primitive)\n\n"
+         "Like view-angle but with 2-3 positional args.")
 {
     janet_arity(argc, 2, 3);
     double yaw = janet_getnumber(argv, 0);
@@ -1456,13 +1283,9 @@ JANET_FN(cad_view_angle,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_edge_thickness,
-         "(edge-thickness &opt value)",
-         "Get or set the edge line thickness in NDC units.\n\n"
-         "Called with no arguments, returns the current thickness.\n"
-         "Called with one numeric argument, sets the thickness and returns it.\n\n"
-         "Example: (edge-thickness 0.008) — thicker lines\n"
-         "         (edge-thickness)      — query")
+JANET_FN(_cad_edge_thickness,
+         "_edge-thickness &opt value",
+         "Get or set edge thickness. (thin primitive)")
 {
     janet_arity(argc, 0, 1);
     double result;
@@ -1470,7 +1293,7 @@ JANET_FN(cad_edge_thickness,
         result = rust_edge_get_thickness();
     } else {
         if (!janet_checktype(argv[0], JANET_NUMBER)) {
-            janet_panic("edge-thickness: expected a number");
+            janet_panic("_edge-thickness: expected a number");
         }
         double val = janet_unwrap_number(argv[0]);
         rust_edge_set_thickness(val);
@@ -1479,25 +1302,21 @@ JANET_FN(cad_edge_thickness,
     return janet_wrap_number(result);
 }
 
-JANET_FN(cad_edge_color_inactive,
-         "(edge-color-inactive &opt r g b)",
-         "Get or set the inactive edge color as RGB values in [0, 1].\n\n"
-         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
-         "Called with three numeric arguments (r g b), sets the color.\n\n"
-         "Example: (edge-color-inactive 0.8 0.8 0.8)  — light grey\n"
-         "         (edge-color-inactive)               — query")
+JANET_FN(_cad_edge_color_inactive,
+         "_edge-color-inactive &opt r g b",
+         "Set inactive edge color. (thin primitive)")
 {
     janet_arity(argc, 0, 3);
     if (argc == 0) {
         return janet_wrap_nil();
     }
     if (argc != 3) {
-        janet_panic("edge-color-inactive expects 0 or 3 arguments");
+        janet_panic("_edge-color-inactive expects 0 or 3 arguments");
     }
     if (!janet_checktype(argv[0], JANET_NUMBER) ||
         !janet_checktype(argv[1], JANET_NUMBER) ||
         !janet_checktype(argv[2], JANET_NUMBER)) {
-        janet_panic("edge-color-inactive: r, g, b must be numbers");
+        janet_panic("_edge-color-inactive: r, g, b must be numbers");
     }
     double r = janet_unwrap_number(argv[0]);
     double g = janet_unwrap_number(argv[1]);
@@ -1506,25 +1325,21 @@ JANET_FN(cad_edge_color_inactive,
     return janet_wrap_nil();
 }
 
-JANET_FN(cad_edge_color_active,
-         "(edge-color-active &opt r g b)",
-         "Get or set the active (selected) edge color as RGB values in [0, 1].\n\n"
-         "Called with no arguments, returns the current color as a tuple '(r g b).\n"
-         "Called with three numeric arguments (r g b), sets the color.\n\n"
-         "Example: (edge-color-active 0.3 0.5 1.0)  — light blue\n"
-         "         (edge-color-active)               — query")
+JANET_FN(_cad_edge_color_active,
+         "_edge-color-active &opt r g b",
+         "Set active edge color. (thin primitive)")
 {
     janet_arity(argc, 0, 3);
     if (argc == 0) {
         return janet_wrap_nil();
     }
     if (argc != 3) {
-        janet_panic("edge-color-active expects 0 or 3 arguments");
+        janet_panic("_edge-color-active expects 0 or 3 arguments");
     }
     if (!janet_checktype(argv[0], JANET_NUMBER) ||
         !janet_checktype(argv[1], JANET_NUMBER) ||
         !janet_checktype(argv[2], JANET_NUMBER)) {
-        janet_panic("edge-color-active: r, g, b must be numbers");
+        janet_panic("_edge-color-active: r, g, b must be numbers");
     }
     double r = janet_unwrap_number(argv[0]);
     double g = janet_unwrap_number(argv[1]);
@@ -1535,62 +1350,43 @@ JANET_FN(cad_edge_color_active,
 
 JANET_FN(cad_write_step,
          "(write-step shape path)",
-         "Export a shape to a STEP file at the given path. "
-         "Returns nil on success, signals an error on failure.")
+         "")
 {
     janet_arity(argc, 2, 2);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    if (!janet_checktype(argv[1], JANET_STRING)) {
-        janet_panic("write-step: path must be a string");
-    }
     const uint8_t *path_bytes = janet_unwrap_string(argv[1]);
-    const char *path = (const char *)path_bytes;
-
-    int result = rust_write_step(data, path);
+    int result = rust_write_step(data, (const char *)path_bytes);
     if (result != 0) {
-        janet_panic("STEP export failed");
+        const char *msg = rust_take_last_error();
+        janet_panic(msg);
     }
     return janet_wrap_nil();
 }
 
 JANET_FN(cad_write_stl,
          "(write-stl shape path)",
-         "Export a shape to an STL file at the given path. "
-         "Returns nil on success, signals an error on failure.")
+         "")
 {
     janet_arity(argc, 2, 2);
     void *data = unwrap_shape_or_panic(argv[0], 0);
-    if (!janet_checktype(argv[1], JANET_STRING)) {
-        janet_panic("write-stl: path must be a string");
-    }
     const uint8_t *path_bytes = janet_unwrap_string(argv[1]);
-    const char *path = (const char *)path_bytes;
-
-    int result = rust_write_stl(data, path);
+    int result = rust_write_stl(data, (const char *)path_bytes);
     if (result != 0) {
-        janet_panic("STL export failed");
+        const char *msg = rust_take_last_error();
+        janet_panic(msg);
     }
     return janet_wrap_nil();
 }
 
 JANET_FN(cad_read_step,
-         "(read-step path &keys :eager :hide)",
-         "Read a STEP file from disk and return a shape.\n\n"
-         "Example:\n"
-         "  (read-step \"/tmp/model.step\")       — load from file\n"
-         "  (read-step \"/tmp/model.step\" :eager) — load and tessellate\n\n"
-         "Returns a rojcad/shape abstract value. Signals an error on failure.")
+         "(read-step path eager)",
+         "")
 {
-    janet_arity(argc, 1, 1);
-    if (!janet_checktype(argv[0], JANET_STRING)) {
-        janet_panic("read-step: path must be a string");
-    }
+    janet_arity(argc, 2, 2);
     const uint8_t *path_bytes = janet_unwrap_string(argv[0]);
-    const char *path = (const char *)path_bytes;
-    int eager = has_eager(argv, argc);
+    int eager = janet_truthy(argv[1]);
     void *shape = alloc_shape();
-    CAD_CHECK(rust_init_read_step(shape, path, eager));
-    maybe_hide(shape, argv, argc);
+    CAD_CHECK(rust_init_read_step(shape, (const char *)path_bytes, eager));
     return janet_wrap_abstract(shape);
 }
 
@@ -1606,108 +1402,71 @@ static const char *kw_plane(const Janet *argv, int32_t argc) {
 
 // ── 2D Primitives ─────────────────────────────────────────────────────────
 
-JANET_FN(cad_rect,
-         "(rect width depth &keys :w :d :h :wire :plane :at :eager :hide)",
-         "Create a rectangle.\n\n"
-         "Positional: (rect w d)\n"
-         "Keywords: :w :d or :h (dimensions), :wire (return Wire instead of Face),\n"
-         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
-         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Examples:\n"
-         "  (rect 10 20)                     — on XY plane\n"
-         "  (rect :w 10 :d 20 :wire)         — rect wire\n"
-         "  (rect :w 10 :h 20)               — :h alias for :d\n"
-         "  (rect :w 10 :d 20 :plane :xz :at [5 0 0]) — on XZ plane\n\n"
-         "Returns a rojcad/shape abstract value (FACE by default, WIRE with :wire).")
+JANET_FN(_cad_rect,
+         "(_rect w d is_wire plane ax ay az eager hide)",
+         "Create a rectangle. (thin primitive)\n\nAll args positional.")
 {
-    int eager = has_eager(argv, argc);
-    double w, d;
-    int has_w = kw_double(argv, argc, "w", &w);
-    int has_d = kw_double(argv, argc, "d", &d);
-    if (!has_d) has_d = kw_double(argv, argc, "h", &d);
-    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
-    double ax, ay, az;
-    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
-    const char *plane = kw_plane(argv, argc);
-
-    int pos_count = 0;
-    for (int i = 0; i < argc; i++) {
-        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
-        pos_count++;
+    janet_arity(argc, 9, 9);
+    double w = janet_getnumber(argv, 0);
+    double d = janet_getnumber(argv, 1);
+    int is_wire = janet_truthy(argv[2]);
+    const char *plane = "xy";
+    if (janet_checktype(argv[3], JANET_KEYWORD)) {
+        plane = (const char *)janet_unwrap_keyword(argv[3]);
     }
-
-    if (has_w && has_d) goto create;
-    if (pos_count >= 2) {
-        w = janet_unwrap_number(argv[0]);
-        d = janet_unwrap_number(argv[1]);
-        goto create;
-    }
-    janet_panic("rect: expected :w and :d keywords, or 2 positional args");
-
-create:
-    {
-        void *shape = alloc_shape();
-        CAD_CHECK(rust_init_rect(shape, w, d, is_wire, plane,
-                       has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
-        maybe_hide(shape, argv, argc);
-        return janet_wrap_abstract(shape);
-    }
-}
-
-JANET_FN(cad_circle,
-         "(circle radius &keys :r :wire :plane :at :eager :hide)",
-         "Create a circle.\n\n"
-         "Positional: (circle radius)\n"
-         "Keywords: :r (radius), :wire (return Wire instead of Face),\n"
-         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
-         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Examples:\n"
-         "  (circle 5)                       — on XY plane\n"
-         "  (circle :r 5 :wire)              — circle wire\n"
-         "  (circle :r 5 :plane :xz)         — on XZ plane\n\n"
-         "Returns a rojcad/shape abstract value.")
-{
-    int eager = has_eager(argv, argc);
-    double r;
-    int has_r = kw_double(argv, argc, "r", &r);
-    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
-    double ax, ay, az;
-    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
-    const char *plane = kw_plane(argv, argc);
-
-    if (!has_r) {
-        if (argc < 1) janet_panic("circle: radius is required");
-        r = janet_unwrap_number(argv[0]);
-    }
+    double ax = janet_getnumber(argv, 4);
+    double ay = janet_getnumber(argv, 5);
+    double az = janet_getnumber(argv, 6);
+    int eager = janet_truthy(argv[7]);
+    int hide_val = janet_truthy(argv[8]);
 
     void *shape = alloc_shape();
-    CAD_CHECK(rust_init_circle(shape, r, is_wire, plane,
-                     has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
-    maybe_hide(shape, argv, argc);
+    CAD_CHECK(rust_init_rect(shape, w, d, is_wire, plane, ax, ay, az, eager));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_polygon,
-         "(polygon &keys :pts :wire :plane :at :eager :hide)",
-         "Create a polygon from a list of 2D points.\n\n"
-         "Keywords: :pts (array of [x y] tuples), :wire (return Wire instead of Face),\n"
-         "         :plane (workplane, default :xy), :at (position [x y z]),\n"
-         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Examples:\n"
-         "  (polygon :pts [[0 0] [10 0] [10 10] [0 10]])  — square on XY\n"
-         "  (polygon :pts [[0 0] [10 0] [10 10]] :wire)    — L-shaped wire\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_circle,
+         "(_circle r is_wire plane ax ay az eager hide)",
+         "Create a circle. (thin primitive)\n\nAll args positional.")
 {
-    int eager = has_eager(argv, argc);
-    int is_wire = find_keyword(argv, argc, "wire") >= 0 ? 1 : 0;
-    double ax, ay, az;
-    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
-    const char *plane = kw_plane(argv, argc);
+    janet_arity(argc, 8, 8);
+    double r = janet_getnumber(argv, 0);
+    int is_wire = janet_truthy(argv[1]);
+    const char *plane = "xy";
+    if (janet_checktype(argv[2], JANET_KEYWORD)) {
+        plane = (const char *)janet_unwrap_keyword(argv[2]);
+    }
+    double ax = janet_getnumber(argv, 3);
+    double ay = janet_getnumber(argv, 4);
+    double az = janet_getnumber(argv, 5);
+    int eager = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
-    int pts_idx = find_keyword(argv, argc, "pts");
-    if (pts_idx < 0) janet_panic("polygon: :pts keyword is required");
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_circle(shape, r, is_wire, plane, ax, ay, az, eager));
+    if (hide_val) rust_shape_hide(shape);
+    return janet_wrap_abstract(shape);
+}
 
-    Janet pts_val = argv[pts_idx + 1];
+JANET_FN(_cad_polygon,
+         "(_polygon pts is_wire plane ax ay az eager hide)",
+         "Create a polygon. (thin primitive)\n\n"
+         "pts is a Janet array/tuple of [x y] pairs. All positional.")
+{
+    janet_arity(argc, 8, 8);
+    int is_wire = janet_truthy(argv[1]);
+    const char *plane = "xy";
+    if (janet_checktype(argv[2], JANET_KEYWORD)) {
+        plane = (const char *)janet_unwrap_keyword(argv[2]);
+    }
+    double ax = janet_getnumber(argv, 3);
+    double ay = janet_getnumber(argv, 4);
+    double az = janet_getnumber(argv, 5);
+    int eager = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
+
+    Janet pts_val = argv[0];
     if (!janet_checktype(pts_val, JANET_ARRAY) && !janet_checktype(pts_val, JANET_TUPLE)) {
         janet_panic("polygon: :pts expects an array or tuple of [x y] pairs");
     }
@@ -1723,7 +1482,6 @@ JANET_FN(cad_polygon,
         npts = janet_tuple_length(pts_data);
     }
 
-    // Flatten 2D points into a single array: [x0, y0, x1, y1, ...]
     double *flat = janet_smalloc((size_t)npts * 2 * sizeof(double));
     for (int32_t i = 0; i < npts; i++) {
         if (!janet_checktype(pts_data[i], JANET_ARRAY) && !janet_checktype(pts_data[i], JANET_TUPLE)) {
@@ -1745,144 +1503,85 @@ JANET_FN(cad_polygon,
     }
 
     void *shape = alloc_shape();
-    CAD_CHECK(rust_init_polygon(shape, flat, npts * 2, is_wire, plane,
-                      has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
-    maybe_hide(shape, argv, argc);
+    CAD_CHECK(rust_init_polygon(shape, flat, npts * 2, is_wire, plane, ax, ay, az, eager));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
 // ── Extrusion / Revolution ────────────────────────────────────────────────
 
-JANET_FN(cad_extrude,
-         "(extrude shape &keys :h :z :x :y :dir :both :eager :hide)",
-         "Extrude a Face into a Solid.\n\n"
-         "Keywords: :h (height, required), :z/:x/:y (cardinal axis),\n"
-         "         :dir [dx dy dz] (custom direction),\n"
-         "         :both (extrude both sides),\n"
-         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Default direction is the face normal.\n\n"
-         "Examples:\n"
-         "  (extrude face :h 20)               — along face normal\n"
-         "  (extrude face :h 20 :z)            — along Z axis\n"
-         "  (extrude face :h 10 :both)         — both sides\n"
-         "  (extrude face :h 5 :dir [0 0 -1])  — custom direction\n\n"
-         "Returns a rojcad/shape abstract value (SOLID).")
+JANET_FN(_cad_extrude,
+         "(_extrude shape height dx dy dz both eager hide)",
+         "Extrude a Face into a Solid. (thin primitive)\n\n"
+         "All args positional. Direction defaults to face normal when dx/dy/dz are NaN.")
 {
-    int eager = has_eager(argv, argc);
-    if (argc < 1) janet_panic("extrude: shape is required");
+    janet_arity(argc, 8, 8);
     void *data = unwrap_shape_or_panic(argv[0], 0);
+    double height = janet_getnumber(argv, 1);
+    double dx = janet_getnumber(argv, 2);
+    double dy = janet_getnumber(argv, 3);
+    double dz = janet_getnumber(argv, 4);
+    int both = janet_truthy(argv[5]);
+    int eager = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
 
-    double height;
-    if (!kw_double(argv, argc, "h", &height)) {
-        janet_panic("extrude: :h (height) is required");
-    }
-
-    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
-
-    double dx = 0, dy = 0, dz = 0;
-
-    if (find_keyword(argv, argc, "z") >= 0) {
-        dz = 1.0;
-    } else if (find_keyword(argv, argc, "y") >= 0) {
-        dy = 1.0;
-    } else if (find_keyword(argv, argc, "x") >= 0) {
-        dx = 1.0;
-    } else {
-        kw_array_3(argv, argc, "dir", &dx, &dy, &dz);
-    }
+    if (isnan(dx) && isnan(dy) && isnan(dz)) { dx = 0; dy = 0; dz = 0; }
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_extrude(shape, data, height, dx, dy, dz, both, eager));
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_revolve,
-         "(revolve shape &keys :a :ar :c :dir :eager :hide)",
-         "Revolve a Face into a Solid.\n\n"
-         "Angle via :a (degrees) or :ar (radians).\n"
-         "Axis via :c (point [x y z], default [0 0 0]) and :dir (direction, default [0 0 1]).\n"
-         "Keywords: :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Examples:\n"
-         "  (revolve face :a 360)                     — full revolution about Z\n"
-         "  (revolve face :a 180)                     — half revolution\n"
-         "  (revolve face :a 180 :c [0 0 0] :dir [0 1 0]) — about Y axis\n\n"
-         "Returns a rojcad/shape abstract value (SOLID).")
+JANET_FN(_cad_revolve,
+         "(_revolve shape angle ox oy oz dx dy dz eager hide)",
+         "Revolve a Face into a Solid. (thin primitive)\n\n"
+         "All args positional.")
 {
-    int eager = has_eager(argv, argc);
-    if (argc < 1) janet_panic("revolve: shape is required");
+    janet_arity(argc, 10, 10);
     void *data = unwrap_shape_or_panic(argv[0], 0);
+    double angle = janet_getnumber(argv, 1);
+    double ox = janet_getnumber(argv, 2);
+    double oy = janet_getnumber(argv, 3);
+    double oz = janet_getnumber(argv, 4);
+    double dx = janet_getnumber(argv, 5);
+    double dy = janet_getnumber(argv, 6);
+    double dz = janet_getnumber(argv, 7);
+    int eager = janet_truthy(argv[8]);
+    int hide_val = janet_truthy(argv[9]);
 
-    double angle;
-    if (kw_double(argv, argc, "ar", &angle)) {
-        /* radians — pass through */
-    } else if (kw_double(argv, argc, "a", &angle)) {
-        angle *= (M_PI / 180.0);
-    } else {
-        angle = 2.0 * M_PI; /* default: full circle */
-    }
-
-    double ox, oy, oz, dx, dy, dz;
-    int has_c = kw_array_3(argv, argc, "c", &ox, &oy, &oz);
-    int has_dir = kw_array_3(argv, argc, "dir", &dx, &dy, &dz);
-
-    if (!has_c) { ox = 0; oy = 0; oz = 0; }
-    if (!has_dir) { dx = 0; dy = 0; dz = 1; }
+    if (isnan(ox) && isnan(oy) && isnan(oz)) { ox = 0; oy = 0; oz = 0; }
+    if (isnan(dx) && isnan(dy) && isnan(dz)) { dx = 0; dy = 0; dz = 1; }
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_revolve(shape, data, angle, ox, oy, oz, dx, dy, dz, eager));
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_extrude_polygon,
-         "(extrude-polygon points height &keys :h :plane :at :eager :hide)",
-         "Create a Solid by extruding a polygon from points.\n\n"
-         "Positional: (extrude-polygon points height)\n"
-         "Points is an array of [x y] tuples.\n"
-         "Keywords: :h (height), :plane (workplane, default :xy),\n"
-         "         :at (position [x y z]),\n"
-         "         :eager (tessellate immediately), :hide (skip auto-show).\n\n"
-         "Examples:\n"
-         "  (extrude-polygon [[0 0][10 0][10 10][0 10]] 20)\n"
-         "  (extrude-polygon [[0 0][10 0][10 10]] :h 5)\n\n"
-         "Returns a rojcad/shape abstract value (SOLID).")
+JANET_FN(_cad_extrude_polygon,
+         "(_extrude-polygon points height plane ax ay az eager hide)",
+         "Extrude polygon from points array. (thin primitive)\n\n"
+         "Points is a Janet array/tuple of [x y] pairs. All positional.")
 {
-    int eager = has_eager(argv, argc);
-    double ax, ay, az;
-    int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
-    const char *plane = kw_plane(argv, argc);
+    janet_arity(argc, 8, 8);
+    double height = janet_getnumber(argv, 1);
 
-    double height;
-    int has_h = kw_double(argv, argc, "h", &height);
-
-    // Find points value — before any keywords
-    if (argc < 1) janet_panic("extrude-polygon: points are required");
-    int pos_count = 0;
-    for (int i = 0; i < argc; i++) {
-        if (janet_checktype(argv[i], JANET_KEYWORD)) break;
-        pos_count++;
-    }
-
-    Janet pts_val;
-    if (pos_count >= 1) {
-        pts_val = argv[0];
-    } else {
-        int pts_idx = find_keyword(argv, argc, "pts");
-        if (pts_idx < 0) janet_panic("extrude-polygon: provide points as first argument or :pts");
-        pts_val = argv[pts_idx + 1];
-    }
-
-    if (has_h && pos_count >= 2) {
-        height = janet_unwrap_number(argv[1]);
-    } else if (!has_h) {
-        if (pos_count >= 2) {
-            height = janet_unwrap_number(argv[1]);
-        } else {
-            janet_panic("extrude-polygon: height is required");
+    /* plane: keyword or nil */
+    const char *plane = "xy";
+    if (!janet_checktype(argv[2], JANET_NIL)) {
+        if (janet_checktype(argv[2], JANET_KEYWORD)) {
+            plane = (const char *)janet_unwrap_keyword(argv[2]);
         }
     }
 
+    double ax = janet_getnumber(argv, 3);
+    double ay = janet_getnumber(argv, 4);
+    double az = janet_getnumber(argv, 5);
+    int eager = janet_truthy(argv[6]);
+    int hide_val = janet_truthy(argv[7]);
+
+    Janet pts_val = argv[0];
     if (!janet_checktype(pts_val, JANET_ARRAY) && !janet_checktype(pts_val, JANET_TUPLE)) {
         janet_panic("extrude-polygon: points must be an array or tuple of [x y] pairs");
     }
@@ -1920,18 +1619,16 @@ JANET_FN(cad_extrude_polygon,
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_extrude_polygon(shape, flat, npts * 2, height, plane,
-                              has_at ? ax : 0, has_at ? ay : 0, has_at ? az : 0, eager));
-    maybe_hide(shape, argv, argc);
+                              ax, ay, az, eager));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
 // ── Wire Operations ───────────────────────────────────────────────────────
 
-JANET_FN(cad_wire_to_face,
-         "(wire-to-face wire &keys :eager :hide)",
-         "Convert a Wire shape into a Face by filling its boundary.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (FACE).")
+JANET_FN(_cad_wire_to_face,
+         "(_wire-to-face wire &keys :eager :hide)",
+         "")
 {
     janet_arity(argc, 1, 2);
     int eager = has_eager(argv, argc);
@@ -1942,11 +1639,9 @@ JANET_FN(cad_wire_to_face,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_fillet,
-         "(wire-fillet wire &keys :r :eager :hide)",
-         "Round all vertices of a closed Wire by a radius.\n\n"
-         "Keywords: :r (radius, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_fillet,
+         "(_wire-fillet wire &keys :r :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1960,11 +1655,9 @@ JANET_FN(cad_wire_fillet,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_chamfer,
-         "(wire-chamfer wire &keys :d :eager :hide)",
-         "Bevel all vertices of a closed Wire by a distance.\n\n"
-         "Keywords: :d (distance, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_chamfer,
+         "(_wire-chamfer wire &keys :d :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1978,11 +1671,9 @@ JANET_FN(cad_wire_chamfer,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_wire_offset,
-         "(wire-offset wire &keys :d :eager :hide)",
-         "Create a parallel offset of a closed Wire by a distance.\n\n"
-         "Keywords: :d (distance, required), :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_wire_offset,
+         "(_wire-offset wire &keys :d :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *data = unwrap_shape_or_panic(argv[0], 0);
@@ -1998,17 +1689,9 @@ JANET_FN(cad_wire_offset,
 
 // ── Sketch ────────────────────────────────────────────────────────────────
 
-JANET_FN(cad_sketch,
-         "(sketch &keys :plane :at)",
-         "Create a new sketch on a workplane.\n\n"
-         "Keywords: :plane (workplane, default :xy), :at (position [x y z]).\n\n"
-         "Returns a rojcad/sketch abstract value. Each sketch operation returns\n"
-         "a new sketch — no mutation.\n\n"
-         "Examples:\n"
-         "  (sketch)                              — XY plane at origin\n"
-         "  (sketch :plane :xz :at [10 0 5])      — XZ plane at [10, 0, 5]\n\n"
-         "Combine with -> for threading:\n"
-         "  (-> (sketch) (line-to 10 0) (line-to 10 10) (close-sketch))")
+JANET_FN(_cad_sketch,
+         "(_sketch &keys :plane :at)",
+         "")
 {
     double ax, ay, az;
     int has_at = kw_array_3(argv, argc, "at", &ax, &ay, &az);
@@ -2038,27 +1721,27 @@ static Janet sketch_op(Janet sketch_val, void (*op)(void *, void *, double, doub
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_move_to,
-         "(move-to sketch x y)",
-         "Move the sketch cursor to (x, y) without drawing. Returns a new sketch.")
+JANET_FN(_cad_move_to,
+         "(_move-to sketch x y)",
+         "")
 {
     janet_arity(argc, 3, 3);
     return sketch_op(argv[0], rust_sketch_move_to,
                      janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
 }
 
-JANET_FN(cad_line_to,
-         "(line-to sketch x y)",
-         "Draw a line from the current cursor to (x, y). Returns a new sketch.")
+JANET_FN(_cad_line_to,
+         "(_line-to sketch x y)",
+         "")
 {
     janet_arity(argc, 3, 3);
     return sketch_op(argv[0], rust_sketch_line_to,
                      janet_unwrap_number(argv[1]), janet_unwrap_number(argv[2]));
 }
 
-JANET_FN(cad_line_dx,
-         "(line-dx sketch dx)",
-         "Draw a horizontal line by dx units. Returns a new sketch.")
+JANET_FN(_cad_line_dx,
+         "(_line-dx sketch dx)",
+         "")
 {
     janet_arity(argc, 2, 2);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2067,9 +1750,9 @@ JANET_FN(cad_line_dx,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_line_dy,
-         "(line-dy sketch dy)",
-         "Draw a vertical line by dy units. Returns a new sketch.")
+JANET_FN(_cad_line_dy,
+         "(_line-dy sketch dy)",
+         "")
 {
     janet_arity(argc, 2, 2);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2078,9 +1761,9 @@ JANET_FN(cad_line_dy,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_line_dx_dy,
-         "(line-dx-dy sketch dx dy)",
-         "Draw a line by (dx, dy) offset. Returns a new sketch.")
+JANET_FN(_cad_line_dx_dy,
+         "(_line-dx-dy sketch dx dy)",
+         "")
 {
     janet_arity(argc, 3, 3);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2091,10 +1774,9 @@ JANET_FN(cad_line_dx_dy,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_arc_to,
-         "(arc-to sketch x2 y2 x3 y3)",
-         "Draw a circular arc from current cursor through (x2, y2) to (x3, y3). "
-         "Returns a new sketch.")
+JANET_FN(_cad_arc_to,
+         "(_arc-to sketch x2 y2 x3 y3)",
+         "")
 {
     janet_arity(argc, 5, 5);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2107,11 +1789,9 @@ JANET_FN(cad_arc_to,
     return janet_wrap_abstract(dest);
 }
 
-JANET_FN(cad_close_sketch,
-         "(close-sketch sketch &keys :eager :hide)",
-         "Close the sketch and return a Face. Adds a closing edge if needed.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (FACE).")
+JANET_FN(_cad_close_sketch,
+         "(_close-sketch sketch &keys :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2122,11 +1802,9 @@ JANET_FN(cad_close_sketch,
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_build_wire,
-         "(build-wire sketch &keys :eager :hide)",
-         "Return the sketch as an unclosed Wire. Does not close the loop.\n\n"
-         "Keywords: :eager, :hide\n\n"
-         "Returns a rojcad/shape abstract value (WIRE).")
+JANET_FN(_cad_build_wire,
+         "(_build-wire sketch &keys :eager :hide)",
+         "")
 {
     int eager = has_eager(argv, argc);
     void *src = unwrap_sketch_or_panic(argv[0], 0);
@@ -2168,114 +1846,74 @@ JANET_FN(cad_solid_q,
 
 // ── Text ──────────────────────────────────────────────────────────────────
 
-JANET_FN(cad_text,
-         "(text string font-path size &keys :depth :plane :at :eager :hide)",
-         "Create a 2D or 3D text shape from a TrueType/OpenType font.\n\n"
-         "Positional: (text \"Hello\" \"DejaVuSans.ttf\" 10)\n"
-         "Keywords: :depth (extrude 3D text), :plane (\"xy\"/\"xz\"/\"yz\"...),\n"
-         "         :at (position [x y z]), :eager, :hide.\n\n"
-         "Without :depth returns a Face. With :depth returns an extruded Solid.\n\n"
-         "Examples:\n"
-         "  (text \"Hi\" \"font.ttf\" 10)              — 2D text face\n"
-         "  (text \"Hi\" \"font.ttf\" 10 :depth 5)     — 3D extruded text\n"
-         "  (text \"Hi\" \"font.ttf\" 10 :plane \"xz\") — on XZ plane\n"
-         "  (text \"Hi\" \"font.ttf\" 10 :at [5 0 0])  — positioned\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_text,
+          "(_text str font size depth both plane ax ay az eager hide)",
+          "Create a 2D or 3D text shape. (thin primitive)\n\nAll args positional.")
 {
-    janet_arity(argc, 3, -1);
-
+    janet_arity(argc, 11, 11);
     const char *text_str = (const char *)janet_unwrap_string(argv[0]);
     const char *font_str = (const char *)janet_unwrap_string(argv[1]);
-    double size = janet_unwrap_number(argv[2]);
-
-    double depth = 0.0;
-    int has_depth = kw_double(argv, argc, "depth", &depth);
-    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
-    int eager = has_eager(argv, argc);
-
-    /* Parse :plane and :at */
+    double size = janet_getnumber(argv, 2);
+    double depth = janet_getnumber(argv, 3);
+    int both = janet_truthy(argv[4]);
     const char *plane = NULL;
-    int plane_used = 0;
-    {
-        int pi = find_keyword(argv, argc, "plane");
-        if (pi >= 0 && pi + 1 < argc) {
-            plane = (const char *)janet_unwrap_keyword(argv[pi + 1]);
-            plane_used = 1;
-        }
+    if (janet_checktype(argv[5], JANET_KEYWORD)) {
+        plane = (const char *)janet_unwrap_keyword(argv[5]);
     }
-    double ax = 0.0, ay = 0.0, az = 0.0;
-    kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    double ax = janet_getnumber(argv, 6);
+    double ay = janet_getnumber(argv, 7);
+    double az = janet_getnumber(argv, 8);
+    int eager = janet_truthy(argv[9]);
+    int hide_val = janet_truthy(argv[10]);
 
     void *shape = alloc_shape();
     int rc;
-    if (has_depth && depth > 0.0) {
+    if (depth > 0.0) {
         rc = rust_init_text_extruded(shape, text_str, font_str, size,
-                                      depth, both,
-                                      plane_used ? plane : NULL,
-                                      ax, ay, az, eager);
+                                       depth, both, plane, ax, ay, az, eager);
     } else {
         rc = rust_init_text(shape, text_str, font_str, size,
-                             plane_used ? plane : NULL,
-                             ax, ay, az, eager);
+                             plane, ax, ay, az, eager);
     }
     if (rc) {
         const char *msg = rust_take_last_error();
         janet_panic(msg);
     }
-    maybe_hide(shape, argv, argc);
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_text3d,
-         "(text3d string font-path size depth &keys :plane :at :both :eager :hide)",
-         "Create a 3D extruded text shape.\n\n"
-         "Positional: (text3d \"Hello\" \"DejaVuSans.ttf\" 10 5)\n"
-         "Keywords: :plane (\"xy\"/\"xz\"/\"yz\"...), :at (position [x y z]),\n"
-         "         :both (extrude symetrically), :eager, :hide.\n\n"
-         "Equivalent to (text ... :depth depth).\n\n"
-         "Returns a rojcad/shape abstract value.")
+JANET_FN(_cad_text3d,
+          "(_text3d str font size depth both plane ax ay az eager hide)",
+          "Create a 3D extruded text shape. (thin primitive)\n\nAll args positional.")
 {
-    janet_arity(argc, 4, -1);
-
+    janet_arity(argc, 11, 11);
     const char *text_str = (const char *)janet_unwrap_string(argv[0]);
     const char *font_str = (const char *)janet_unwrap_string(argv[1]);
-    double size = janet_unwrap_number(argv[2]);
-    double depth = janet_unwrap_number(argv[3]);
-
-    int both = find_keyword(argv, argc, "both") >= 0 ? 1 : 0;
-    int eager = has_eager(argv, argc);
-
+    double size = janet_getnumber(argv, 2);
+    double depth = janet_getnumber(argv, 3);
+    int both = janet_truthy(argv[4]);
     const char *plane = NULL;
-    int plane_used = 0;
-    {
-        int pi = find_keyword(argv, argc, "plane");
-        if (pi >= 0 && pi + 1 < argc) {
-            plane = (const char *)janet_unwrap_keyword(argv[pi + 1]);
-            plane_used = 1;
-        }
+    if (janet_checktype(argv[5], JANET_KEYWORD)) {
+        plane = (const char *)janet_unwrap_keyword(argv[5]);
     }
-    double ax = 0.0, ay = 0.0, az = 0.0;
-    kw_array_3(argv, argc, "at", &ax, &ay, &az);
+    double ax = janet_getnumber(argv, 6);
+    double ay = janet_getnumber(argv, 7);
+    double az = janet_getnumber(argv, 8);
+    int eager = janet_truthy(argv[9]);
+    int hide_val = janet_truthy(argv[10]);
 
     void *shape = alloc_shape();
     CAD_CHECK(rust_init_text_extruded(shape, text_str, font_str, size,
-                                       depth, both,
-                                       plane_used ? plane : NULL,
-                                       ax, ay, az, eager));
-    maybe_hide(shape, argv, argc);
+                                       depth, both, plane, ax, ay, az, eager));
+    if (hide_val) rust_shape_hide(shape);
     return janet_wrap_abstract(shape);
 }
 
-JANET_FN(cad_list_fonts,
-         "(list-fonts)",
-         "List available system fonts.\n\n"
-         "Scans standard OS font directories and returns an array of\n"
-         "[name path aspect] tuples for each discovered TTF/OTF font.\n"
-         "Aspect is :regular, :bold, :italic, or :bold-italic.\n\n"
-         "Examples:\n"
-         "  (list-fonts)  — all system fonts\n"
-         "  (keep [name path] (list-fonts)) — just names and paths\n\n"
-         "Returns an array of tuples.")
+JANET_FN(_cad_list_fonts,
+         "(_list-fonts)",
+         "List available system fonts as raw strings. (thin primitive)\n\n"
+         "Returns an array of \"name|path|aspect\" strings.")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
@@ -2285,55 +1923,18 @@ JANET_FN(cad_list_fonts,
 
     JanetArray *arr = janet_array(count);
     for (int i = 0; i < count; i++) {
-        /* Split "name|path|aspect" */
-        char *entry = list[i];
-        char *sep1 = strchr(entry, '|');
-        if (!sep1) continue;
-        *sep1 = '\0';
-        char *name = entry;
-        char *rest = sep1 + 1;
-        char *sep2 = strchr(rest, '|');
-        if (!sep2) continue;
-        *sep2 = '\0';
-        char *path = rest;
-        char *aspect_str = sep2 + 1;
-
-        /* Build Janet tuple (name path aspect) */
-        Janet parts[3];
-        parts[0] = janet_cstringv(name);
-        parts[1] = janet_cstringv(path);
-        /* Map aspect string to keyword */
-        JanetKeyword kw;
-        if (strcmp(aspect_str, "bold") == 0) {
-            kw = janet_ckeyword("bold");
-        } else if (strcmp(aspect_str, "italic") == 0) {
-            kw = janet_ckeyword("italic");
-        } else if (strcmp(aspect_str, "bold-italic") == 0) {
-            kw = janet_ckeyword("bold-italic");
-        } else {
-            kw = janet_ckeyword("regular");
-        }
-        parts[2] = janet_wrap_keyword(kw);
-
-        const Janet *tup = janet_tuple_n(parts, 3);
-        janet_array_push(arr, janet_wrap_tuple(tup));
+        janet_array_push(arr, janet_cstringv(list[i]));
     }
 
     rust_free_fonts_list(list, count);
     return janet_wrap_array(arr);
 }
 
-// ── Shape Query Functions ────────────────────────────────────────────────────
+// ── Thin shape query primitives ──────────────────────────────────────────────
 
-JANET_FN(cad_selected_shapes,
-         "(selected-shapes)",
-         "Return a tuple of ShapeData abstract values currently selected in the"
-         " 3D viewer.\n\n"
-         "Returns an empty tuple `()` if nothing is selected.\n\n"
-         "Examples:\n"
-         "  (selected-shapes)                     — get selected shapes\n"
-         "  (each s (selected-shapes) (hide s))   — hide all selected\n\n"
-         "Returns a tuple of rojcad/shape abstract values.")
+JANET_FN(_cad_get_selected_ids,
+         "_get-selected-ids",
+         "Return a tuple of selected shape IDs. (thin primitive)")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
@@ -2343,8 +1944,7 @@ JANET_FN(cad_selected_shapes,
 
     Janet *parts = janet_smalloc(sizeof(Janet) * count);
     for (size_t i = 0; i < count; i++) {
-        void *ptr = rust_get_shape_pointer(ids[i]);
-        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+        parts[i] = janet_wrap_number((double)ids[i]);
     }
     const Janet *tup = janet_tuple_n(parts, count);
     janet_sfree(parts);
@@ -2352,40 +1952,20 @@ JANET_FN(cad_selected_shapes,
     return janet_wrap_tuple(tup);
 }
 
-JANET_FN(cad_list_shapes,
-         "(list-shapes &keys :visible :hidden)",
-         "Return a tuple of all registered ShapeData abstract values,"
-         " optionally filtered by visibility.\n\n"
-         "With no arguments, returns all registered shapes.\n"
-         "With :visible, returns only visible shapes.\n"
-         "With :hidden, returns only hidden shapes.\n"
-         "If both :visible and :hidden are given, :hidden takes precedence.\n\n"
-         "Only shapes that have been shown (registered in the viewer)"
-         " are included.\n\n"
-         "Examples:\n"
-         "  (list-shapes)                    — all registered shapes\n"
-         "  (list-shapes :visible)           — visible shapes only\n"
-         "  (list-shapes :hidden)            — hidden shapes only\n"
-         "  (each s (list-shapes) (print s)) — print all shapes\n\n"
-         "Returns a tuple of rojcad/shape abstract values.")
+JANET_FN(_cad_get_registered_ids,
+         "_get-registered-ids filter",
+         "Return a tuple of registered shape IDs by filter. (thin primitive)\n\n"
+         "Filter: 0=all, 1=visible, 2=hidden.")
 {
-    int hidden = find_keyword(argv, argc, "hidden") >= 0 ? 1 : 0;
-    int visible = find_keyword(argv, argc, "visible") >= 0 ? 1 : 0;
-
-    uint8_t filter = 0;
-    if (hidden) {
-        filter = 2;
-    } else if (visible) {
-        filter = 1;
-    }
+    janet_arity(argc, 1, 1);
+    double filter = janet_getnumber(argv, 0);
 
     size_t count = 0;
-    uint64_t *ids = rust_get_registered_shape_ids(filter, &count);
+    uint64_t *ids = rust_get_registered_shape_ids((uint8_t)filter, &count);
 
     Janet *parts = janet_smalloc(sizeof(Janet) * count);
     for (size_t i = 0; i < count; i++) {
-        void *ptr = rust_get_shape_pointer(ids[i]);
-        parts[i] = ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+        parts[i] = janet_wrap_number((double)ids[i]);
     }
     const Janet *tup = janet_tuple_n(parts, count);
     janet_sfree(parts);
@@ -2393,89 +1973,16 @@ JANET_FN(cad_list_shapes,
     return janet_wrap_tuple(tup);
 }
 
-/* ── CAD function metadata ────────────────────────────────────────────────── */
-
-static const char *cad_fn_categories[][2] = {
-    {"box", "primitives"},
-    {"sphere", "primitives"},
-    {"cylinder", "primitives"},
-    {"cone", "primitives"},
-    {"torus", "primitives"},
-    {"cut", "booleans"},
-    {"common", "booleans"},
-    {"fuse", "booleans"},
-    {"translate", "transforms"},
-    {"rotate", "transforms"},
-    {"scale", "transforms"},
-    {"mirror", "transforms"},
-    {"shape-type", "queries"},
-    {"visible?", "queries"},
-    {"purge", "registry"},
-    {"hide", "registry"},
-    {"show", "registry"},
-    {"registry-remove", "registry"},
-    {"write-step", "io"},
-    {"write-stl", "io"},
-    {"read-step", "io"},
-    {"on-select", "selection"},
-    {"poll-selection", "selection"},
-    {"edge-toggle-inactive", "edge-styling"},
-    {"edge-toggle-active", "edge-styling"},
-    {"edge-inactive-show?", "edge-styling"},
-    {"edge-active-show?", "edge-styling"},
-    {"edge-thickness", "edge-styling"},
-    {"edge-color-inactive", "edge-styling"},
-    {"edge-color-active", "edge-styling"},
-
-    {"rect", "2d-primitives"},
-    {"circle", "2d-primitives"},
-    {"polygon", "2d-primitives"},
-    {"extrude", "operations"},
-    {"revolve", "operations"},
-    {"extrude-polygon", "operations"},
-    {"wire-to-face", "wire-operations"},
-    {"wire-fillet", "wire-operations"},
-    {"wire-chamfer", "wire-operations"},
-    {"wire-offset", "wire-operations"},
-    {"sketch", "sketch"},
-    {"move-to", "sketch"},
-    {"line-to", "sketch"},
-    {"line-dx", "sketch"},
-    {"line-dy", "sketch"},
-    {"line-dx-dy", "sketch"},
-    {"arc-to", "sketch"},
-    {"close-sketch", "sketch"},
-    {"build-wire", "sketch"},
-    {"wire?", "queries"},
-    {"face?", "queries"},
-    {"solid?", "queries"},
-    {"view-fit", "view"},
-    {"view-fit-all", "view"},
-    {"view-angle", "view"},
-    {"stats-overlay", "view"},
-    {"window-help-toggle", "view"},
-    {"window-help-show?", "view"},
-    {"window-help-show", "view"},
-    {"text", "text"},
-    {"text3d", "text"},
-    {"list-fonts", "text"},
-    {"selected-shapes", "queries"},
-    {"list-shapes", "queries"},
-
-    {"quit-requested",         "view"},
-    {"edge-hidden-toggle",     "edge-styling"},
-    {"edge-hidden-show?",      "edge-styling"},
-    {"edge-hidden",            "edge-styling"},
-    {"projection-toggle",      "view"},
-    {"projection-perspective", "view"},
-    {"window-size",            "view"},
-    {"window-size?",           "view"},
-    {"window-fullscreen",      "view"},
-    {"window-fullscreen?",     "view"},
-    {"window-maximized",       "view"},
-    {"window-maximized?",      "view"},
-    {NULL, NULL}
-};
+JANET_FN(_cad_get_shape_by_id,
+         "_get-shape id",
+         "Look up a shape pointer by ID. (thin primitive)\n\n"
+         "Returns the shape abstract value or nil.")
+{
+    janet_arity(argc, 1, 1);
+    uint64_t id = (uint64_t)janet_getnumber(argv, 0);
+    void *ptr = rust_get_shape_pointer(id);
+    return ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
+}
 
 /* ── Registration ───────────────────────────────────────────────────────── */
 
@@ -2490,123 +1997,107 @@ void cad_register_functions(JanetTable *env) {
     /* Manual 3-field JanetReg array (avoid JANET_REG macros which emit 5-field
      * JanetRegExt initializers, triggering -Wexcess-initializers warnings). */
     JanetReg cfuns[] = {
-        {"box",                    cad_box,                    cad_box_docstring_},
-        {"sphere",                 cad_sphere,                 cad_sphere_docstring_},
-        {"cylinder",               cad_cylinder,               cad_cylinder_docstring_},
-        {"cone",                   cad_cone,                   cad_cone_docstring_},
-        {"torus",                  cad_torus,                  cad_torus_docstring_},
-        {"cut",                    cad_cut,                    cad_cut_docstring_},
-        {"common",                 cad_common,                 cad_common_docstring_},
-        {"fuse",                   cad_fuse,                   cad_fuse_docstring_},
-        {"translate",              cad_translate,              cad_translate_docstring_},
-        {"rotate",                 cad_rotate,                 cad_rotate_docstring_},
-        {"scale",                  cad_scale,                  cad_scale_docstring_},
-        {"mirror",                 cad_mirror,                 cad_mirror_docstring_},
+        /* Non-underscore thin primitives -- captured by boot.janet */
+        {"sphere",                 _cad_sphere,                _cad_sphere_docstring_},
+        {"cone",                   _cad_cone,                  _cad_cone_docstring_},
+        {"cylinder",               _cad_init_cylinder,         _cad_init_cylinder_docstring_},
+        {"torus",                  _cad_init_torus,            _cad_init_torus_docstring_},
+        {"cut",                    _cad_cut,                   _cad_cut_docstring_},
+        {"common",                 _cad_common,                _cad_common_docstring_},
+        {"fuse",                   _cad_fuse,                  _cad_fuse_docstring_},
+        {"compound",               _cad_compound,              _cad_compound_docstring_},
+        {"set-color",              _cad_set_color,             _cad_set_color_docstring_},
+        {"get-color",              _cad_get_color,             _cad_get_color_docstring_},
+        {"translate",              _cad_translate,             _cad_translate_docstring_},
+        {"rotate",                 _cad_rotate,                _cad_rotate_docstring_},
+        {"scale",                  _cad_scale,                 _cad_scale_docstring_},
+        {"mirror",                 _cad_mirror,                _cad_mirror_docstring_},
+        {"rect",                   _cad_rect,                  _cad_rect_docstring_},
+        {"circle",                 _cad_circle,                _cad_circle_docstring_},
+        {"polygon",                _cad_polygon,               _cad_polygon_docstring_},
+        {"extrude",                _cad_extrude,               _cad_extrude_docstring_},
+        {"revolve",                _cad_revolve,               _cad_revolve_docstring_},
+        {"extrude-polygon",        _cad_extrude_polygon,       _cad_extrude_polygon_docstring_},
+        {"text",                   _cad_text,                  _cad_text_docstring_},
+        {"text3d",                 _cad_text3d,                _cad_text3d_docstring_},
+        {"list-fonts",             _cad_list_fonts,            _cad_list_fonts_docstring_},
+
+        /* Renamed underscore-only primitives -- no non-underscore equivalent */
+        {"_init-box",              _cad_init_box,              _cad_init_box_docstring_},
+        {"_init-cube",             _cad_init_cube,             _cad_init_cube_docstring_},
+        {"_init-box-from-corners", _cad_init_box_from_corners, _cad_init_box_from_corners_docstring_},
+        {"_init-cylinder-from-points", _cad_init_cylinder_from_points, _cad_init_cylinder_from_points_docstring_},
+        {"_init-cylinder-point-dir",   _cad_init_cylinder_point_dir, _cad_init_cylinder_point_dir_docstring_},
+
         {"shape-type",             cad_shape_type,             cad_shape_type_docstring_},
 
         {"purge",                  cad_purge,                  cad_purge_docstring_},
         {"hide",                   cad_hide,                   cad_hide_docstring_},
         {"show",                   cad_show,                   cad_show_docstring_},
         {"registry-remove",        cad_registry_remove,        cad_registry_remove_docstring_},
+        {"_highlight-shape",       _cad_highlight_shape,       _cad_highlight_shape_docstring_},
+        {"_highlight-clear",       _cad_highlight_clear,       _cad_highlight_clear_docstring_},
         {"visible?",               cad_visible_q,              cad_visible_q_docstring_},
         {"write-step",             cad_write_step,             cad_write_step_docstring_},
         {"write-stl",              cad_write_stl,              cad_write_stl_docstring_},
         {"read-step",              cad_read_step,              cad_read_step_docstring_},
-        {"on-select",              cad_on_select,              cad_on_select_docstring_},
-        {"poll-selection",         cad_poll_selection,         cad_poll_selection_docstring_},
-        {"selected-shapes",        cad_selected_shapes,        cad_selected_shapes_docstring_},
-        {"list-shapes",            cad_list_shapes,            cad_list_shapes_docstring_},
-        {"quit-requested",         cad_quit_requested,         cad_quit_requested_docstring_},
+        {"quit-requested",         _cad_quit_requested,         _cad_quit_requested_docstring_},
+        {"_poll-selection-raw",    _cad_poll_selection_raw,    _cad_poll_selection_raw_docstring_},
+        {"_get-selected-ids",      _cad_get_selected_ids,      _cad_get_selected_ids_docstring_},
+        {"_get-registered-ids",    _cad_get_registered_ids,    _cad_get_registered_ids_docstring_},
+        {"_get-shape",             _cad_get_shape_by_id,       _cad_get_shape_by_id_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},
         {"edge-inactive-show?",    cad_edge_inactive_showing,  cad_edge_inactive_showing_docstring_},
         {"edge-active-show?",      cad_edge_active_showing,    cad_edge_active_showing_docstring_},
-        {"edge-thickness",         cad_edge_thickness,         cad_edge_thickness_docstring_},
-        {"edge-color-inactive",    cad_edge_color_inactive,    cad_edge_color_inactive_docstring_},
-        {"edge-color-active",      cad_edge_color_active,      cad_edge_color_active_docstring_},
+        {"edge-thickness",         _cad_edge_thickness,         _cad_edge_thickness_docstring_},
+        {"edge-color-inactive",    _cad_edge_color_inactive,    _cad_edge_color_inactive_docstring_},
+        {"edge-color-active",      _cad_edge_color_active,      _cad_edge_color_active_docstring_},
         {"edge-hidden-toggle",     cad_edge_hidden_toggle,     cad_edge_hidden_toggle_docstring_},
         {"edge-hidden-show?",      cad_edge_hidden_showing,    cad_edge_hidden_showing_docstring_},
         {"edge-hidden",            cad_edge_hidden,            cad_edge_hidden_docstring_},
         {"projection-toggle",      cad_projection_toggle,      cad_projection_toggle_docstring_},
         {"projection-perspective", cad_projection_perspective, cad_projection_perspective_docstring_},
-
-        /* Stats overlay */
         {"stats-overlay",          cad_stats_overlay,          cad_stats_overlay_docstring_},
-
-        /* Help overlay */
         {"window-help-toggle",     cad_help_toggle,            cad_help_toggle_docstring_},
         {"window-help-show?",      cad_help_showing,           cad_help_showing_docstring_},
         {"window-help-show",       cad_help_set,               cad_help_set_docstring_},
-
-        /* Window size */
         {"window-size",            cad_window_size,            cad_window_size_docstring_},
         {"window-size?",           cad_window_size_query,      cad_window_size_query_docstring_},
-
-        /* Window fullscreen */
         {"window-fullscreen",      cad_window_fullscreen,      cad_window_fullscreen_docstring_},
         {"window-fullscreen?",     cad_window_fullscreen_query,cad_window_fullscreen_query_docstring_},
-
-        /* Window maximized */
         {"window-maximized",       cad_window_maximized,       cad_window_maximized_docstring_},
         {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
 
-        /* View fit */
-        {"view-fit",               cad_view_fit,               cad_view_fit_docstring_},
-        {"view-fit-all",           cad_view_fit_all,           cad_view_fit_all_docstring_},
+        /* Wire operations (non-underscore only) */
+        {"wire-to-face",           _cad_wire_to_face,           _cad_wire_to_face_docstring_},
+        {"wire-fillet",            _cad_wire_fillet,            _cad_wire_fillet_docstring_},
+        {"wire-chamfer",           _cad_wire_chamfer,           _cad_wire_chamfer_docstring_},
+        {"wire-offset",            _cad_wire_offset,            _cad_wire_offset_docstring_},
 
-        /* View angle (low-level primitive) */
-        {"view-angle",             cad_view_angle,             cad_view_angle_docstring_},
-
-        /* 2D primitives */
-        {"rect",                   cad_rect,                   cad_rect_docstring_},
-        {"circle",                 cad_circle,                 cad_circle_docstring_},
-        {"polygon",                cad_polygon,                cad_polygon_docstring_},
-
-        /* Extrusion / Revolution */
-        {"extrude",                cad_extrude,                cad_extrude_docstring_},
-        {"revolve",                cad_revolve,                cad_revolve_docstring_},
-        {"extrude-polygon",        cad_extrude_polygon,        cad_extrude_polygon_docstring_},
-
-        /* Wire operations */
-        {"wire-to-face",           cad_wire_to_face,           cad_wire_to_face_docstring_},
-        {"wire-fillet",            cad_wire_fillet,            cad_wire_fillet_docstring_},
-        {"wire-chamfer",           cad_wire_chamfer,           cad_wire_chamfer_docstring_},
-        {"wire-offset",            cad_wire_offset,            cad_wire_offset_docstring_},
-
-        /* Sketch */
-        {"sketch",                 cad_sketch,                 cad_sketch_docstring_},
-        {"move-to",                cad_move_to,                cad_move_to_docstring_},
-        {"line-to",                cad_line_to,                cad_line_to_docstring_},
-        {"line-dx",                cad_line_dx,                cad_line_dx_docstring_},
-        {"line-dy",                cad_line_dy,                cad_line_dy_docstring_},
-        {"line-dx-dy",             cad_line_dx_dy,             cad_line_dx_dy_docstring_},
-        {"arc-to",                 cad_arc_to,                 cad_arc_to_docstring_},
-        {"close-sketch",           cad_close_sketch,           cad_close_sketch_docstring_},
-        {"build-wire",             cad_build_wire,             cad_build_wire_docstring_},
+        /* Sketch (non-underscore only) */
+        {"sketch",                 _cad_sketch,                _cad_sketch_docstring_},
+        {"move-to",                _cad_move_to,               _cad_move_to_docstring_},
+        {"line-to",                _cad_line_to,               _cad_line_to_docstring_},
+        {"line-dx",                _cad_line_dx,               _cad_line_dx_docstring_},
+        {"line-dy",                _cad_line_dy,               _cad_line_dy_docstring_},
+        {"line-dx-dy",             _cad_line_dx_dy,            _cad_line_dx_dy_docstring_},
+        {"arc-to",                 _cad_arc_to,                _cad_arc_to_docstring_},
+        {"close-sketch",           _cad_close_sketch,          _cad_close_sketch_docstring_},
+        {"build-wire",             _cad_build_wire,            _cad_build_wire_docstring_},
 
         /* Helper queries */
         {"wire?",                  cad_wire_q,                 cad_wire_q_docstring_},
         {"face?",                  cad_face_q,                 cad_face_q_docstring_},
         {"solid?",                 cad_solid_q,                cad_solid_q_docstring_},
 
-        /* Text */
-        {"text",                   cad_text,                   cad_text_docstring_},
-        {"text3d",                 cad_text3d,                 cad_text3d_docstring_},
-        {"list-fonts",             cad_list_fonts,             cad_list_fonts_docstring_},
+        /* View controls (non-underscore only) */
+        {"view-fit",               _cad_view_fit,               _cad_view_fit_docstring_},
+        {"view-fit-all",           _cad_view_fit_all,           _cad_view_fit_all_docstring_},
+        {"view-angle",             _cad_view_angle,             _cad_view_angle_docstring_},
+
         {NULL, NULL, NULL}
     };
 
     janet_cfuns(env, NULL, cfuns);
-
-    /* Tag each CAD function with :source (for cad-fns filtering) and
-     * :category (for group display) metadata. */
-    for (int32_t i = 0; cad_fn_categories[i][0] != NULL; i++) {
-        Janet sym = janet_csymbolv(cad_fn_categories[i][0]);
-        Janet binding = janet_table_get(env, sym);
-        if (janet_checktype(binding, JANET_TABLE)) {
-            JanetTable *t = janet_unwrap_table(binding);
-            janet_table_put(t, janet_ckeywordv("source"), janet_cstringv("rojcad"));
-            janet_table_put(t, janet_ckeywordv("category"), janet_cstringv(cad_fn_categories[i][1]));
-        }
-    }
 }

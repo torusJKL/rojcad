@@ -2,3 +2,4 @@ target/
 .local-cargo/
 dist/
 .appimage/
+*.jimage

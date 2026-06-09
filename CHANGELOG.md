@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 - 2026-06-09
+
+### Added
+
+- Upstream Janet `boot.janet` (v1.41.2) loaded before rojcad's boot — standard macros (`defn`, `defmacro`, `def-`, `->`, `each`, `for`, `loop`, `let`, `case`, `match`, `with`, `try`, etc.) now available at the REPL
+- Spork netrepl REPL on port 9365 (vendored server-only subset of spork) with shape auto-show, quit propagation, shared `core-env` with raw REPL
+- Parametric model system: `defmodel` macro, `build`, `graph`, `highlight`, `highlight-clear` with AST introspection and feature-level visual highlighting
+- `compound` — OCCT Compound wrapper for grouping 1+ shapes into a single topological container (lightweight, no boolean ops). Accepts `:color`/`:eager`/`:hide` keywords. Single-shape pass-through.
+- `color` / `get-color` — per-shape color API (clamped `[0, 1]`). Viewer renders per-mesh color, selection highlight retains blue tint.
+- `doc` as a quoting macro — `(doc line-to)` works without quoting
+- Banner shows version from Cargo.toml with `-dirty` suffix on uncommitted changes
+- root `index.html` redirect added to gh-pages docs
+
+### Changed
+
+- CLI: `--raw-port <PORT>` and `--spork-port <PORT>` replace single `--port` flag (defaults: raw=9364, spork=9365)
+- `doc` renamed internally to `get-doc`; `doc` macro auto-quotes its argument
+- All CAD wrapper functions rewritten in Janet using `defn`, `wrap-c-fn`, `defmeta`
+- ~67 C `JANET_FN` stripped to thin C primitives with logic moved to Janet wrappers across all CAD groups
+- Viewer auto-show removed from CAD wrappers — shapes only shown when explicitly assigned via `def` or by `build`/`highlight`
+- 49 wrapper functions and 12 existing functions gained docstrings; all 73 user-facing functions now have 4 metadata keys (`:value`, `:doc`, `:source`, `:category`)
+- 40 redundant underscore C registrations stripped; 5 cryptic primitive names normalized (`_bx` → `_init-box`, etc.)
+- View-angle presets generated from data-driven table
+- Doc string format normalized (use `#` for example comments, `-` for prose)
+
 ## 0.2.0 - 2026-06-07
 
 ### Added

@@ -7,6 +7,8 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+@group(1) @binding(0) var<uniform> mesh_color: vec4<f32>;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -28,11 +30,11 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 }
 
 // ── Mesh fragment shader ─────────────────────────────────────────────────
-// Lambertian diffuse shading with neutral gray material.
+// Lambertian diffuse shading with per-mesh color.
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let material_color = vec3<f32>(0.75, 0.75, 0.75);
+    let material_color = mesh_color.rgb;
     let light_dir = normalize(vec3<f32>(1.0, 2.0, 1.0));
     let ambient = 0.3;
     let normal = normalize(input.world_normal);
@@ -42,11 +44,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 // ── Highlight fragment shader ────────────────────────────────────────────
-// Tints the selected shape blue.
+// Blends the mesh color with a blue tint for selected/highlighted shapes.
 
 @fragment
 fn fs_highlight(input: VertexOutput) -> @location(0) vec4<f32> {
-    let material_color = vec3<f32>(0.3, 0.5, 1.0);
+    let tint = vec3<f32>(0.3, 0.5, 1.0);
+    let blend = 0.5;
+    let material_color = mix(mesh_color.rgb, tint, blend);
     let light_dir = normalize(vec3<f32>(1.0, 2.0, 1.0));
     let ambient = 0.4;
     let normal = normalize(input.world_normal);
