@@ -613,7 +613,10 @@
       (case (args i)
         :eager (set eager true)
         :hide (set hide true)
-        :a (set angle (* (args (++ i)) (/ math/pi 180)))
+        :a (let [v (args (++ i))]
+             (when (not= :number (type v))
+               (error (string "expected number for :a, got " (type v))))
+             (set angle (* v (/ math/pi 180))))
         :ar (set angle (args (++ i)))
         :x (do (set ax 1) (set ay 0) (set az 0))
         :y (do (set ax 0) (set ay 1) (set az 0))
@@ -799,9 +802,10 @@
 
 # ── I/O wrappers ────────────────────────────────────────────────────────────
 
-(wrap-c-fn write-step _write-step [shape path] (_write-step shape path))
+(wrap-c-fn write-step _write-step [path & shapes]
+  (apply _write-step path shapes))
 (defmeta write-step "io"
-  "(write-step shape path)\n\nExport a shape to a STEP file at the given path.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step my-shape \"/tmp/model.step\")")
+  "(write-step path & shapes)\n\nExport one or more shapes to a STEP file at the given path.\nWith no shape arguments, exports all currently visible shapes.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step \"/tmp/model.step\")                          # all visible\n  (write-step \"/tmp/model.step\" my-shape)                  # single shape\n  (write-step \"/tmp/model.step\" box-a sphere-b cylinder-c) # multiple shapes")
 
 (wrap-c-fn write-stl _write-stl [shape path] (_write-stl shape path))
 (defmeta write-stl "io"
@@ -1000,7 +1004,8 @@
    "operations" "Operations"
    "wire-operations" "Wire Operations"
    "sketch" "Sketch"
-   "text" "Text"})
+   "text" "Text"
+   "parametric-models" "Parametric Models"})
 
 (defn group [&opt category]
   (if category
@@ -1523,3 +1528,10 @@
   (def [ok val] (protect (netrepl/run-server addr spork-port core-env)))
   (when (not ok)
     (eprint "rojcad: spork server on " addr ":" spork-port " failed: " val)))))
+
+# ── Register help window Quick Example ──────────────────────────────────────
+# Show a concrete workflow when the user first opens the help window.
+
+(if (= *rojcad-os* "windows")
+  (help-set-example "(def mybox (box 10))\n(write-step \"C:\\temp\\model.step\")")
+  (help-set-example "(def mybox (box 10))\n(write-step \"/tmp/model.step\")"))

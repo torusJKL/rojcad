@@ -1144,66 +1144,71 @@ impl ApplicationHandler for ViewerApp {
                 event:
                     winit::event::KeyEvent {
                         logical_key: key,
-                        state: ElementState::Pressed,
+                        state: key_state,
                         ..
                     },
                 ..
-            } => match key {
-                Key::Named(NamedKey::Escape) => {
-                    if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
-                        SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+            } => match (key, key_state) {
+                (_, ElementState::Released) => {}
+                (key, ElementState::Pressed) => match key {
+                    Key::Named(NamedKey::Escape) => {
+                        if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
+                            SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+                        }
                     }
-                }
-                Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
-                    PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
-                }
-                Key::Character(c) if c == "x" || c == "X" => {
-                    SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
-                }
-                Key::Character(c) if state.modifiers.control_key() && c == "1" => {
-                    let idx = state
-                        .keyboard_view
-                        .map_or(4, |v| if v == 4 { 5 } else { 4 });
-                    let (yaw, pitch) = VIEW_TARGETS[idx];
-                    state.animation.start(&state.camera, yaw, pitch);
-                    state.keyboard_view = Some(idx);
-                }
-                Key::Character(c) if state.modifiers.control_key() && c == "7" => {
-                    let idx = state
-                        .keyboard_view
-                        .map_or(2, |v| if v == 2 { 3 } else { 2 });
-                    let (yaw, pitch) = VIEW_TARGETS[idx];
-                    state.animation.start(&state.camera, yaw, pitch);
-                    state.keyboard_view = Some(idx);
-                }
-                Key::Character(c) if state.modifiers.control_key() && c == "3" => {
-                    let idx = state
-                        .keyboard_view
-                        .map_or(1, |v| if v == 1 { 0 } else { 1 });
-                    let (yaw, pitch) = VIEW_TARGETS[idx];
-                    state.animation.start(&state.camera, yaw, pitch);
-                    state.keyboard_view = Some(idx);
-                }
-                Key::Character(c)
-                    if state.modifiers.control_key()
-                        && state.modifiers.shift_key()
-                        && state.modifiers.alt_key()
-                        && (c == "s" || c == "S") =>
-                {
-                    SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
-                }
-                Key::Character(c)
-                    if !state.egui_ctx.wants_keyboard_input() && (c == "h" || c == "H") =>
-                {
-                    SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
-                }
-                Key::Character(c) if state.modifiers.control_key() && (c == "q" || c == "Q") => {
-                    QUIT_REQUESTED.store(true, Ordering::SeqCst);
-                    let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
-                    self.running.store(false, Ordering::SeqCst);
-                    event_loop.exit();
-                }
-                _ => {}
+                    Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
+                        PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
+                    }
+                    Key::Character(c) if c == "x" || c == "X" => {
+                        SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
+                    }
+                    Key::Character(c) if state.modifiers.control_key() && c == "1" => {
+                        let idx = state
+                            .keyboard_view
+                            .map_or(4, |v| if v == 4 { 5 } else { 4 });
+                        let (yaw, pitch) = VIEW_TARGETS[idx];
+                        state.animation.start(&state.camera, yaw, pitch);
+                        state.keyboard_view = Some(idx);
+                    }
+                    Key::Character(c) if state.modifiers.control_key() && c == "7" => {
+                        let idx = state
+                            .keyboard_view
+                            .map_or(2, |v| if v == 2 { 3 } else { 2 });
+                        let (yaw, pitch) = VIEW_TARGETS[idx];
+                        state.animation.start(&state.camera, yaw, pitch);
+                        state.keyboard_view = Some(idx);
+                    }
+                    Key::Character(c) if state.modifiers.control_key() && c == "3" => {
+                        let idx = state
+                            .keyboard_view
+                            .map_or(1, |v| if v == 1 { 0 } else { 1 });
+                        let (yaw, pitch) = VIEW_TARGETS[idx];
+                        state.animation.start(&state.camera, yaw, pitch);
+                        state.keyboard_view = Some(idx);
+                    }
+                    Key::Character(c)
+                        if state.modifiers.control_key()
+                            && state.modifiers.shift_key()
+                            && state.modifiers.alt_key()
+                            && (c == "s" || c == "S") =>
+                    {
+                        SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                    }
+                    Key::Character(c)
+                        if !state.egui_ctx.wants_keyboard_input() && (c == "h" || c == "H") =>
+                    {
+                        SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                    }
+                    Key::Character(c)
+                        if state.modifiers.control_key() && (c == "q" || c == "Q") =>
+                    {
+                        QUIT_REQUESTED.store(true, Ordering::SeqCst);
+                        let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
+                        self.running.store(false, Ordering::SeqCst);
+                        event_loop.exit();
+                    }
+                    _ => {}
+                },
             },
             WindowEvent::MouseInput {
                 button,
@@ -1240,7 +1245,11 @@ impl ApplicationHandler for ViewerApp {
 
                 if !state.egui_ctx.wants_pointer_input() {
                     if state.mouse_pressed[0] {
-                        state.camera.rotate(dx, dy);
+                        if state.egui_ctx.input(|i| i.modifiers.shift) {
+                            state.camera.pan(dx, dy);
+                        } else {
+                            state.camera.rotate(dx, dy);
+                        }
                         state.animation.stop();
                     }
                     if state.mouse_pressed[1] {
@@ -1248,7 +1257,11 @@ impl ApplicationHandler for ViewerApp {
                         state.animation.stop();
                     }
                     if state.mouse_pressed[2] {
-                        state.camera.zoom(dy * 0.005);
+                        if state.egui_ctx.input(|i| i.modifiers.shift) {
+                            state.camera.dolly(-dy);
+                        } else {
+                            state.camera.zoom(dy * 0.005);
+                        }
                         state.animation.stop();
                     }
                 }
@@ -1257,11 +1270,15 @@ impl ApplicationHandler for ViewerApp {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if !state.egui_ctx.wants_pointer_input() {
-                    let zoom_factor = match delta {
+                    let factor = match delta {
                         MouseScrollDelta::LineDelta(_, y) => y as f64,
                         MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
                     };
-                    state.camera.zoom(zoom_factor * 0.1);
+                    if state.egui_ctx.input(|i| i.modifiers.shift) {
+                        state.camera.dolly(factor * 50.0);
+                    } else {
+                        state.camera.zoom(factor * 0.1);
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {

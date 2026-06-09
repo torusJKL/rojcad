@@ -30,11 +30,11 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
-    SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData, WINDOW_FULLSCREEN,
-    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, init_edge_color_defaults,
-    pack_color, register_shape_pointer,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, HELP_EXAMPLE, INACTIVE_EDGE_COLOR, LAST_SELECTION,
+    LAST_SELECTION_ACTION, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES,
+    SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData,
+    WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry,
+    init_edge_color_defaults, pack_color, register_shape_pointer,
 };
 use crate::viewer::ViewerConfig;
 
@@ -1579,14 +1579,23 @@ pub unsafe extern "C" fn rust_free_fonts_list(ptr: *mut *mut c_char, count: c_in
 
 // ── Export ──────────────────────────────────────────────────────────────────
 
-/// Write a shape to a STEP file. Returns 0 on success, 1 on failure.
+/// Write one or more shapes to a STEP file. Returns 0 on success, 1 on failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_write_step(data: *mut c_void, path: *const c_char) -> c_int {
+pub unsafe extern "C" fn rust_write_all_step(
+    shapes: *mut *mut c_void,
+    num_shapes: c_int,
+    path: *const c_char,
+) -> c_int {
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    let shape_data = unsafe { &*(data as *const ShapeData) };
-    match cad::write_step(shape_data, &path_str) {
+    let num = num_shapes as usize;
+    let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
+    let shape_refs: Vec<&ShapeData> = shapes_slice
+        .iter()
+        .map(|p| unsafe { &*(*p as *const ShapeData) })
+        .collect();
+    match cad::write_all_step(&shape_refs, &path_str) {
         Ok(()) => 0,
         Err(msg) => {
             set_last_error(msg);
@@ -1857,6 +1866,15 @@ pub unsafe extern "C" fn rust_help_overlay_showing() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rust_help_overlay_set(value: c_int) {
     SHOW_HELP_OVERLAY.store(value != 0, Ordering::SeqCst);
+}
+
+/// Set the Quick Example expression string from Janet at boot time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_help_set_example(path: *const c_char) {
+    let s = unsafe { CStr::from_ptr(path) }
+        .to_str()
+        .expect("help-set-example: invalid UTF-8");
+    HELP_EXAMPLE.set(s.to_string()).ok();
 }
 
 // ── View fit ───────────────────────────────────────────────────────────────────
@@ -2258,8 +2276,9 @@ fn main() {
         ""
     };
     let boot_prefix = format!(
-        "(def *rojcad-version* {:?})\n(def *raw-repl-port* {})\n(def *spork-repl-port* {})\n",
+        "(def *rojcad-version* {:?})\n(def *rojcad-os* {:?})\n(def *raw-repl-port* {})\n(def *spork-repl-port* {})\n",
         format!("{}{}", version, version_suffix),
+        std::env::consts::OS,
         raw_port,
         spork_port
     );

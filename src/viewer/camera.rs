@@ -26,8 +26,9 @@ impl OrbitCamera {
     }
 
     pub fn pan(&mut self, dx: f64, dy: f64) {
-        let right = self.right();
-        let up = self.up();
+        let forward = self.forward();
+        let right = forward.cross(DVec3::Y).normalize();
+        let up = right.cross(forward).normalize();
         let speed = self.radius * 0.002;
         self.target -= right * dx * speed;
         self.target += up * dy * speed;
@@ -35,6 +36,12 @@ impl OrbitCamera {
 
     pub fn zoom(&mut self, delta: f64) {
         self.radius = (self.radius * (1.0 - delta)).clamp(0.1, 10000.0);
+    }
+
+    pub fn dolly(&mut self, amount: f64) {
+        // amount is unscaled (raw pixels or notch-equivalent)
+        // scaled by radius * 0.002 to match old pan sensitivity
+        self.target += self.forward() * amount * self.radius * 0.002;
     }
 
     pub fn rotate(&mut self, dx: f64, dy: f64) {
@@ -74,10 +81,16 @@ impl OrbitCamera {
         self.target + spherical
     }
 
+    /// World-aligned right vector (horizontal only, Y=0).
+    /// For screen-space panning, use locally computed vectors in `pan()`.
+    #[expect(dead_code)]
     pub fn right(&self) -> DVec3 {
         DVec3::new(self.yaw.cos(), 0.0, self.yaw.sin())
     }
 
+    /// World-aligned up vector (pitch-aware, uses `forward()` internally).
+    /// For screen-space panning, use locally computed vectors in `pan()`.
+    #[expect(dead_code)]
     pub fn up(&self) -> DVec3 {
         let forward = self.forward();
         let right = forward.cross(DVec3::Y).normalize();

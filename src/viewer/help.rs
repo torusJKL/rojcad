@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::types::SHOW_HELP_OVERLAY;
+use crate::types::{HELP_EXAMPLE, SHOW_HELP_OVERLAY};
 
 pub struct Help;
 
@@ -67,7 +67,7 @@ impl Help {
                     .num_columns(2)
                     .spacing([16.0, 2.0])
                     .show(ui, |ui| {
-                        ui.monospace("(doc 'sym)");
+                        ui.monospace("(doc sym)");
                         ui.label("Show docs for a function");
                         ui.end_row();
                         ui.monospace("(apropos p)");
@@ -92,11 +92,18 @@ impl Help {
 
                 ui.strong("Connecting to REPL");
                 ui.separator();
-                ui.label("The TCP REPL listens on port 9365 (default).");
                 ui.label("Connect with:");
-                ui.monospace("  nc 127.0.0.1 9365");
+                ui.monospace("  nc 127.0.0.1 9364");
 
                 ui.add_space(8.0);
+
+                if let Some(example) = HELP_EXAMPLE.get() {
+                    ui.strong("Quick Example");
+                    ui.separator();
+                    ui.monospace(example);
+                    ui.label("Export all visible shapes to a STEP file");
+                    ui.add_space(8.0);
+                }
 
                 ui.strong("Command Line Arguments");
                 ui.separator();
@@ -107,8 +114,11 @@ impl Help {
                         ui.monospace("--headless");
                         ui.label("Run without 3D viewer");
                         ui.end_row();
-                        ui.monospace("--port <N>");
-                        ui.label("Set REPL port (default 9365)");
+                        ui.monospace("--raw-port <N>");
+                        ui.label("Raw TCP REPL port (default 9364)");
+                        ui.end_row();
+                        ui.monospace("--spork-port <N>");
+                        ui.label("Spork netrepl port (default 9365)");
                         ui.end_row();
                         ui.monospace("--eval <E>");
                         ui.label("Run Janet code on startup then exit");

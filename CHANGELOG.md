@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 - 2026-06-09
+
+### Added
+
+- Dolly camera movement: Shift+scroll forward/backward along view direction, Shift+RMB drag replaces zoom when Shift held
+- Shift+LMB to pan camera (orthogonal screen-space vectors, works at any pitch)
+- Quick Example section in help window showing `(def mybox (box 10))` / `(write-step ...)` workflow — registered from Janet at boot time
+- `help-set-example` Janet function + Rust FFI + OnceLock storage for help window example content
+- `*rojcad-os*` exported from Rust for platform-appropriate path handling
+- `write-step` now accepts multiple shapes — `(write-step path & shapes)` exports one or more shapes to a single STEP file
+- Parametric model functions (`defmodel`, `build`, `graph`, `highlight`, `highlight-clear`) documented in API docs and README
+
+### Fixed
+
+- Camera panning (Shift+LMB, MMB drag) uses orthogonal screen-space vectors instead of mixing pitch-ignorant right with pitch-aware up vectors
+- Type check for `rotate` `:a` angle keyword argument
+- Help window port references and doc syntax
+
+### Changed
+
+- **BREAKING:** `write-step` argument order changed from `(write-step shape path)` to `(write-step path & shapes)` — path first, shapes variadic
+
 ## 0.3.0 - 2026-06-09
 
 ### Added

@@ -351,8 +351,8 @@ run_tc_test "solid?: string instead of shape"           '(solid? "hello")'
 
 # ── IO ────────────────────────────────────────────────────────────────
 
-run_tc_test "write-step: number instead of string path" '(write-step (box 10) 123)'
-run_tc_test "write-step: keyword instead of string path" '(write-step (box 10) :path)'
+run_tc_test "write-step: number instead of string path" '(write-step 123 (box 10))'
+run_tc_test "write-step: keyword instead of string path" '(write-step false (box 10))'
 run_tc_test "write-stl: number instead of string path"  '(write-stl (box 10) 123)'
 run_tc_test "read-step: number instead of string path"  '(read-step 123)'
 
@@ -394,8 +394,8 @@ run_tc_test "window-size: string instead of integer"    '(window-size "big" "sma
 echo ""
 echo ":: TCP REPL interaction"
 
-# Start server on default port (--port flag has a pre-existing dyn timing bug)
-PORT=9365
+# Start server on default raw REPL port
+PORT=9364
 "$ROOT/target/debug/rojcad" --headless &
 SERVER_PID=$!
 sleep 3
