@@ -1240,7 +1240,11 @@ impl ApplicationHandler for ViewerApp {
 
                 if !state.egui_ctx.wants_pointer_input() {
                     if state.mouse_pressed[0] {
-                        state.camera.rotate(dx, dy);
+                        if state.modifiers.shift_key() {
+                            state.camera.pan(dx, dy);
+                        } else {
+                            state.camera.rotate(dx, dy);
+                        }
                         state.animation.stop();
                     }
                     if state.mouse_pressed[1] {
