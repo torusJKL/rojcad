@@ -16,6 +16,7 @@
 
 mod bridge;
 mod cad;
+mod gui_repl;
 mod sketch;
 mod text;
 mod types;
@@ -32,9 +33,9 @@ use std::sync::mpsc;
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, HELP_EXAMPLE, INACTIVE_EDGE_COLOR, LAST_SELECTION,
     LAST_SELECTION_ACTION, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES,
-    SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_STATS_OVERLAY, ShapeData,
-    WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry,
-    init_edge_color_defaults, pack_color, register_shape_pointer,
+    SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_REPL_PANEL, SHOW_STATS_OVERLAY,
+    ShapeData, WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH,
+    global_shape_registry, init_edge_color_defaults, pack_color, register_shape_pointer,
 };
 use crate::viewer::ViewerConfig;
 
@@ -2141,6 +2142,18 @@ fn parse_size_args() -> (Option<u32>, Option<u32>) {
     (width, height)
 }
 
+fn parse_repl_visibility() -> Option<bool> {
+    for arg in std::env::args() {
+        if arg == "--repl" {
+            return Some(true);
+        }
+        if arg == "--no-repl" {
+            return Some(false);
+        }
+    }
+    None
+}
+
 fn main() {
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
@@ -2150,6 +2163,12 @@ fn main() {
     let eval_exprs: Vec<String> = parse_eval_args();
     let (cli_width, cli_height) = parse_size_args();
     let maximized = cli_width.is_none() && cli_height.is_none();
+
+    // Apply --repl/--no-repl CLI flags to the visibility atomic
+    if let Some(visible) = parse_repl_visibility() {
+        SHOW_REPL_PANEL.store(visible, Ordering::SeqCst);
+    }
+
     let viewer_config = ViewerConfig {
         width: cli_width.unwrap_or(1024),
         height: cli_height.unwrap_or(768),
@@ -2197,6 +2216,71 @@ fn main() {
         cad_register_functions(env);
     }
 
+    // Register GUI REPL FFI functions as Janet C functions.
+    // These let boot.janet call rust_gui_repl_poll_request / rust_gui_repl_send_response.
+    unsafe {
+        unsafe extern "C" fn janet_gui_repl_poll_request(
+            _argc: i32,
+            _argv: *const bridge::Janet,
+        ) -> bridge::Janet {
+            let ptr = unsafe { gui_repl::rust_gui_repl_poll_request() };
+            if ptr.is_null() {
+                return unsafe { bridge::janet_wrap_nil() };
+            }
+            let jstr = unsafe { bridge::janet_cstring(ptr) };
+            let result = unsafe { bridge::janet_wrap_string(jstr) };
+            let _ = unsafe { std::ffi::CString::from_raw(ptr) };
+            result
+        }
+
+        unsafe extern "C" fn janet_gui_repl_send_response(
+            argc: i32,
+            argv: *const bridge::Janet,
+        ) -> bridge::Janet {
+            if argc != 1 {
+                unsafe { bridge::janet_panic(c"expected 1 argument".as_ptr().cast()) };
+                return unsafe { bridge::janet_wrap_nil() };
+            }
+            let arg = unsafe { *argv };
+            let ptr = unsafe { bridge::janet_unwrap_string(arg) };
+            if ptr.is_null() {
+                unsafe { bridge::janet_panic(c"expected string argument".as_ptr().cast()) };
+                return unsafe { bridge::janet_wrap_nil() };
+            }
+            let cstr = unsafe { std::ffi::CStr::from_ptr(ptr as *const i8) };
+            let s = cstr.to_str().unwrap_or("");
+            let c_string = std::ffi::CString::new(s).unwrap_or_default();
+            unsafe { gui_repl::rust_gui_repl_send_response(c_string.as_ptr()) };
+            unsafe { bridge::janet_wrap_nil() }
+        }
+
+        let regs = [
+            bridge::JanetReg {
+                name: c"rust_gui_repl_poll_request".as_ptr().cast(),
+                cfunction: janet_gui_repl_poll_request
+                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
+                documentation: c"Poll for a pending GUI REPL request".as_ptr().cast(),
+            },
+            bridge::JanetReg {
+                name: c"rust_gui_repl_send_response".as_ptr().cast(),
+                cfunction: janet_gui_repl_send_response
+                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
+                documentation: c"Send a GUI REPL response back to the viewer"
+                    .as_ptr()
+                    .cast(),
+            },
+            // Sentinel: null name terminates the array
+            bridge::JanetReg {
+                name: std::ptr::null(),
+                cfunction: janet_gui_repl_poll_request
+                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
+                documentation: std::ptr::null(),
+            },
+        ];
+        let prefix = b"\0";
+        bridge::janet_cfuns(env, prefix.as_ptr().cast(), regs.as_ptr());
+    }
+
     // Port values are injected directly into boot.janet via a prefix string
     // (see boot code assembly below).
 
@@ -2204,10 +2288,18 @@ fn main() {
     let (repl_tx, repl_rx) = mpsc::channel::<ReplToViewer>();
     let _ = REPL_TO_VIEWER.set(repl_tx);
 
+    // Create channels for GUI REPL panel (viewer ↔ REPL thread)
+    let (gui_req_tx, gui_resp_rx) = gui_repl::init();
+
     // Start viewer thread unless --headless flag is present
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let _viewer_handle = if !headless {
-        Some(viewer::spawn_viewer(repl_rx, viewer_config))
+        Some(viewer::spawn_viewer(
+            repl_rx,
+            gui_req_tx,
+            gui_resp_rx,
+            viewer_config,
+        ))
     } else {
         None
     };

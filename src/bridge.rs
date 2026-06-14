@@ -13,6 +13,7 @@ pub type c_size_t = usize;
 // ── Janet C API types ─────────────────────────────────────────────────────────
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Janet(pub u64);
 
 #[repr(C)]
@@ -56,6 +57,7 @@ unsafe extern "C" {
     pub fn janet_type(x: Janet) -> c_int;
     pub fn janet_wrap_number(x: c_double) -> Janet;
     pub fn janet_wrap_string(s: *const u8) -> Janet;
+    pub fn janet_cstring(s: *const c_char) -> *const u8;
     pub fn janet_wrap_keyword(s: *const u8) -> Janet;
     pub fn janet_wrap_true() -> Janet;
     pub fn janet_wrap_false() -> Janet;

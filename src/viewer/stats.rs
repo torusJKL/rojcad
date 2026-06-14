@@ -2,7 +2,9 @@ use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::sync::atomic::Ordering;
 
-use crate::types::{SHOW_BACK_EDGES, SHOW_STATS_OVERLAY, ShapeId, global_shape_registry};
+use crate::types::{
+    REPL_PANEL_WIDTH, SHOW_BACK_EDGES, SHOW_STATS_OVERLAY, ShapeId, global_shape_registry,
+};
 
 use super::camera::OrbitCamera;
 
@@ -200,6 +202,11 @@ impl Stats {
 
                         ui.label("  Back edges:");
                         ui.label(format!("{}  [X]", back_edges));
+                        ui.end_row();
+
+                        let panel_w = REPL_PANEL_WIDTH.load(Ordering::Relaxed);
+                        ui.label("  REPL panel:");
+                        ui.label(format!("{}px  [Ctrl+R]", panel_w));
                         ui.end_row();
 
                         ui.strong("PERFORMANCE");

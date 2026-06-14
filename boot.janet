@@ -1530,6 +1530,155 @@
   (when (not ok)
     (eprint "rojcad: spork server on " addr ":" spork-port " failed: " val)))))
 
+# ── GUI REPL panel (poll-gui-repl) ─────────────────────────────────────────
+# Minimal JSON encoder for responses.
+(defn- json-escape [s]
+  (string "\""
+          (string/replace "\\" "\\\\"
+            (string/replace "\"" "\\\""
+              (string/replace "\n" "\\n"
+                (string/replace "\r" "\\r"
+                  (string/replace "\t" "\\t" s)))))
+          "\""))
+
+(defn- json-encode [x]
+  (case (type x)
+    :string (json-escape x)
+    :number (string x)
+    :keyword (string x)
+    :nil "null"
+    :boolean (string x)
+    :array (string "[" (string/join (seq [v :in x] (json-encode v)) ",") "]")
+    :table (string "{" (string/join (seq [[k v] :pairs x]
+                                      (string (json-encode k) ":" (json-encode v))) ",") "}")
+    (string x)))
+
+(defn- handle-gui-eval [id code]
+  (def parsed (my-parse code))
+  (if parsed
+    (do
+      (def result (try (my-eval parsed core-env) ([e] e)))
+      (def display (display-val result))
+      (def type-tag
+        (cond
+          (= (type result) :rojcad/shape) "rojcad/shape"
+          (= (type result) :error) "error"
+          (= (type result) :number) "number"
+          (= (type result) :string) "string"
+          (= (type result) :keyword) "keyword"
+          (= (type result) :nil) "nil"
+          (= (type result) :boolean) "boolean"
+          "other"))
+      (def resp (table/setproto @{} nil))
+      (put resp "type" "evalResult")
+      (put resp "id" id)
+      (put resp "value" display)
+      (put resp "kind" type-tag)
+      (put resp "new_bindings" @[])
+      (rust_gui_repl_send_response (json-encode resp)))
+    (do
+      (def resp (table/setproto @{} nil))
+      (put resp "type" "evalResult")
+      (put resp "id" id)
+      (put resp "value" (string "parse error: " code))
+      (put resp "kind" "error")
+      (put resp "new_bindings" @[])
+      (rust_gui_repl_send_response (json-encode resp)))))
+
+# ── Syntax highlighting scanner ────────────────────────────────────────────
+# Returns a JSON array of [{:kind "comment"|"string"|"number"|"keyword"|"symbol",
+# :start N, :stop N}].
+
+(defn- is-name-char [b]
+  (or (<= 97 b 122)         # a-z
+      (<= 65 b 90)          # A-Z
+      (<= 48 b 57)          # 0-9
+      (= b 33) (= b 36) (= b 37) (= b 38) (= b 42) (= b 43) (= b 45)
+      (= b 46) (= b 47) (= b 58) (= b 60) (= b 61) (= b 62) (= b 63)
+      (= b 64) (= b 94) (= b 95)))
+
+(defn- highlight-scan [code]
+  (def len (length code))
+  (def result @[])
+  (def specials @{"defn" true "var" true "def" true "set" true "varfn" true})
+  (var i 0)
+  (while (< i len)
+    (def start i)
+    (def c (code i))
+    (cond
+      (= c 35)  # #
+      (do (++ i) (while (and (< i len) (not= 10 (code i))) (++ i))
+          (array/push result @{"kind" "comment" "start" start "stop" i}))
+      (= c 34)  # "
+      (do (++ i)
+          (while (and (< i len) (not= 34 (code i)))
+            (if (and (= 92 (code i)) (< (+ i 1) len)) (++ i))
+            (++ i))
+          (if (< i len) (++ i))
+          (array/push result @{"kind" "string" "start" start "stop" i}))
+      (= c 64)  # @
+      (do (++ i) (array/push result @{"kind" "symbol" "start" start "stop" i}))
+      (or (<= 48 c 57) (= c 45) (= c 46))  # number
+      (do (++ i)
+          (while (and (< i len) (or (<= 48 (code i) 57) (= 46 (code i)) (= 45 (code i))))
+            (++ i))
+          (array/push result @{"kind" "number" "start" start "stop" i}))
+      (= c 58)  # keyword
+      (do (++ i)
+          (while (and (< i len) (is-name-char (code i))) (++ i))
+          (array/push result @{"kind" "keyword" "start" start "stop" i}))
+      (is-name-char c)  # symbol
+      (do (++ i)
+          (while (and (< i len) (is-name-char (code i))) (++ i))
+          (def sym (string/slice code start i))
+          (def kind (if (get specials sym) "special-symbol" "symbol"))
+          (array/push result @{"kind" kind "start" start "stop" i}))
+      (do (++ i)  # whitespace and other
+          (array/push result @{"kind" "symbol" "start" start "stop" i}))))
+  result)
+
+(defn highlight-janet [code]
+  (highlight-scan code))
+
+(defn- handle-gui-highlight [id code]
+  (def tokens (highlight-janet code))
+  (def resp (table/setproto @{} nil))
+  (put resp "type" "highlightResult")
+  (put resp "id" id)
+  (put resp "tokens" tokens)
+  (rust_gui_repl_send_response (json-encode resp)))
+
+(defn- handle-gui-completions [id code cursor]
+  (def resp (table/setproto @{} nil))
+  (put resp "type" "completionsResult")
+  (put resp "id" id)
+  (put resp "items" @[])
+  (rust_gui_repl_send_response (json-encode resp)))
+
+(defn- gui-repl-handler [raw]
+  # Format: type_byte \x02 id \x02 body
+  # type: e=eval, h=highlight, c=completions
+  (def parts (string/split "\x02" raw))
+  (def type-prefix (get parts 0))
+  (def id (get parts 1))
+  (def body (get parts 2))
+  (when (and type-prefix id)
+    (def nid (scan-number id))
+    (case type-prefix
+      "e" (handle-gui-eval nid body)
+      "h" (handle-gui-highlight nid body)
+      "c" (handle-gui-completions nid body (get parts 3))
+      (eprint "rojcad: unknown gui-repl request type: " type-prefix))))
+
+(defn poll-gui-repl []
+  (while true
+    (def raw (rust_gui_repl_poll_request))
+    (when (not= raw nil)
+      (gui-repl-handler raw))
+    (ev/sleep 0.02)))
+
+(ev/go (fiber/new poll-gui-repl))
+
 # ── Register help window Quick Example ──────────────────────────────────────
 # Show a concrete workflow when the user first opens the help window.
 

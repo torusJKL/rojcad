@@ -10,6 +10,7 @@ pub mod camera;
 pub mod gizmo;
 pub mod help;
 pub mod pick;
+pub mod repl;
 pub mod stats;
 
 /// Configuration for initial viewer window setup (size and maximized state).
@@ -51,10 +52,17 @@ impl Drop for ViewerHandle {
 /// Spawn the viewer on a background thread.
 ///
 /// Takes a `Receiver<ReplToViewer>` for one-shot commands (e.g., fit-to-bounds)
-/// from the REPL thread to the viewer thread, and a `ViewerConfig` for initial
+/// from the REPL thread to the viewer thread, a `Sender<String>` for sending
+/// GUI REPL eval/completion/highlight requests to the REPL thread, a
+/// `Receiver<String>` for receiving responses, and a `ViewerConfig` for initial
 /// window setup.
 /// Returns a `ViewerHandle` for graceful shutdown.
-pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>, config: ViewerConfig) -> ViewerHandle {
+pub fn spawn_viewer(
+    repl_rx: Receiver<ReplToViewer>,
+    gui_req_tx: mpsc::Sender<String>,
+    gui_resp_rx: mpsc::Receiver<String>,
+    config: ViewerConfig,
+) -> ViewerHandle {
     let (viewer_tx, _viewer_rx) = mpsc::channel::<ViewerToRepl>();
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = running.clone();
@@ -62,7 +70,14 @@ pub fn spawn_viewer(repl_rx: Receiver<ReplToViewer>, config: ViewerConfig) -> Vi
     let handle = thread::Builder::new()
         .name("wgpu-viewer".into())
         .spawn(move || {
-            app::run_viewer(viewer_tx, repl_rx, running_clone, config);
+            app::run_viewer(
+                viewer_tx,
+                repl_rx,
+                gui_req_tx,
+                gui_resp_rx,
+                running_clone,
+                config,
+            );
         })
         .expect("failed to spawn viewer thread");
 

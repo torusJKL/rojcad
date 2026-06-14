@@ -519,7 +519,9 @@ pub fn write_all_stl(shapes: &[&ShapeData], path: &str) -> Result<(), String> {
     let refs: Vec<&Shape> = shapes.iter().map(|s| &s.shape).collect();
     let compound = Compound::from_shapes(refs);
     let shape = Shape::from(&compound);
-    shape.write_stl(path).map_err(|e| format!("STL export failed: {}", e))
+    shape
+        .write_stl(path)
+        .map_err(|e| format!("STL export failed: {}", e))
 }
 
 // ── 2D Primitives ────────────────────────────────────────────────────────────

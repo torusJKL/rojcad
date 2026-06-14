@@ -43,6 +43,12 @@ pub static SHOW_STATS_OVERLAY: AtomicBool = AtomicBool::new(false);
 /// Help window visibility toggle (default visible on startup).
 pub static SHOW_HELP_OVERLAY: AtomicBool = AtomicBool::new(true);
 
+/// REPL panel visibility toggle (default visible on startup).
+pub static SHOW_REPL_PANEL: AtomicBool = AtomicBool::new(true);
+
+/// Current REPL panel width in logical pixels. Updated each frame.
+pub static REPL_PANEL_WIDTH: AtomicU32 = AtomicU32::new(350);
+
 /// Quick Example expression registered from Janet at boot time.
 pub static HELP_EXAMPLE: OnceLock<String> = OnceLock::new();
 

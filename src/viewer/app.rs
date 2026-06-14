@@ -19,10 +19,10 @@ use winit::{
 
 use crate::types::{
     ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, ReplToViewer,
-    SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES,
-    SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH,
-    global_shape_registry, unpack_color,
+    MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, REPL_PANEL_WIDTH,
+    ReplToViewer, SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY,
+    SHOW_INACTIVE_EDGES, SHOW_REPL_PANEL, SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN,
+    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
@@ -352,8 +352,8 @@ impl SurfaceDrawer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("surface_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout, &color_bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout), Some(&color_bind_group_layout)],
+            immediate_size: 0,
         });
 
         let render_pipeline = Self::build_pipeline(
@@ -425,8 +425,8 @@ impl SurfaceDrawer {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
@@ -435,7 +435,7 @@ impl SurfaceDrawer {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     }
@@ -528,8 +528,8 @@ impl EdgeDrawer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("edge_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         // Grid pipeline: plain LineList, vs_main, plain positions, no depth bias
@@ -550,7 +550,7 @@ impl EdgeDrawer {
                     format: wgpu::VertexFormat::Float32x3,
                 }],
             }],
-            wgpu::CompareFunction::Less,
+            Some(wgpu::CompareFunction::Less),
             wgpu::DepthBiasState::default(),
         );
 
@@ -590,7 +590,7 @@ impl EdgeDrawer {
             "fs_inactive_solid",
             wgpu::PrimitiveTopology::TriangleStrip,
             &[instance_layout()],
-            wgpu::CompareFunction::Less,
+            Some(wgpu::CompareFunction::Less),
             edge_depth_bias,
         );
         let inactive_dashed_pipeline = Self::build_pipeline(
@@ -602,7 +602,7 @@ impl EdgeDrawer {
             "fs_inactive_dashed",
             wgpu::PrimitiveTopology::TriangleStrip,
             &[instance_layout()],
-            wgpu::CompareFunction::Greater,
+            Some(wgpu::CompareFunction::Greater),
             edge_depth_bias,
         );
         let active_solid_pipeline = Self::build_pipeline(
@@ -614,7 +614,7 @@ impl EdgeDrawer {
             "fs_active_solid",
             wgpu::PrimitiveTopology::TriangleStrip,
             &[instance_layout()],
-            wgpu::CompareFunction::Less,
+            Some(wgpu::CompareFunction::Less),
             edge_depth_bias,
         );
         let active_dashed_pipeline = Self::build_pipeline(
@@ -626,7 +626,7 @@ impl EdgeDrawer {
             "fs_active_dashed",
             wgpu::PrimitiveTopology::TriangleStrip,
             &[instance_layout()],
-            wgpu::CompareFunction::Greater,
+            Some(wgpu::CompareFunction::Greater),
             edge_depth_bias,
         );
 
@@ -650,7 +650,7 @@ impl EdgeDrawer {
         fragment_entry: &str,
         topology: wgpu::PrimitiveTopology,
         vertex_buffers: &[wgpu::VertexBufferLayout<'_>],
-        depth_compare: wgpu::CompareFunction,
+        depth_compare: Option<wgpu::CompareFunction>,
         depth_bias: wgpu::DepthBiasState,
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -688,7 +688,7 @@ impl EdgeDrawer {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: false,
+                depth_write_enabled: Some(false),
                 depth_compare,
                 stencil: wgpu::StencilState::default(),
                 bias: depth_bias,
@@ -698,7 +698,7 @@ impl EdgeDrawer {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     }
@@ -865,6 +865,7 @@ pub struct ViewerState {
     egui_renderer: egui_wgpu::Renderer,
     stats: Stats,
     help: Help,
+    repl: super::repl::ReplPanel,
     highlighted_shape: Option<ShapeId>,
 }
 
@@ -873,6 +874,8 @@ pub struct ViewerState {
 struct ViewerApp {
     viewer_tx: Sender<ViewerToRepl>,
     repl_rx: Receiver<ReplToViewer>,
+    gui_req_tx: Sender<String>,
+    gui_resp_rx: Receiver<String>,
     running: Arc<AtomicBool>,
     config: ViewerConfig,
     state: Option<ViewerState>,
@@ -882,6 +885,8 @@ struct ViewerApp {
 pub fn run_viewer(
     viewer_tx: Sender<ViewerToRepl>,
     repl_rx: Receiver<ReplToViewer>,
+    gui_req_tx: Sender<String>,
+    gui_resp_rx: Receiver<String>,
     running: Arc<AtomicBool>,
     config: ViewerConfig,
 ) {
@@ -893,6 +898,8 @@ pub fn run_viewer(
     let mut app = ViewerApp {
         viewer_tx,
         repl_rx,
+        gui_req_tx,
+        gui_resp_rx,
         running,
         config,
         state: None,
@@ -1006,7 +1013,7 @@ impl ApplicationHandler for ViewerApp {
             None,
             None,
         );
-        let egui_renderer = egui_wgpu::Renderer::new(&device, surface_format, None, 1, false);
+        let egui_renderer = egui_wgpu::Renderer::new(&device, surface_format, Default::default());
 
         // Initial empty instance buffers (populated from ShapeRegistry each frame)
         let inactive_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1082,6 +1089,7 @@ impl ApplicationHandler for ViewerApp {
             egui_renderer,
             stats: Stats::new(),
             help: Help::new(),
+            repl: super::repl::ReplPanel::new(self.gui_req_tx.clone()),
             highlighted_shape: None,
         });
     }
@@ -1150,65 +1158,87 @@ impl ApplicationHandler for ViewerApp {
                 ..
             } => match (key, key_state) {
                 (_, ElementState::Released) => {}
-                (key, ElementState::Pressed) => match key {
-                    Key::Named(NamedKey::Escape) => {
-                        if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
-                            SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+                (key, ElementState::Pressed) => {
+                    // Intercept Ctrl+Enter for REPL eval before any other shortcut
+                    if key == Key::Named(NamedKey::Enter) && state.modifiers.control_key() {
+                        // Set a flag so the REPL panel submits on next frame
+                        state.repl.set_ctrl_enter_pending();
+                    }
+
+                    match key {
+                        Key::Named(NamedKey::Escape)
+                            if !state.egui_ctx.egui_wants_keyboard_input() =>
+                        {
+                            if SHOW_HELP_OVERLAY.load(Ordering::SeqCst) {
+                                SHOW_HELP_OVERLAY.store(false, Ordering::SeqCst);
+                            }
                         }
+                        Key::Character(c)
+                            if !state.egui_ctx.egui_wants_keyboard_input()
+                                && (c == "p" || c == "P" || c == "o" || c == "O") =>
+                        {
+                            PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
+                        }
+                        Key::Character(c)
+                            if !state.egui_ctx.egui_wants_keyboard_input()
+                                && (c == "x" || c == "X") =>
+                        {
+                            SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
+                        }
+                        Key::Character(c) if state.modifiers.control_key() && c == "1" => {
+                            let idx = state
+                                .keyboard_view
+                                .map_or(4, |v| if v == 4 { 5 } else { 4 });
+                            let (yaw, pitch) = VIEW_TARGETS[idx];
+                            state.animation.start(&state.camera, yaw, pitch);
+                            state.keyboard_view = Some(idx);
+                        }
+                        Key::Character(c) if state.modifiers.control_key() && c == "7" => {
+                            let idx = state
+                                .keyboard_view
+                                .map_or(2, |v| if v == 2 { 3 } else { 2 });
+                            let (yaw, pitch) = VIEW_TARGETS[idx];
+                            state.animation.start(&state.camera, yaw, pitch);
+                            state.keyboard_view = Some(idx);
+                        }
+                        Key::Character(c) if state.modifiers.control_key() && c == "3" => {
+                            let idx = state
+                                .keyboard_view
+                                .map_or(1, |v| if v == 1 { 0 } else { 1 });
+                            let (yaw, pitch) = VIEW_TARGETS[idx];
+                            state.animation.start(&state.camera, yaw, pitch);
+                            state.keyboard_view = Some(idx);
+                        }
+                        Key::Character(c)
+                            if state.modifiers.control_key()
+                                && state.modifiers.shift_key()
+                                && state.modifiers.alt_key()
+                                && (c == "s" || c == "S") =>
+                        {
+                            SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                        }
+                        Key::Character(c)
+                            if !state.egui_ctx.egui_wants_keyboard_input()
+                                && (c == "h" || c == "H") =>
+                        {
+                            SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
+                        }
+                        Key::Character(c)
+                            if state.modifiers.control_key() && (c == "r" || c == "R") =>
+                        {
+                            SHOW_REPL_PANEL.fetch_xor(true, Ordering::SeqCst);
+                        }
+                        Key::Character(c)
+                            if state.modifiers.control_key() && (c == "q" || c == "Q") =>
+                        {
+                            QUIT_REQUESTED.store(true, Ordering::SeqCst);
+                            let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
+                            self.running.store(false, Ordering::SeqCst);
+                            event_loop.exit();
+                        }
+                        _ => {}
                     }
-                    Key::Character(c) if c == "p" || c == "P" || c == "o" || c == "O" => {
-                        PROJECTION_PERSPECTIVE.fetch_xor(true, Ordering::SeqCst);
-                    }
-                    Key::Character(c) if c == "x" || c == "X" => {
-                        SHOW_BACK_EDGES.fetch_xor(true, Ordering::SeqCst);
-                    }
-                    Key::Character(c) if state.modifiers.control_key() && c == "1" => {
-                        let idx = state
-                            .keyboard_view
-                            .map_or(4, |v| if v == 4 { 5 } else { 4 });
-                        let (yaw, pitch) = VIEW_TARGETS[idx];
-                        state.animation.start(&state.camera, yaw, pitch);
-                        state.keyboard_view = Some(idx);
-                    }
-                    Key::Character(c) if state.modifiers.control_key() && c == "7" => {
-                        let idx = state
-                            .keyboard_view
-                            .map_or(2, |v| if v == 2 { 3 } else { 2 });
-                        let (yaw, pitch) = VIEW_TARGETS[idx];
-                        state.animation.start(&state.camera, yaw, pitch);
-                        state.keyboard_view = Some(idx);
-                    }
-                    Key::Character(c) if state.modifiers.control_key() && c == "3" => {
-                        let idx = state
-                            .keyboard_view
-                            .map_or(1, |v| if v == 1 { 0 } else { 1 });
-                        let (yaw, pitch) = VIEW_TARGETS[idx];
-                        state.animation.start(&state.camera, yaw, pitch);
-                        state.keyboard_view = Some(idx);
-                    }
-                    Key::Character(c)
-                        if state.modifiers.control_key()
-                            && state.modifiers.shift_key()
-                            && state.modifiers.alt_key()
-                            && (c == "s" || c == "S") =>
-                    {
-                        SHOW_STATS_OVERLAY.fetch_xor(true, Ordering::SeqCst);
-                    }
-                    Key::Character(c)
-                        if !state.egui_ctx.wants_keyboard_input() && (c == "h" || c == "H") =>
-                    {
-                        SHOW_HELP_OVERLAY.fetch_xor(true, Ordering::SeqCst);
-                    }
-                    Key::Character(c)
-                        if state.modifiers.control_key() && (c == "q" || c == "Q") =>
-                    {
-                        QUIT_REQUESTED.store(true, Ordering::SeqCst);
-                        let _ = self.viewer_tx.send(ViewerToRepl::ViewerClosed);
-                        self.running.store(false, Ordering::SeqCst);
-                        event_loop.exit();
-                    }
-                    _ => {}
-                },
+                }
             },
             WindowEvent::MouseInput {
                 button,
@@ -1243,7 +1273,7 @@ impl ApplicationHandler for ViewerApp {
                 let dy = position.y - state.mouse_pos.y;
                 state.mouse_pos = position;
 
-                if !state.egui_ctx.wants_pointer_input() {
+                if !state.egui_ctx.egui_wants_pointer_input() {
                     if state.mouse_pressed[0] {
                         if state.egui_ctx.input(|i| i.modifiers.shift) {
                             state.camera.pan(dx, dy);
@@ -1269,7 +1299,7 @@ impl ApplicationHandler for ViewerApp {
                 state.gizmo_renderer.set_hovered(&state.device, None);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if !state.egui_ctx.wants_pointer_input() {
+                if !state.egui_ctx.egui_wants_pointer_input() {
                     let factor = match delta {
                         MouseScrollDelta::LineDelta(_, y) => y as f64,
                         MouseScrollDelta::PixelDelta(pos) => pos.y * 0.01,
@@ -1283,6 +1313,10 @@ impl ApplicationHandler for ViewerApp {
             }
             WindowEvent::RedrawRequested => {
                 Self::check_repl_commands(&self.repl_rx, state);
+                // Poll GUI REPL responses from the background thread
+                while let Ok(resp) = self.gui_resp_rx.try_recv() {
+                    state.repl.handle_response(&resp);
+                }
                 Self::render(state);
             }
             _ => {}
@@ -1581,8 +1615,9 @@ impl ViewerApp {
         }
 
         let frame = match state.surface.get_current_texture() {
-            Ok(f) => f,
-            Err(_) => return,
+            wgpu::CurrentSurfaceTexture::Success(t) => t,
+            wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            _ => return,
         };
         let view = frame
             .texture
@@ -1599,6 +1634,7 @@ impl ViewerApp {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1621,6 +1657,7 @@ impl ViewerApp {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             // Grid (no depth test, overlay style)
@@ -1649,12 +1686,22 @@ impl ViewerApp {
         {
             let gs = state.gizmo_viewport_size;
             let gm = state.gizmo_margin;
-            let gx = state.size.width.saturating_sub(gs + gm);
+            let panel_visible = SHOW_REPL_PANEL.load(Ordering::Relaxed);
+            let gx = if panel_visible {
+                // Panel width in physical pixels, plus gizmo margin for gap.
+                let sf = state.window.scale_factor();
+                let panel_phys =
+                    (REPL_PANEL_WIDTH.load(Ordering::Relaxed) as f64 * sf).round() as u32;
+                state.size.width.saturating_sub(gs + panel_phys + gm)
+            } else {
+                state.size.width.saturating_sub(gs + gm)
+            };
             let gy = gm;
 
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("gizmo pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1672,6 +1719,7 @@ impl ViewerApp {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             pass.set_viewport(gx as f32, gy as f32, gs as f32, gs as f32, 0.0, 1.0);
@@ -1682,7 +1730,10 @@ impl ViewerApp {
         // Egui overlay pass
         {
             let raw_input = state.egui_state.take_egui_input(&state.window);
-            let full_output = state.egui_ctx.run(raw_input, |ctx| {
+            let full_output = state.egui_ctx.run_ui(raw_input, |ctx| {
+                if state.repl.visible() {
+                    state.repl.ui(ctx);
+                }
                 state.stats.ui(ctx, &state.camera, &state.selected_ids, dt);
                 state.help.ui(ctx);
             });
@@ -1717,6 +1768,7 @@ impl ViewerApp {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("egui pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    depth_slice: None,
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -1727,6 +1779,7 @@ impl ViewerApp {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             // egui-wgpu requires RenderPass<'static> but our pass borrows view
