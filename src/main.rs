@@ -1604,14 +1604,23 @@ pub unsafe extern "C" fn rust_write_all_step(
     }
 }
 
-/// Write a shape to an STL file. Returns 0 on success, 1 on failure.
+/// Write one or more shapes to an STL file. Returns 0 on success, 1 on failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_write_stl(data: *mut c_void, path: *const c_char) -> c_int {
+pub unsafe extern "C" fn rust_write_all_stl(
+    shapes: *mut *mut c_void,
+    num_shapes: c_int,
+    path: *const c_char,
+) -> c_int {
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    let shape_data = unsafe { &*(data as *const ShapeData) };
-    match cad::write_stl(shape_data, &path_str) {
+    let num = num_shapes as usize;
+    let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
+    let shape_refs: Vec<&ShapeData> = shapes_slice
+        .iter()
+        .map(|p| unsafe { &*(*p as *const ShapeData) })
+        .collect();
+    match cad::write_all_stl(&shape_refs, &path_str) {
         Ok(()) => 0,
         Err(msg) => {
             set_last_error(msg);

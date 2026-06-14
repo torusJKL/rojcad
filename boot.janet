@@ -807,9 +807,10 @@
 (defmeta write-step "io"
   "(write-step path & shapes)\n\nExport one or more shapes to a STEP file at the given path.\nWith no shape arguments, exports all currently visible shapes.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-step \"/tmp/model.step\")                          # all visible\n  (write-step \"/tmp/model.step\" my-shape)                  # single shape\n  (write-step \"/tmp/model.step\" box-a sphere-b cylinder-c) # multiple shapes")
 
-(wrap-c-fn write-stl _write-stl [shape path] (_write-stl shape path))
+(wrap-c-fn write-stl _write-stl [path & shapes]
+  (apply _write-stl path shapes))
 (defmeta write-stl "io"
-  "(write-stl shape path)\n\nExport a shape to an STL file at the given path.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-stl my-shape \"/tmp/model.stl\")")
+  "(write-stl path & shapes)\n\nExport one or more shapes to an STL file at the given path.\nWith no shape arguments, exports all currently visible shapes.\nReturns nil on success, signals an error on failure.\n\nExamples:\n  (write-stl \"/tmp/model.stl\")                          # all visible\n  (write-stl \"/tmp/model.stl\" my-shape)                  # single shape\n  (write-stl \"/tmp/model.stl\" box-a sphere-b cylinder-c) # multiple shapes")
 
 (wrap-c-fn read-step _read-step [path &keys {:eager eager :hide hide}]
   (def s (_read-step path (if eager true false)))

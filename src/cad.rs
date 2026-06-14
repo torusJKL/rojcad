@@ -511,11 +511,15 @@ pub fn write_all_step(shapes: &[&ShapeData], path: &str) -> Result<(), String> {
     Shape::write_all_step(&refs, path).map_err(|e| format!("STEP export failed: {}", e))
 }
 
-/// Write a shape to an STL file.
-pub fn write_stl(data: &ShapeData, path: &str) -> Result<(), String> {
-    data.shape
-        .write_stl(path)
-        .map_err(|e| format!("STL export failed: {}", e))
+/// Write one or more shapes to an STL file using a single compound.
+pub fn write_all_stl(shapes: &[&ShapeData], path: &str) -> Result<(), String> {
+    if shapes.is_empty() {
+        return Err("at least one shape is required to write an STL file".to_string());
+    }
+    let refs: Vec<&Shape> = shapes.iter().map(|s| &s.shape).collect();
+    let compound = Compound::from_shapes(refs);
+    let shape = Shape::from(&compound);
+    shape.write_stl(path).map_err(|e| format!("STL export failed: {}", e))
 }
 
 // ── 2D Primitives ────────────────────────────────────────────────────────────
@@ -988,16 +992,32 @@ mod tests {
     }
 
     #[test]
-    fn test_write_stl() {
-        // 10.7: Test STL export
+    fn test_write_all_stl_single() {
         let sd = unwrap_sphere(10.0, None, None, false);
         let path = "/tmp/test_rojcad_sphere.stl";
-        assert!(write_stl(&sd, path).is_ok());
+        assert!(write_all_stl(&[&sd], path).is_ok());
         assert!(std::path::Path::new(path).exists());
         let metadata = std::fs::metadata(path).unwrap();
         assert!(metadata.len() > 0);
-        // Clean up
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_write_all_stl_multiple() {
+        let s1 = unwrap_box(10.0, 20.0, 30.0, None, false);
+        let s2 = unwrap_sphere(10.0, None, None, false);
+        let path = "/tmp/test_rojcad_multi.stl";
+        assert!(write_all_stl(&[&s1, &s2], path).is_ok());
+        assert!(std::path::Path::new(path).exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_write_all_stl_empty() {
+        let path = "/tmp/test_rojcad_empty.stl";
+        let result = write_all_stl(&[], path);
+        assert!(result.is_err());
+        assert!(!std::path::Path::new(path).exists());
     }
 
     #[test]
