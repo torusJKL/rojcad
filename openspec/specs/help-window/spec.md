@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Display keyboard shortcuts, REPL documentation commands, connection info, CLI arguments, and a configurable Quick Example section.
+## Requirements
 ### Requirement: Help window is visible on startup
 The help window SHALL be visible when the 3D viewer first opens.
 
@@ -55,13 +57,21 @@ The help window SHALL display how to get documentation from the Janet REPL.
 - **THEN** it lists: (doc ...), (apropos ...), (group), (cad-fns), (all-fns), (dump-docs)
 
 ### Requirement: Help window displays REPL connection info
-The help window SHALL display how to connect to the REPL via netcat.
+
+**Previous version:**
+The help window SHALL display how to connect to the REPL via netcat, showing `nc 127.0.0.1 9365`.
+
+The help window SHALL display how to connect to the raw TCP REPL via netcat.
 
 #### Scenario: Connection info shown
 - **WHEN** the help window is visible
 - **THEN** it shows: nc 127.0.0.1 9364
 
 ### Requirement: Help window displays CLI arguments
+
+**Previous version:**
+The help window SHALL display available command-line arguments, which were listed as `--headless, --port, --eval`.
+
 The help window SHALL display available command-line arguments.
 
 #### Scenario: CLI args shown
@@ -104,8 +114,6 @@ All three help-related Janet functions SHALL be registered under the `"view"` ca
 - **WHEN** `(group "view")` is called
 - **THEN** the listing includes window-help-toggle, window-help-show?, and window-help-show
 
-## ADDED Requirements
-
 ### Requirement: Help window displays a Quick Example section
 
 The help window SHALL display a "Quick Example" section showing a complete, runnable Janet workflow. The section SHALL only appear when Janet has registered content via the `help-set-example` function. The example SHALL show a shape creation followed by a STEP file export.
@@ -145,3 +153,4 @@ The system SHALL provide a `help-set-example` Janet function that registers the 
 #### Scenario: Function registered in view group
 - **WHEN** `(group "view")` is called
 - **THEN** the listing includes `help-set-example`
+

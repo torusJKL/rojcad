@@ -1,3 +1,7 @@
+## Purpose
+
+Control hidden edge visibility and projection modes in the viewer.
+
 ## Requirements
 
 ### Requirement: Hidden edges visibility
