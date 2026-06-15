@@ -24,9 +24,9 @@ Janet is NOT thread-safe — all Janet operations must happen on the REPL thread
 
 **Non-Goals:**
 - File persistence of REPL history (out of scope)
-- Code completion popup (deferred — infrastructure exists)
 - Jump-to-definition or hover documentation
 - Separate REPL window (single-window panel is simpler)
+- Channel-based completion (all filtering is done locally on the viewer thread)
 
 ## Decisions
 
@@ -76,6 +76,20 @@ Janet is NOT thread-safe — all Janet operations must happen on the REPL thread
 
 All REPL GUI capabilities (eval, highlight, completion, panel) are tightly coupled and share the same channel infrastructure. Splitting into multiple specs adds overhead without clarity benefit.
 
+### Decision 8: Local completion filtering
+
+**Chosen**: Completion is computed entirely on the viewer thread by prefix-matching `self.fn_names` (pre-loaded from Janet via channel request type `'f'`). The popup is rendered as a simple egui `Frame` with a scrollable list below the code editor. No channel round-trip is needed.
+
+**Rejected**: Sending completion requests through the channel to Janet's `handle-gui-completions`. The response latency (20ms poll interval) and complexity of merging dynamic names were not justified given that `fn_names` already contains all `:cfunction` and rojcad-sourced functions.
+
+**Rationale**: Simplicity. The `fn_names` set is populated at startup via `(all-fns)`. Prefix filtering is O(n) over a set of ~200 names — negligible cost per frame. Avoiding the channel round-trip keeps the UI responsive.
+
+### Decision 9: Auto-trigger at 2+ chars, click-to-insert
+
+**Chosen**: Completion auto-triggers when the current word (text from last whitespace/bracket to input end) is ≥ 2 characters. The popup shows up to 20 alphabetically-sorted matches. Clicking a candidate replaces the current word in the input buffer.
+
+**Rationale**: Auto-trigger at 1 char would be too noisy. At 2+ chars, the candidate set is meaningfully narrowed. The popup is a simple scrollable list — no keyboard navigation or Enter selection in v1 to keep scope minimal. Escape dismisses the popup.
+
 ## Risks / Trade-offs
 
 - **[Channel contention]** The `poll-gui-repl` fiber runs at 20ms intervals. If eval takes long, the fiber pauses but doesn't block other TCP REPL fibers — Janet's cooperative scheduling handles this.
@@ -85,4 +99,5 @@ All REPL GUI capabilities (eval, highlight, completion, panel) are tightly coupl
 
 ## Open Questions
 
-- Completion popup is deferred. Trigger mechanism (auto after 2+ chars vs. Ctrl+Space only) and UI (popup positioned at cursor, etc.) remain to be designed.
+- Keyboard navigation (Up/Down arrows + Enter to select) is not implemented in v1 — only click-to-select. This can be added if users request it.
+- The popup anchors below the code editor, not at the text cursor position, because `egui_code_editor::CodeEditor` doesn't expose cursor screen coordinates.

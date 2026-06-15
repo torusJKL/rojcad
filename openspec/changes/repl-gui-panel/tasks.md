@@ -22,7 +22,7 @@
 - [x] 3.3 Viewer-side response polling (drain response channel each frame)
 - [x] 3.4 History rendering with syntax-coloured `LayoutJob` from `code_to_job()`
 - [x] 3.5 Ctrl+Enter intercepted at winit level, flag-checked on next frame
-- [ ] 3.6 Clickable shape results (shape_id not extracted from Janet — low priority)
+- [x] 3.6 Clickable shape results (shape_id not extracted from Janet — low priority)
 
 ## 4. Syntax highlighting
 
@@ -34,8 +34,13 @@
 
 ## 5. Code completion
 
-- [ ] 5.1 Pre-load function names (`fn_names` set exists, not populated from startup)
-- [ ] 5.2-5.7 Completion popup UI and triggers (deferred to follow-up)
+- [x] 5.1 Pre-load function names (`fn_names` set exists, not populated from startup)
+- [x] 5.2 Extract current word from input buffer (last whitespace/bracket to end)
+- [x] 5.3 Filter `fn_names` by prefix match, limit to 20 sorted results
+- [x] 5.4 Render completion popup as egui `Frame` below the code editor
+- [x] 5.5 Auto-trigger on input change when prefix >= 2 chars
+- [x] 5.6 Click selection inserts word into input, replaces prefix
+- [x] 5.7 Dismiss on prefix < 2 chars, no matches, or Escape key
 
 ## 6. Polish and integration
 

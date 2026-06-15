@@ -110,6 +110,7 @@ extern uint64_t rust_poll_selection(uint8_t *action);
 extern uint64_t *rust_get_selected_shape_ids(size_t *count_out);
 extern uint64_t *rust_get_registered_shape_ids(uint8_t filter, size_t *count_out);
 extern void *rust_get_shape_pointer(uint64_t id);
+extern uint64_t rust_shape_get_id(const void *data);
 extern void rust_free_u64_array(uint64_t *ptr, size_t count);
 
 /* Quit request */
@@ -2075,6 +2076,23 @@ JANET_FN(_cad_get_shape_by_id,
     return ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
 }
 
+JANET_FN(_cad_shape_get_id,
+         "_shape-get-id shape",
+         "Extract the numeric ID from a rojcad/shape abstract value. (thin primitive)\n\n"
+         "Returns the shape's u64 identifier, or nil if the value is nil.\n\n"
+         "Example:\n"
+         "  # (_shape-get-id my-shape)\n"
+         "  # => 42")
+{
+    janet_arity(argc, 1, 1);
+    if (janet_checktype(argv[0], JANET_NIL)) {
+        return janet_wrap_nil();
+    }
+    void *data = janet_getabstract(argv, 0, &rojcad_shape_type);
+    uint64_t id = rust_shape_get_id(data);
+    return janet_wrap_number((double)id);
+}
+
 /* ── Registration ───────────────────────────────────────────────────────── */
 
 void cad_register_functions(JanetTable *env) {
@@ -2137,6 +2155,7 @@ void cad_register_functions(JanetTable *env) {
         {"_get-selected-ids",      _cad_get_selected_ids,      _cad_get_selected_ids_docstring_},
         {"_get-registered-ids",    _cad_get_registered_ids,    _cad_get_registered_ids_docstring_},
         {"_get-shape",             _cad_get_shape_by_id,       _cad_get_shape_by_id_docstring_},
+        {"_shape-get-id",          _cad_shape_get_id,          _cad_shape_get_id_docstring_},
         {"edge-toggle-inactive",   cad_edge_toggle_inactive,   cad_edge_toggle_inactive_docstring_},
         {"edge-toggle-active",     cad_edge_toggle_active,     cad_edge_toggle_active_docstring_},
         {"edge-inactive-show?",    cad_edge_inactive_showing,  cad_edge_inactive_showing_docstring_},

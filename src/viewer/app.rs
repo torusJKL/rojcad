@@ -1318,6 +1318,14 @@ impl ApplicationHandler for ViewerApp {
                     state.repl.handle_response(&resp);
                 }
                 Self::render(state);
+                // Handle shape selection from REPL history click
+                if let Some(shape_id) = state.repl.shape_to_select.take()
+                    && state.selected_ids.insert(shape_id)
+                {
+                    let _ = self.viewer_tx.send(ViewerToRepl::SelectionChanged);
+                    LAST_SELECTION.store(shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                }
             }
             _ => {}
         }

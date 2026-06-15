@@ -188,3 +188,37 @@ theme's punctuation colour for brackets).
 #### Scenario: Same colours
 - **WHEN** code appears in both the input editor and the history log
 - **THEN** keywords, types, strings, numbers, and literals use the same colours
+
+### Requirement: Code completion
+
+The system SHALL provide a code completion popup that suggests function names as the user types.
+
+The completion popup SHALL auto-trigger when the current word (the text from the last whitespace or bracket to the cursor position) is at least 2 characters long.
+
+The completion candidates SHALL be filtered from the pre-loaded function names (`fn_names` set) by prefix matching against the current word.
+
+The popup SHALL display up to 20 matching candidates in a scrollable list, ordered alphabetically.
+
+The popup SHALL appear below the code input area, anchored to the left edge of the REPL panel.
+
+Clicking a candidate SHALL insert the selected name into the input buffer, replacing the current word.
+
+If no candidates match, the popup SHALL be hidden.
+
+The popup SHALL be dismissible by pressing Escape or by clicking outside the popup area.
+
+#### Scenario: Completion triggers on 2+ char prefix
+- **WHEN** the user types `bo` in the code editor
+- **THEN** a popup appears showing `box` as a completion candidate
+
+#### Scenario: Completion inserts on click
+- **WHEN** the user clicks `box` in the completion popup
+- **THEN** the input is updated to replace `bo` with `box`
+
+#### Scenario: Completion hides on empty prefix
+- **WHEN** the user deletes characters so the current word is shorter than 2 characters
+- **THEN** the completion popup is hidden
+
+#### Scenario: Completion hides on no matches
+- **WHEN** the user types `zz` which matches no function names
+- **THEN** the completion popup is hidden (not shown empty)

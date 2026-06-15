@@ -1574,6 +1574,8 @@
       (put resp "id" id)
       (put resp "value" display)
       (put resp "kind" type-tag)
+      (when (= type-tag "rojcad/shape")
+        (put resp "shape_id" (_shape-get-id result)))
       (put resp "new_bindings" @[])
       (rust_gui_repl_send_response (json-encode resp)))
     (do
@@ -1655,6 +1657,14 @@
   (put resp "items" @[])
   (rust_gui_repl_send_response (json-encode resp)))
 
+(defn- handle-gui-fn-names [id]
+  (def names (all-fns))
+  (def resp (table/setproto @{} nil))
+  (put resp "type" "fnNamesResult")
+  (put resp "id" id)
+  (put resp "names" (seq [n :in names] (string n)))
+  (rust_gui_repl_send_response (json-encode resp)))
+
 (defn- gui-repl-handler [raw]
   # Format: type_byte \x02 id \x02 body
   # type: e=eval, h=highlight, c=completions
@@ -1668,6 +1678,7 @@
       "e" (handle-gui-eval nid body)
       "h" (handle-gui-highlight nid body)
       "c" (handle-gui-completions nid body (get parts 3))
+      "f" (handle-gui-fn-names nid)
       (eprint "rojcad: unknown gui-repl request type: " type-prefix))))
 
 (defn poll-gui-repl []

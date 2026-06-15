@@ -96,6 +96,14 @@ pub unsafe extern "C" fn rust_shape_type_string(data: *mut c_void) -> *const c_c
     s.into_raw()
 }
 
+/// Extract the numeric shape_id from a ShapeData pointer.
+/// This lets Janet-side code include a shape's ID in JSON responses.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_shape_get_id(data: *const c_void) -> u64 {
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    shape_data.shape_id
+}
+
 // ── Primitives — initialize at a pre-allocated destination ───────────────────
 
 /// Initialize a ShapeData as a box at the given destination.
