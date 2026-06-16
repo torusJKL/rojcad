@@ -389,6 +389,61 @@ run_tc_test "edge-color-inactive: wrong types"          '(edge-color-inactive "r
 run_tc_test "window-size: string instead of integer"    '(window-size "big" "small")'
 
 
+# ── Load-file tests ────────────────────────────────────────────────────
+
+echo ""
+echo ":: load-file"
+
+# Setup test files
+echo "(+ 1 2)" > /tmp/test-load-simple.janet
+echo "(defn square [x] (* x x))" > /tmp/test-load-fn.janet
+echo "(def my-box (box 10))" > /tmp/test-load-shape.janet
+echo "(def a (" > /tmp/test-load-syntax.janet
+echo "(defn)" > /tmp/test-load-compile.janet
+echo -n "" > /tmp/test-load-empty.janet
+
+run_test "load-file: simple arithmetic expression" '
+(def r (load-file "/tmp/test-load-simple.janet"))
+(if (= r 3) (print "PASS") (do (print "FAIL: " r) (os/exit 1)))
+'
+
+run_test "load-file: defines a function" '
+(load-file "/tmp/test-load-fn.janet")
+(def r (square 5))
+(if (= r 25) (print "PASS") (do (print "FAIL: " r) (os/exit 1)))
+'
+
+run_test "load-file: creates visible shape" '
+(load-file "/tmp/test-load-shape.janet")
+(def v (get (visible? my-box) 0))
+(def t (get (shape-type my-box) 0))
+(if (and (= true v) (= :solid t))
+  (print "PASS") (do (print "FAIL") (os/exit 1)))
+'
+
+run_test "load-file: empty file returns nil" '
+(def r (load-file "/tmp/test-load-empty.janet"))
+(if (= nil r) (print "PASS") (do (print "FAIL: " r) (os/exit 1)))
+'
+
+run_test "load-file: file not found" '
+(def [ok val] (protect (load-file "/tmp/test-load-nonexistent.janet")))
+(if (and (not ok) (string/find "could not open" (string val)))
+  (print "PASS") (do (print "FAIL: " val) (os/exit 1)))
+'
+
+run_test "load-file: syntax error in file" '
+(def [ok val] (protect (load-file "/tmp/test-load-syntax.janet")))
+(if (and (not ok) (string/find "incomplete" (string val)))
+  (print "PASS") (do (print "FAIL: " val) (os/exit 1)))
+'
+
+run_test "load-file: compile error in file" '
+(def [ok val] (protect (load-file "/tmp/test-load-compile.janet")))
+(if (and (not ok) (string/find "compile error" (string val)))
+  (print "PASS") (do (print "FAIL: " val) (os/exit 1)))
+'
+
 # ── TCP REPL test ──────────────────────────────────────────────────────
 
 echo ""

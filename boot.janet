@@ -1067,6 +1067,36 @@
       result)
     (string "compile error: " (get compiled :error) " line:" (get compiled :line))))
 
+(defn load-file [path]
+  (def f (file/open path :r))
+  (when (nil? f)
+    (error (string "could not open \"" path "\"")))
+  (def content (file/read f :all))
+  (file/close f)
+  (def p (parser/new))
+  (parser/consume p content)
+  (var last-result nil)
+  (var got-form false)
+  (while true
+    (def form (parser/produce p))
+    (when (nil? form)
+      (def st (parser/status p))
+      (cond
+        (= st :error) (error (string "syntax error in \"" path "\""))
+        (and (not got-form) (= st :pending))
+          (error (string "incomplete form in \"" path "\""))
+        :else (break)))
+    (set got-form true)
+    (def eval-result (my-eval form core-env))
+    (when (and (= :string (type eval-result))
+               (string/find "compile error:" eval-result))
+      (error eval-result))
+    (set last-result eval-result))
+  last-result)
+
+(defmeta load-file "io"
+  "(load-file path)\n\nLoad and evaluate a file of Janet code.\n\nReads the file, parses all forms, and evaluates each in the\ncurrent environment using my-eval (which handles shape tracking\nand auto-purge on redefinition). Aborts with an error on the\nfirst failed form.\n\nPath must be absolute.\n\nExamples:\n  (load-file \"/home/user/my-shapes.janet\")\n  (load-file \"/tmp/models.janet\")\n\nReturns the result of the last form, or nil if the file is empty.")
+
 (def raw-port *raw-repl-port*)
 (def spork-port *spork-repl-port*)
 
