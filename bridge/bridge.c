@@ -184,6 +184,20 @@ extern int rust_init_wire_fillet(void *dest, void *data, double radius, int eage
 extern int rust_init_wire_chamfer(void *dest, void *data, double distance, int eager);
 extern int rust_init_wire_offset(void *dest, void *data, double distance, int eager);
 
+/* Fillet / Chamfer */
+extern int rust_init_fillet(void *dest, void *data, double radius,
+                             const int32_t *idxs, int32_t count, int eager);
+extern int rust_init_chamfer(void *dest, void *data, double distance,
+                              const int32_t *idxs, int32_t count, int eager);
+
+/* Edge info */
+extern const char *rust_edge_info(void *data);
+extern void rust_edge_info_free(const char *s);
+
+/* Highlight edges */
+extern void rust_highlight_edges(void *data, const int32_t *idxs, int32_t count);
+extern void rust_highlight_edges_clear(void);
+
 /* Sketch */
 extern size_t rust_sketch_data_size(void);
 extern void rust_sketch_drop(void *data, size_t len);
@@ -1779,6 +1793,133 @@ JANET_FN(_cad_wire_offset,
     return janet_wrap_abstract(shape);
 }
 
+/* Parse edge indices from :e keyword (tuple or array of integers).
+ * Returns the number of indices found, or -1 if keyword is absent.
+ * idxs must be at least MAX_EDGE_INDICES in size. */
+#define MAX_EDGE_INDICES 4096
+
+static int kw_edge_indices(const Janet *argv, int32_t argc, const char *kw,
+                            int32_t *idxs) {
+    int idx = find_keyword(argv, argc, kw);
+    if (idx < 0) return -1;
+    if (idx + 1 >= argc) {
+        janet_panicf("keyword :%s requires a tuple argument", kw);
+    }
+    Janet val = argv[idx + 1];
+    int32_t count = 0;
+    if (janet_checktype(val, JANET_TUPLE)) {
+        const Janet *parts = janet_unwrap_tuple(val);
+        int32_t tlen = janet_tuple_length(parts);
+        for (int32_t i = 0; i < tlen && count < MAX_EDGE_INDICES; i++) {
+            if (!janet_checkint(parts[i])) {
+                janet_panicf("keyword :%s expects integer edge indices", kw);
+            }
+            idxs[count++] = janet_unwrap_integer(parts[i]);
+        }
+    } else if (janet_checktype(val, JANET_ARRAY)) {
+        JanetArray *arr = janet_unwrap_array(val);
+        for (int32_t i = 0; i < arr->count && count < MAX_EDGE_INDICES; i++) {
+            if (!janet_checkint(arr->data[i])) {
+                janet_panicf("keyword :%s expects integer edge indices", kw);
+            }
+            idxs[count++] = janet_unwrap_integer(arr->data[i]);
+        }
+    } else {
+        janet_panicf("keyword :%s expects a tuple or array of indices", kw);
+    }
+    return count;
+}
+
+// ── Solid Fillet / Chamfer ─────────────────────────────────────────────────
+
+JANET_FN(_cad_fillet,
+         "(_fillet shape &keys :r :e :eager :hide)",
+         "")
+{
+    janet_arity(argc, 1, -1);
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double radius;
+    if (!kw_double(argv, argc, "r", &radius)) {
+        janet_panic("fillet: :r (radius) is required");
+    }
+    int32_t edge_idxs[MAX_EDGE_INDICES];
+    int edge_count = kw_edge_indices(argv, argc, "e", edge_idxs);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_fillet(shape, data, radius,
+                                edge_count > 0 ? edge_idxs : NULL,
+                                edge_count > 0 ? edge_count : 0,
+                                eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_chamfer,
+         "(_chamfer shape &keys :d :e :eager :hide)",
+         "")
+{
+    janet_arity(argc, 1, -1);
+    int eager = has_eager(argv, argc);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    double dist;
+    if (!kw_double(argv, argc, "d", &dist)) {
+        janet_panic("chamfer: :d (distance) is required");
+    }
+    int32_t edge_idxs[MAX_EDGE_INDICES];
+    int edge_count = kw_edge_indices(argv, argc, "e", edge_idxs);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_init_chamfer(shape, data, dist,
+                                 edge_count > 0 ? edge_idxs : NULL,
+                                 edge_count > 0 ? edge_count : 0,
+                                 eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+// ── Edge Info ──────────────────────────────────────────────────────────────
+
+JANET_FN(_cad_edge_info_raw,
+         "(_edge-info-raw shape)",
+         "Return JSON metadata for all edges of a shape. (thin primitive)")
+{
+    janet_fixarity(argc, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    const char *json = rust_edge_info(data);
+    Janet result = janet_cstringv(json);
+    rust_edge_info_free(json);
+    return result;
+}
+
+// ── Highlight edges ────────────────────────────────────────────────────────
+
+JANET_FN(_cad_highlight_edge,
+         "(_highlight-edge shape & indices)",
+         "Highlight specific edges of a shape in the viewer. (thin primitive)")
+{
+    janet_arity(argc, 1, -1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int32_t edge_idxs[MAX_EDGE_INDICES];
+    int count = 0;
+    for (int32_t i = 1; i < argc && count < MAX_EDGE_INDICES; i++) {
+        if (!janet_checkint(argv[i])) {
+            janet_panicf("highlight-edge: expected integer edge index, got %v", argv[i]);
+        }
+        edge_idxs[count++] = janet_unwrap_integer(argv[i]);
+    }
+    rust_highlight_edges(data, count > 0 ? edge_idxs : NULL, count);
+    return janet_wrap_nil();
+}
+
+JANET_FN(_cad_highlight_edge_clear,
+         "(_highlight-edge-clear)",
+         "Clear all edge highlights in the viewer. (thin primitive)")
+{
+    janet_fixarity(argc, 0);
+    (void)argv;
+    rust_highlight_edges_clear();
+    return janet_wrap_nil();
+}
+
 // ── Sketch ────────────────────────────────────────────────────────────────
 
 JANET_FN(_cad_sketch,
@@ -2179,6 +2320,13 @@ void cad_register_functions(JanetTable *env) {
         {"window-fullscreen?",     cad_window_fullscreen_query,cad_window_fullscreen_query_docstring_},
         {"window-maximized",       cad_window_maximized,       cad_window_maximized_docstring_},
         {"window-maximized?",      cad_window_maximized_query, cad_window_maximized_query_docstring_},
+
+        /* Solid fillet/chamfer */
+        {"fillet",                 _cad_fillet,                 _cad_fillet_docstring_},
+        {"chamfer",                _cad_chamfer,                _cad_chamfer_docstring_},
+        {"_edge-info-raw",         _cad_edge_info_raw,          _cad_edge_info_raw_docstring_},
+        {"highlight-edge",         _cad_highlight_edge,         _cad_highlight_edge_docstring_},
+        {"_highlight-edge-clear",  _cad_highlight_edge_clear,   _cad_highlight_edge_clear_docstring_},
 
         /* Wire operations (non-underscore only) */
         {"wire-to-face",           _cad_wire_to_face,           _cad_wire_to_face_docstring_},

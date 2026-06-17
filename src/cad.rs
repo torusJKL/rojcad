@@ -6,8 +6,11 @@ use std::f64::consts::TAU;
 
 use glam::{DQuat, DVec3};
 use opencascade::angle::Angle;
-use opencascade::primitives::{Compound, Face, JoinType, Shape, ShapeType, Solid, Wire};
+use opencascade::primitives::{
+    Compound, Edge, EdgeType, Face, JoinType, Shape, ShapeType, Solid, Wire,
+};
 use opencascade::workplane::Workplane;
+use serde::Serialize;
 
 use crate::types::{MeshData, ShapeData, global_shape_registry};
 
@@ -644,6 +647,7 @@ pub fn extrude_shape(
         face.extrude(full_vec)
     };
     let mut sd = ShapeData::new(Shape::from(solid));
+    validate_has_geometry(&sd.shape, "extrude")?;
     if eager {
         sd.tessellate_if_needed();
     }
@@ -714,6 +718,7 @@ pub fn revolve_shape(
     };
 
     let mut sd = ShapeData::new(Shape::from(solid));
+    validate_has_geometry(&sd.shape, "revolve")?;
     if eager {
         sd.tessellate_if_needed();
     }
@@ -762,7 +767,9 @@ pub fn wire_fillet(data: &ShapeData, radius: f64, eager: bool) -> Result<ShapeDa
     validate_dimension(radius, "radius")?;
     let wire = data.shape.expect_wire();
     let result = wire.fillet(radius);
-    let mut sd = ShapeData::new(Shape::from(result));
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "wire-fillet")?;
+    let mut sd = ShapeData::new(shape);
     if eager {
         sd.tessellate_if_needed();
     }
@@ -774,7 +781,9 @@ pub fn wire_chamfer(data: &ShapeData, distance: f64, eager: bool) -> Result<Shap
     validate_dimension(distance, "distance")?;
     let wire = data.shape.expect_wire();
     let result = wire.chamfer(distance);
-    let mut sd = ShapeData::new(Shape::from(result));
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "wire-chamfer")?;
+    let mut sd = ShapeData::new(shape);
     if eager {
         sd.tessellate_if_needed();
     }
@@ -786,11 +795,184 @@ pub fn wire_offset(data: &ShapeData, distance: f64, eager: bool) -> Result<Shape
     validate_dimension(distance, "distance")?;
     let wire = data.shape.expect_wire();
     let result = wire.offset(distance, JoinType::Arc);
-    let mut sd = ShapeData::new(Shape::from(result));
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "wire-offset")?;
+    let mut sd = ShapeData::new(shape);
     if eager {
         sd.tessellate_if_needed();
     }
     Ok(sd)
+}
+
+/// Information about a single edge of a shape.
+#[derive(Serialize)]
+pub struct EdgeInfo {
+    pub index: usize,
+    pub edge_type: String,
+    pub start: [f64; 3],
+    pub end: [f64; 3],
+}
+
+/// Check whether a shape has any renderable geometry (mesh vertices + edge polylines).
+/// For wire/SOLID/SHELL shapes, edge polylines alone are sufficient (no mesh required).
+/// Returns an error message if the shape is degenerate.
+pub fn validate_has_geometry(shape: &Shape, op: &str) -> Result<(), String> {
+    let edge_polylines = extract_edge_polylines(shape);
+    let has_edges = !edge_polylines.is_empty();
+    let has_mesh = extract_mesh(shape)
+        .as_ref()
+        .is_some_and(|m| !m.vertices.is_empty());
+    if has_edges {
+        return Ok(());
+    }
+    // Wires have no mesh but do have edges — checked above.
+    // For shapes without edges, check if they have mesh (e.g., a degenerate solid with no edges).
+    if !has_mesh {
+        return Err(format!("{}: operation produced no geometry", op));
+    }
+    Ok(())
+}
+
+/// Validate that a chamfer/fillet distance is not too large for the selected edges.
+/// Compares distance against approximate edge length (half of min edge length = max safe distance).
+/// OCCT segfaults on degenerate chamfer/fillet parameters, so we catch this early.
+fn validate_edge_dimension(
+    shape: &Shape,
+    value: f64,
+    edge_indices: Option<&[usize]>,
+    name: &str,
+) -> Result<(), String> {
+    let edges: Vec<_> = shape
+        .edges()
+        .enumerate()
+        .filter(|(i, _)| edge_indices.is_none_or(|indices| indices.contains(i)))
+        .collect();
+
+    if edges.is_empty() {
+        return Err(format!("{}: no valid edges to operate on", name));
+    }
+
+    for (_i, edge) in &edges {
+        let start = edge.start_point();
+        let end = edge.end_point();
+        let approx_length = (end - start).length();
+        if value * 2.0 >= approx_length {
+            return Err(format!(
+                "{}: value {} is too large for an edge of length {:.2} (max {:.2})",
+                name,
+                value,
+                approx_length,
+                approx_length / 2.0
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn edge_type_string(ty: EdgeType) -> String {
+    match ty {
+        EdgeType::Line => "line".into(),
+        EdgeType::Circle => "circle".into(),
+        EdgeType::Ellipse => "ellipse".into(),
+        EdgeType::Hyperbola => "hyperbola".into(),
+        EdgeType::Parabola => "parabola".into(),
+        EdgeType::BezierCurve => "bezier-curve".into(),
+        EdgeType::BSplineCurve => "bspline-curve".into(),
+        EdgeType::OffsetCurve => "offset-curve".into(),
+        EdgeType::OtherCurve => "other-curve".into(),
+    }
+}
+
+/// Fillet (round) edges of a 3D shape.
+///
+/// If `edge_indices` is `None`, all edges are filleted.
+/// If `Some(indices)`, only the specified edges are filleted.
+pub fn shape_fillet(
+    data: &ShapeData,
+    radius: f64,
+    edge_indices: Option<&[usize]>,
+    eager: bool,
+) -> Result<ShapeData, String> {
+    validate_dimension(radius, "radius")?;
+    validate_edge_dimension(&data.shape, radius, edge_indices, "fillet")?;
+    let result = match edge_indices {
+        Some(indices) => {
+            let edges: Vec<Edge> = data
+                .shape
+                .edges()
+                .enumerate()
+                .filter(|(i, _)| indices.contains(i))
+                .map(|(_, e)| e)
+                .collect();
+            data.shape.fillet_edges(radius, &edges)
+        }
+        None => data.shape.fillet(radius),
+    };
+    if result.shape_type() == ShapeType::Shape {
+        return Err("fillet: operation failed".to_string());
+    }
+    validate_has_geometry(&result, "fillet")?;
+    let mut sd = ShapeData::new(result);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
+/// Chamfer (bevel) edges of a 3D shape.
+///
+/// If `edge_indices` is `None`, all edges are chamfered.
+/// If `Some(indices)`, only the specified edges are chamfered.
+pub fn shape_chamfer(
+    data: &ShapeData,
+    distance: f64,
+    edge_indices: Option<&[usize]>,
+    eager: bool,
+) -> Result<ShapeData, String> {
+    validate_dimension(distance, "distance")?;
+    validate_edge_dimension(&data.shape, distance, edge_indices, "chamfer")?;
+    let result = match edge_indices {
+        Some(indices) => {
+            let edges: Vec<Edge> = data
+                .shape
+                .edges()
+                .enumerate()
+                .filter(|(i, _)| indices.contains(i))
+                .map(|(_, e)| e)
+                .collect();
+            data.shape.chamfer_edges(distance, &edges)
+        }
+        None => data.shape.chamfer(distance),
+    };
+    if result.shape_type() == ShapeType::Shape {
+        return Err("chamfer: operation failed".to_string());
+    }
+    validate_has_geometry(&result, "chamfer")?;
+    let mut sd = ShapeData::new(result);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
+/// Get metadata for all edges of a shape as a JSON string.
+pub fn edge_info_json(data: &ShapeData) -> String {
+    let infos: Vec<EdgeInfo> = data
+        .shape
+        .edges()
+        .enumerate()
+        .map(|(i, edge)| EdgeInfo {
+            index: i,
+            edge_type: edge_type_string(edge.edge_type()),
+            start: [
+                edge.start_point().x,
+                edge.start_point().y,
+                edge.start_point().z,
+            ],
+            end: [edge.end_point().x, edge.end_point().y, edge.end_point().z],
+        })
+        .collect();
+    serde_json::to_string(&infos).unwrap_or_else(|_| "[]".to_string())
 }
 
 // ── Helper Queries ──────────────────────────────────────────────────────────
@@ -1597,5 +1779,58 @@ mod tests {
     fn test_color_default_none() {
         let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
         assert!(get_color(&sd).is_none());
+    }
+
+    #[test]
+    fn test_shape_fillet_all() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_fillet(&sd, 1.0, None, false);
+        assert!(result.is_ok(), "fillet all should succeed");
+    }
+
+    #[test]
+    fn test_shape_fillet_edges() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_fillet(&sd, 1.0, Some(&[0, 1, 2]), false);
+        assert!(result.is_ok(), "fillet edges should succeed");
+    }
+
+    #[test]
+    fn test_shape_chamfer_all() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_chamfer(&sd, 1.0, None, false);
+        assert!(result.is_ok(), "chamfer all should succeed");
+    }
+
+    #[test]
+    fn test_shape_chamfer_edges() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_chamfer(&sd, 1.0, Some(&[0, 1, 2]), false);
+        assert!(result.is_ok(), "chamfer edges should succeed");
+    }
+
+    #[test]
+    fn test_shape_fillet_negative_radius() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_fillet(&sd, -1.0, None, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_shape_chamfer_negative_distance() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = shape_chamfer(&sd, -1.0, None, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_edge_info_json() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let json = edge_info_json(&sd);
+        assert!(json.starts_with('['));
+        assert!(json.contains("index"));
+        assert!(json.contains("edge_type"));
+        assert!(json.contains("start"));
+        assert!(json.contains("end"));
     }
 }

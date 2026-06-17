@@ -27,7 +27,8 @@
     wire-to-face wire-fillet wire-chamfer wire-offset
     close-sketch build-wire
     text text3d
-    read-step])
+    read-step
+    fillet chamfer])
 
 # ── Wrap CAD functions for model tracking ──────────────────────────────
 

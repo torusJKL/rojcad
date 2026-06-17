@@ -800,6 +800,43 @@
   (when hide (hide s))
   s)
 
+# ── Solid fillet / chamfer ──────────────────────────────────────────────────
+
+(wrap-c-fn fillet _fillet [shape &keys {:r r :e e :eager eager :hide hide}]
+  (def args @[shape :r (if r r 0)])
+  (when e (array/push args :e e))
+  (when eager (array/push args :eager))
+  (when hide (array/push args :hide))
+  (def s (apply _fillet args))
+  (when hide (hide s))
+  s)
+
+(wrap-c-fn chamfer _chamfer [shape &keys {:d d :e e :eager eager :hide hide}]
+  (def args @[shape :d (if d d 0)])
+  (when e (array/push args :e e))
+  (when eager (array/push args :eager))
+  (when hide (array/push args :hide))
+  (def s (apply _chamfer args))
+  (when hide (hide s))
+  s)
+
+# ── Edge info & highlight ────────────────────────────────────────────────────
+
+(defn- table->struct [t]
+  (def parts @[])
+  (each [k v] (pairs t)
+    (array/push parts k)
+    (array/push parts (if (= :array (type v)) (tuple ;v) v)))
+  (struct ;parts))
+
+(defn edge-info [shape]
+  (map table->struct (json-decode (_edge-info-raw shape) true)))
+
+(wrap-c-fn highlight-edge _highlight-edge [shape & indices]
+  (apply _highlight-edge shape indices))
+
+(defn highlight-edge-clear [] (_highlight-edge-clear))
+
 # ── I/O wrappers ────────────────────────────────────────────────────────────
 
 (wrap-c-fn write-step _write-step [path & shapes]
@@ -907,23 +944,27 @@
 
 # ── Display helper (array-aware string conversion) ─────────────────────────
 
+(defn- display-value [x]
+  (case (type x)
+    :array (string "[" (string/join (seq [v :in x] (display-value v)) ", ") "]")
+    :tuple (string "(" (string/join (seq [v :in x] (display-value v)) ", ") ")")
+    :string (string "'" x "'")
+    (string x)))
+
+(defn- display-table [x]
+  (def lines @[])
+  (def sorted-keys (sort (keys x)))
+  (each k sorted-keys
+    (array/push lines (string k " → " (display-value (get x k)))))
+  (string/join lines "\n"))
+
 (defn display-val [x]
   (case (type x)
-    :array (string/join (seq [v :in x] (string v)) "\n")
+    :array (string/join (seq [v :in x] (display-val v)) "\n---\n")
     :tuple (if (empty? x) "()"
-            (string/join (seq [v :in x] (string v)) "\n"))
-    :table (do
-             (def lines @[])
-             (var k (next x nil))
-             (while k
-               (def val (get x k))
-               (if (= :array (type val))
-                 (do
-                   (array/push lines (string k ":"))
-                   (each v val (array/push lines (string "  " v))))
-                 (array/push lines (string k " → " val)))
-               (set k (next x k)))
-             (string/join lines "\n"))
+            (string/join (seq [v :in x] (display-val v)) "\n---\n"))
+    :table (display-table x)
+    :struct (display-table x)
     (string x)))
 
 # ── REPL discoverability helpers ────────────────────────────────────────────
@@ -1530,6 +1571,16 @@
   "(wire-chamfer wire &keys :d :eager :hide)\n\nBevel all vertices of a closed Wire by distance :d.\nKeywords: :d (required), :eager, :hide\n\nExamples:\n  (wire-chamfer my-wire :d 2)")
 (defmeta wire-offset "wire-operations"
   "(wire-offset wire &keys :d :eager :hide)\n\nCreate a parallel offset of a closed Wire by distance :d.\nKeywords: :d (required), :eager, :hide\n\nExamples:\n  (wire-offset my-wire :d 2)")
+(defmeta fillet "operations"
+  "(fillet shape &keys :r :e :eager :hide)\n\nRound edges of a 3D shape by radius :r.\nWith :e, only the specified edges are filleted.\n:r is required, :e is an optional tuple of edge indices.\nKeywords: :r (required), :e (optional), :eager, :hide\n\nExamples:\n  (fillet my-box :r 2)              # fillet all edges\n  (fillet my-box :r 2 :e [0 1 2])   # fillet selected edges")
+(defmeta chamfer "operations"
+  "(chamfer shape &keys :d :e :eager :hide)\n\nBevel edges of a 3D shape by distance :d.\nWith :e, only the specified edges are chamfered.\n:d is required, :e is an optional tuple of edge indices.\nKeywords: :d (required), :e (optional), :eager, :hide\n\nExamples:\n  (chamfer my-box :d 1)              # chamfer all edges\n  (chamfer my-box :d 1 :e [0 1 2])   # chamfer selected edges")
+(defmeta edge-info "queries"
+  "(edge-info shape)\n\nReturn metadata for all edges of a shape as an array of structs.\nEach struct has keys :index, :type, :start, :end.\nUse with fillet/chamfer :e keyword to select edges by index.\n\nExamples:\n  (edge-info my-box)   # returns @[{:index 0 :type \"line\" ...} ...]")
+(defmeta highlight-edge "view"
+  "(highlight-edge shape & indices)\n\nHighlight specific edges of a shape in the viewer by their indices.\nEdges are rendered with active edge color (blue).\n\nExamples:\n  (highlight-edge my-box 0 2 4)   # highlight edges 0, 2, 4\n  (highlight-edge my-box)          # no-op")
+(defmeta highlight-edge-clear "view"
+  "(highlight-edge-clear)\n\nRemove all edge highlighting from the viewer.\n\nExamples:\n  (highlight-edge-clear)")
 
 (defn poll-viewer []
   (while true
@@ -1561,27 +1612,7 @@
     (eprint "rojcad: spork server on " addr ":" spork-port " failed: " val)))))
 
 # ── GUI REPL panel (poll-gui-repl) ─────────────────────────────────────────
-# Minimal JSON encoder for responses.
-(defn- json-escape [s]
-  (string "\""
-          (string/replace "\\" "\\\\"
-            (string/replace "\"" "\\\""
-              (string/replace "\n" "\\n"
-                (string/replace "\r" "\\r"
-                  (string/replace "\t" "\\t" s)))))
-          "\""))
-
-(defn- json-encode [x]
-  (case (type x)
-    :string (json-escape x)
-    :number (string x)
-    :keyword (string x)
-    :nil "null"
-    :boolean (string x)
-    :array (string "[" (string/join (seq [v :in x] (json-encode v)) ",") "]")
-    :table (string "{" (string/join (seq [[k v] :pairs x]
-                                      (string (json-encode k) ":" (json-encode v))) ",") "}")
-    (string x)))
+# JSON encoding uses spork's native json-encode (loaded from vendor).
 
 (defn- handle-gui-eval [id code]
   (def parsed (my-parse code))
@@ -1607,7 +1638,7 @@
       (when (= type-tag "rojcad/shape")
         (put resp "shape_id" (_shape-get-id result)))
       (put resp "new_bindings" @[])
-      (rust_gui_repl_send_response (json-encode resp)))
+      (rust_gui_repl_send_response (string (json-encode resp))))
     (do
       (def resp (table/setproto @{} nil))
       (put resp "type" "evalResult")
@@ -1615,7 +1646,7 @@
       (put resp "value" (string "parse error: " code))
       (put resp "kind" "error")
       (put resp "new_bindings" @[])
-      (rust_gui_repl_send_response (json-encode resp)))))
+      (rust_gui_repl_send_response (string (json-encode resp))))))
 
 # ── Syntax highlighting scanner ────────────────────────────────────────────
 # Returns a JSON array of [{:kind "comment"|"string"|"number"|"keyword"|"symbol",
@@ -1678,14 +1709,14 @@
   (put resp "type" "highlightResult")
   (put resp "id" id)
   (put resp "tokens" tokens)
-  (rust_gui_repl_send_response (json-encode resp)))
+  (rust_gui_repl_send_response (string (json-encode resp))))
 
 (defn- handle-gui-completions [id code cursor]
   (def resp (table/setproto @{} nil))
   (put resp "type" "completionsResult")
   (put resp "id" id)
   (put resp "items" @[])
-  (rust_gui_repl_send_response (json-encode resp)))
+  (rust_gui_repl_send_response (string (json-encode resp))))
 
 (defn- handle-gui-fn-names [id]
   (def names (all-fns))
@@ -1693,7 +1724,7 @@
   (put resp "type" "fnNamesResult")
   (put resp "id" id)
   (put resp "names" (seq [n :in names] (string n)))
-  (rust_gui_repl_send_response (json-encode resp)))
+  (rust_gui_repl_send_response (string (json-encode resp))))
 
 (defn- gui-repl-handler [raw]
   # Format: type_byte \x02 id \x02 body

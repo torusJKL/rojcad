@@ -2019,6 +2019,111 @@ pub unsafe extern "C" fn rust_window_maximized_query() -> c_int {
     c_int::from(WINDOW_MAXIMIZED.load(Ordering::SeqCst))
 }
 
+// ── Fillet / Chamfer FFI ──────────────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_fillet(
+    dest: *mut c_void,
+    data: *mut c_void,
+    radius: c_double,
+    idxs: *const c_int,
+    count: c_int,
+    eager: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let edge_indices: Option<Vec<usize>> = if idxs.is_null() || count <= 0 {
+        None
+    } else {
+        let raw = unsafe { std::slice::from_raw_parts(idxs, count as usize) };
+        Some(raw.iter().map(|&i| i as usize).collect())
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::shape_fillet(shape, radius, edge_indices.as_deref(), eager != 0)
+    }));
+    match result {
+        Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_fillet".to_string());
+            1
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_init_chamfer(
+    dest: *mut c_void,
+    data: *mut c_void,
+    distance: c_double,
+    idxs: *const c_int,
+    count: c_int,
+    eager: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let edge_indices: Option<Vec<usize>> = if idxs.is_null() || count <= 0 {
+        None
+    } else {
+        let raw = unsafe { std::slice::from_raw_parts(idxs, count as usize) };
+        Some(raw.iter().map(|&i| i as usize).collect())
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        cad::shape_chamfer(shape, distance, edge_indices.as_deref(), eager != 0)
+    }));
+    match result {
+        Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(_) => {
+            set_last_error("unexpected error in rust_init_chamfer".to_string());
+            1
+        }
+    }
+}
+
+// ── Edge Info FFI ──────────────────────────────────────────────────────────────
+
+/// Get edge info JSON for a shape. Caller must free with rust_edge_info_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_info(data: *mut c_void) -> *mut c_char {
+    if data.is_null() {
+        return CString::new("[]").unwrap().into_raw();
+    }
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let json = cad::edge_info_json(shape);
+    CString::new(json)
+        .unwrap_or_else(|_| CString::new("[]").unwrap())
+        .into_raw()
+}
+
+/// Free a string returned by rust_edge_info.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_edge_info_free(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            drop(CString::from_raw(s));
+        }
+    }
+}
+
 // ── Highlight FFI ────────────────────────────────────────────────────────────
 
 /// Send a highlight command to the viewer for the given shape.
@@ -2039,6 +2144,33 @@ pub unsafe extern "C" fn rust_highlight_shape(data: *mut c_void) {
 pub unsafe extern "C" fn rust_highlight_clear() {
     if let Some(tx) = REPL_TO_VIEWER.get() {
         let _ = tx.send(ReplToViewer::ClearHighlight);
+    }
+}
+
+/// Highlight specific edges of a shape in the viewer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_edges(data: *mut c_void, idxs: *const c_int, count: c_int) {
+    if data.is_null() {
+        return;
+    }
+    let shape_data = unsafe { &*(data as *const ShapeData) };
+    let id = shape_data.shape_id;
+    let indices = if count > 0 && !idxs.is_null() {
+        let raw = unsafe { std::slice::from_raw_parts(idxs, count as usize) };
+        raw.iter().map(|&i| i as usize).collect()
+    } else {
+        Vec::new()
+    };
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::HighlightEdges { id, indices });
+    }
+}
+
+/// Clear all edge highlights in the viewer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_highlight_edges_clear() {
+    if let Some(tx) = REPL_TO_VIEWER.get() {
+        let _ = tx.send(ReplToViewer::ClearEdgeHighlight);
     }
 }
 
@@ -2217,6 +2349,7 @@ fn main() {
         bridge::janet_lib_ev(env);
         bridge::janet_lib_net(env);
         bridge::janet_lib_asm(env);
+        bridge::janet_lib_spork_json(env);
     }
 
     // Register CAD functions

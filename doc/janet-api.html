@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference — dd69810</title>
+<title>rojcad Janet API Reference — 743607c-dirty</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -46,17 +46,22 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <h2>Categories</h2>
 <ul>
 <li class="cat"><a href="#operations">Operations</a></li>
+<li class="fn"><a href="#chamfer">chamfer</a></li>
 <li class="fn"><a href="#extrude">extrude</a></li>
 <li class="fn"><a href="#extrude-polygon">extrude-polygon</a></li>
+<li class="fn"><a href="#fillet">fillet</a></li>
 <li class="fn"><a href="#revolve">revolve</a></li>
 <li class="cat"><a href="#selection">Selection</a></li>
 <li class="fn"><a href="#on-select">on-select</a></li>
 <li class="fn"><a href="#poll-selection">poll-selection</a></li>
 <li class="cat"><a href="#io">I/O</a></li>
+<li class="fn"><a href="#load-file">load-file</a></li>
 <li class="fn"><a href="#read-step">read-step</a></li>
 <li class="fn"><a href="#write-step">write-step</a></li>
 <li class="fn"><a href="#write-stl">write-stl</a></li>
 <li class="cat"><a href="#view">View</a></li>
+<li class="fn"><a href="#highlight-edge">highlight-edge</a></li>
+<li class="fn"><a href="#highlight-edge-clear">highlight-edge-clear</a></li>
 <li class="fn"><a href="#projection-perspective">projection-perspective</a></li>
 <li class="fn"><a href="#projection-toggle">projection-toggle</a></li>
 <li class="fn"><a href="#quit-requested">quit-requested</a></li>
@@ -125,6 +130,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#cut">cut</a></li>
 <li class="fn"><a href="#fuse">fuse</a></li>
 <li class="cat"><a href="#queries">Queries</a></li>
+<li class="fn"><a href="#edge-info">edge-info</a></li>
 <li class="fn"><a href="#face?">face?</a></li>
 <li class="fn"><a href="#list-shapes">list-shapes</a></li>
 <li class="fn"><a href="#selected-shapes">selected-shapes</a></li>
@@ -155,9 +161,23 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference — dd69810</h1>
+<h1>rojcad Janet API Reference — 743607c-dirty</h1>
 <section id="operations">
 <h2>Operations</h2>
+<article id="chamfer">
+<h3>chamfer</h3>
+<div class="usage">(chamfer shape &amp;keys :d :e :eager :hide)</div>
+<div class="desc">
+<p>Bevel edges of a 3D shape by distance :d.
+With :e, only the specified edges are chamfered.
+:d is required, :e is an optional tuple of edge indices.
+Keywords: :d (required), :e (optional), :eager, :hide</p>
+</div>
+<div class="examples">
+<pre><code>(chamfer my-box <span class="tok-k">:d</span> <span class="tok-n">1</span>)              # chamfer all edges
+(chamfer my-box <span class="tok-k">:d</span> <span class="tok-n">1</span> <span class="tok-k">:e</span> [<span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">2</span>])   # chamfer selected edges</code></pre>
+</div>
+</article>
 <article id="extrude">
 <h3>extrude</h3>
 <div class="usage">(extrude shape &amp;keys :h :x :y :z :dir :both :eager :hide)</div>
@@ -188,6 +208,20 @@ Keywords: :plane (keyword, default :xy), :at [x y z],
 (extrude-polygon [[<span class="tok-n">0</span> <span class="tok-n">0</span>] [<span class="tok-n">10</span> <span class="tok-n">0</span>] [<span class="tok-n">5</span> <span class="tok-n">10</span>]] <span class="tok-n">5</span> <span class="tok-k">:eager</span>)</code></pre>
 </div>
 <div class="returns">Returns a rojcad/shape abstract value.</div>
+</article>
+<article id="fillet">
+<h3>fillet</h3>
+<div class="usage">(fillet shape &amp;keys :r :e :eager :hide)</div>
+<div class="desc">
+<p>Round edges of a 3D shape by radius :r.
+With :e, only the specified edges are filleted.
+:r is required, :e is an optional tuple of edge indices.
+Keywords: :r (required), :e (optional), :eager, :hide</p>
+</div>
+<div class="examples">
+<pre><code>(fillet my-box <span class="tok-k">:r</span> <span class="tok-n">2</span>)              # fillet all edges
+(fillet my-box <span class="tok-k">:r</span> <span class="tok-n">2</span> <span class="tok-k">:e</span> [<span class="tok-n">0</span> <span class="tok-n">1</span> <span class="tok-n">2</span>])   # fillet selected edges</code></pre>
+</div>
 </article>
 <article id="revolve">
 <h3>revolve</h3>
@@ -237,6 +271,23 @@ was deselected, or nil if no event.</div>
 </section>
 <section id="io">
 <h2>I/O</h2>
+<article id="load-file">
+<h3>load-file</h3>
+<div class="usage">(load-file path)</div>
+<div class="desc">
+<p>Load and evaluate a file of Janet code.</p>
+<p>Reads the file, parses all forms, and evaluates each in the
+current environment using my-eval (which handles shape tracking
+and auto-purge on redefinition). Aborts with an error on the
+first failed form.</p>
+<p>Path must be absolute.</p>
+</div>
+<div class="examples">
+<pre><code>(load-file <span class="tok-s">"/home/user/my-shapes.janet"</span>)
+(load-file <span class="tok-s">"/tmp/models.janet"</span>)</code></pre>
+</div>
+<div class="returns">Returns the result of the last form, or nil if the file is empty.</div>
+</article>
 <article id="read-step">
 <h3>read-step</h3>
 <div class="usage">(read-step path &amp;keys :eager :hide)</div>
@@ -266,18 +317,43 @@ Returns nil on success, signals an error on failure.</div>
 </article>
 <article id="write-stl">
 <h3>write-stl</h3>
-<div class="usage">(write-stl shape path)</div>
+<div class="usage">(write-stl path &amp; shapes)</div>
 <div class="desc">
 </div>
 <div class="examples">
-<pre><code>(write-stl my-shape <span class="tok-s">"/tmp/model.stl"</span>)</code></pre>
+<pre><code>(write-stl <span class="tok-s">"/tmp/model.stl"</span>)                          # all visible
+(write-stl <span class="tok-s">"/tmp/model.stl"</span> my-shape)                  # single shape
+(write-stl <span class="tok-s">"/tmp/model.stl"</span> box-a sphere-b cylinder-c) # multiple shapes</code></pre>
 </div>
-<div class="returns">Export a shape to an STL file at the given path.
+<div class="returns">Export one or more shapes to an STL file at the given path.
+With no shape arguments, exports all currently visible shapes.
 Returns nil on success, signals an error on failure.</div>
 </article>
 </section>
 <section id="view">
 <h2>View</h2>
+<article id="highlight-edge">
+<h3>highlight-edge</h3>
+<div class="usage">(highlight-edge shape &amp; indices)</div>
+<div class="desc">
+<p>Highlight specific edges of a shape in the viewer by their indices.
+Edges are rendered with active edge color (blue).</p>
+</div>
+<div class="examples">
+<pre><code>(highlight-edge my-box <span class="tok-n">0</span> <span class="tok-n">2</span> <span class="tok-n">4</span>)   # highlight edges <span class="tok-n">0</span>, <span class="tok-n">2</span>, <span class="tok-n">4</span>
+(highlight-edge my-box)          # no-op</code></pre>
+</div>
+</article>
+<article id="highlight-edge-clear">
+<h3>highlight-edge-clear</h3>
+<div class="usage">(highlight-edge-clear)</div>
+<div class="desc">
+<p>Remove all edge highlighting from the viewer.</p>
+</div>
+<div class="examples">
+<pre><code>(highlight-edge-clear)</code></pre>
+</div>
+</article>
 <article id="projection-perspective">
 <h3>projection-perspective</h3>
 <div class="usage">(projection-perspective &amp;opt value)</div>
@@ -1041,6 +1117,18 @@ Keywords: :eager, :hide</p>
 </section>
 <section id="queries">
 <h2>Queries</h2>
+<article id="edge-info">
+<h3>edge-info</h3>
+<div class="usage">(edge-info shape)</div>
+<div class="desc">
+<p>Return metadata for all edges of a shape as an array of structs.
+Each struct has keys :index, :type, :start, :end.
+Use with fillet/chamfer :e keyword to select edges by index.</p>
+</div>
+<div class="examples">
+<pre><code>(edge-info my-box)   # returns @[{<span class="tok-k">:index</span> <span class="tok-n">0</span> <span class="tok-k">:type</span> <span class="tok-s">"line"</span> ...} ...]</code></pre>
+</div>
+</article>
 <article id="face?">
 <h3>face?</h3>
 <div class="usage">(face? &amp; shapes)</div>

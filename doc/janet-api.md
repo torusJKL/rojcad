@@ -1,6 +1,21 @@
-# rojcad Janet API Reference — dd69810
+# rojcad Janet API Reference — 743607c-dirty
 
 ## Operations
+
+### `chamfer`
+
+**Usage:** `(chamfer shape &keys :d :e :eager :hide)`
+
+Bevel edges of a 3D shape by distance :d.
+With :e, only the specified edges are chamfered.
+:d is required, :e is an optional tuple of edge indices.
+Keywords: :d (required), :e (optional), :eager, :hide
+
+**Examples:**
+```janet
+(chamfer my-box :d 1)              # chamfer all edges
+(chamfer my-box :d 1 :e [0 1 2])   # chamfer selected edges
+```
 
 ### `extrude`
 
@@ -36,6 +51,21 @@ Keywords: :plane (keyword, default :xy), :at [x y z],
 ```
 
 **Returns a rojcad/shape abstract value.**
+
+### `fillet`
+
+**Usage:** `(fillet shape &keys :r :e :eager :hide)`
+
+Round edges of a 3D shape by radius :r.
+With :e, only the specified edges are filleted.
+:r is required, :e is an optional tuple of edge indices.
+Keywords: :r (required), :e (optional), :eager, :hide
+
+**Examples:**
+```janet
+(fillet my-box :r 2)              # fillet all edges
+(fillet my-box :r 2 :e [0 1 2])   # fillet selected edges
+```
 
 ### `revolve`
 
@@ -89,6 +119,27 @@ was deselected, or nil if no event.**
 
 ## I/O
 
+### `load-file`
+
+**Usage:** `(load-file path)`
+
+Load and evaluate a file of Janet code.
+
+Reads the file, parses all forms, and evaluates each in the
+current environment using my-eval (which handles shape tracking
+and auto-purge on redefinition). Aborts with an error on the
+first failed form.
+
+Path must be absolute.
+
+**Examples:**
+```janet
+(load-file "/home/user/my-shapes.janet")
+(load-file "/tmp/models.janet")
+```
+
+**Returns the result of the last form, or nil if the file is empty.**
+
 ### `read-step`
 
 **Usage:** `(read-step path &keys :eager :hide)`
@@ -123,19 +174,46 @@ Returns nil on success, signals an error on failure.**
 
 ### `write-stl`
 
-**Usage:** `(write-stl shape path)`
+**Usage:** `(write-stl path & shapes)`
 
 
 
 **Examples:**
 ```janet
-(write-stl my-shape "/tmp/model.stl")
+(write-stl "/tmp/model.stl")                          # all visible
+(write-stl "/tmp/model.stl" my-shape)                  # single shape
+(write-stl "/tmp/model.stl" box-a sphere-b cylinder-c) # multiple shapes
 ```
 
-**Export a shape to an STL file at the given path.
+**Export one or more shapes to an STL file at the given path.
+With no shape arguments, exports all currently visible shapes.
 Returns nil on success, signals an error on failure.**
 
 ## View
+
+### `highlight-edge`
+
+**Usage:** `(highlight-edge shape & indices)`
+
+Highlight specific edges of a shape in the viewer by their indices.
+Edges are rendered with active edge color (blue).
+
+**Examples:**
+```janet
+(highlight-edge my-box 0 2 4)   # highlight edges 0, 2, 4
+(highlight-edge my-box)          # no-op
+```
+
+### `highlight-edge-clear`
+
+**Usage:** `(highlight-edge-clear)`
+
+Remove all edge highlighting from the viewer.
+
+**Examples:**
+```janet
+(highlight-edge-clear)
+```
 
 ### `projection-perspective`
 
@@ -977,6 +1055,19 @@ Keywords: :eager, :hide
 **Returns a rojcad/shape abstract value.**
 
 ## Queries
+
+### `edge-info`
+
+**Usage:** `(edge-info shape)`
+
+Return metadata for all edges of a shape as an array of structs.
+Each struct has keys :index, :type, :start, :end.
+Use with fillet/chamfer :e keyword to select edges by index.
+
+**Examples:**
+```janet
+(edge-info my-box)   # returns @[{:index 0 :type "line" ...} ...]
+```
 
 ### `face?`
 

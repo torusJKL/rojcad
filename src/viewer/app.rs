@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -867,6 +867,7 @@ pub struct ViewerState {
     help: Help,
     repl: super::repl::ReplPanel,
     highlighted_shape: Option<ShapeId>,
+    highlighted_edges: HashMap<ShapeId, HashSet<usize>>,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -1091,6 +1092,7 @@ impl ApplicationHandler for ViewerApp {
             help: Help::new(),
             repl: super::repl::ReplPanel::new(self.gui_req_tx.clone()),
             highlighted_shape: None,
+            highlighted_edges: HashMap::new(),
         });
     }
 
@@ -1484,6 +1486,16 @@ impl ViewerApp {
                     state.highlighted_shape = None;
                     REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
                 }
+                ReplToViewer::HighlightEdges { id, indices } => {
+                    state
+                        .highlighted_edges
+                        .insert(id, indices.into_iter().collect());
+                    REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
+                ReplToViewer::ClearEdgeHighlight => {
+                    state.highlighted_edges.clear();
+                    REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
             }
         }
     }
@@ -1563,8 +1575,18 @@ impl ViewerApp {
             let meshes: Vec<CadMesh> = visible
                 .iter()
                 .filter_map(|entry| {
-                    entry.mesh.as_ref().map(|m| {
-                        CadMesh::new(&state.device, m, entry.shape_id, entry.color, color_layout)
+                    entry.mesh.as_ref().and_then(|m| {
+                        if m.vertices.is_empty() || m.indices.is_empty() {
+                            None
+                        } else {
+                            Some(CadMesh::new(
+                                &state.device,
+                                m,
+                                entry.shape_id,
+                                entry.color,
+                                color_layout,
+                            ))
+                        }
                     })
                 })
                 .collect();
@@ -1573,18 +1595,22 @@ impl ViewerApp {
             // Build SegmentInstance arrays for instanced line rendering
             let selected_ids = &state.selected_ids;
             let highlighted_id = state.highlighted_shape;
+            let highlighted_edges = &state.highlighted_edges;
             let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
             let mut active_instances: Vec<SegmentInstance> = Vec::new();
 
             for entry in &visible {
-                let is_active = selected_ids.contains(&entry.shape_id)
+                let is_shape_highlighted = selected_ids.contains(&entry.shape_id)
                     || highlighted_id.is_some_and(|hid| hid == entry.shape_id);
-                let target = if is_active {
-                    &mut active_instances
-                } else {
-                    &mut inactive_instances
-                };
-                for polyline in &entry.edge_polylines {
+                for (edge_idx, polyline) in entry.edge_polylines.iter().enumerate() {
+                    let is_edge_highlighted = highlighted_edges
+                        .get(&entry.shape_id)
+                        .is_some_and(|set| set.contains(&edge_idx));
+                    let target = if is_shape_highlighted || is_edge_highlighted {
+                        &mut active_instances
+                    } else {
+                        &mut inactive_instances
+                    };
                     for pair in polyline.windows(2) {
                         target.push(SegmentInstance {
                             a: [pair[0][0] as f32, pair[0][1] as f32, pair[0][2] as f32],

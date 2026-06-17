@@ -92,6 +92,10 @@ pub enum ReplToViewer {
     HighlightShape { id: ShapeId },
     /// Clear all shape highlighting.
     ClearHighlight,
+    /// Highlight specific edges of a shape.
+    HighlightEdges { id: ShapeId, indices: Vec<usize> },
+    /// Clear all edge highlighting.
+    ClearEdgeHighlight,
 }
 
 /// Edge thickness in NDC units (controlled from Janet).
@@ -371,7 +375,13 @@ impl ShapeData {
         {
             edge_polylines.extend(crate::cad::generate_synthetic_wireframe(m));
         }
-        self.mesh = mesh;
+        self.mesh = mesh.and_then(|m| {
+            if m.vertices.is_empty() || m.indices.is_empty() {
+                None
+            } else {
+                Some(m)
+            }
+        });
         self.edge_polylines = edge_polylines;
     }
 

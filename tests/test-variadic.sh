@@ -233,6 +233,20 @@ run_test "cad-fns includes hide" '
 (if found (print "PASS") (do (print "FAIL") (os/exit 1)))
 '
 
+run_test "cad-fns includes fillet" '
+(def cf (cad-fns)) (var found false) (var i 0)
+(while (< i (length cf))
+  (if (= "fillet" (string (get cf i))) (set found true)) (set i (+ i 1)))
+(if found (print "PASS") (do (print "FAIL") (os/exit 1)))
+'
+
+run_test "cad-fns includes chamfer" '
+(def cf (cad-fns)) (var found false) (var i 0)
+(while (< i (length cf))
+  (if (= "chamfer" (string (get cf i))) (set found true)) (set i (+ i 1)))
+(if found (print "PASS") (do (print "FAIL") (os/exit 1)))
+'
+
 run_test "cad-fns includes cut" '
 (def cf (cad-fns)) (var found false) (var i 0)
 (while (< i (length cf))
@@ -373,6 +387,17 @@ run_tc_test "wire-fillet: string instead of wire"       '(wire-fillet "hello" :r
 run_tc_test "wire-chamfer: string instead of wire"      '(wire-chamfer "hello" :d 1)'
 run_tc_test "wire-offset: string instead of wire"       '(wire-offset "hello" :d 2)'
 
+# ── Fillet/Chamfer ─────────────────────────────────────────────────────────
+
+run_tc_test "fillet: string instead of shape"           '(fillet "hello" :r 2)'
+run_tc_test "fillet: string instead of radius"          '(fillet (box 10) :r "bad")'
+run_tc_test "fillet: negative radius"                   '(fillet (box 10) :r -1)'
+run_tc_test "fillet: zero radius"                       '(fillet (box 10) :r 0)'
+run_tc_test "chamfer: string instead of shape"          '(chamfer "hello" :d 1)'
+run_tc_test "chamfer: string instead of distance"       '(chamfer (box 10) :d "bad")'
+run_tc_test "chamfer: negative distance"                '(chamfer (box 10) :d -1)'
+run_tc_test "chamfer: zero distance"                    '(chamfer (box 10) :d 0)'
+
 # ── Sketch ────────────────────────────────────────────────────────────
 
 run_tc_test "move-to: string instead of sketch"         '(move-to "hello" 1 2)'
@@ -387,6 +412,83 @@ run_tc_test "extrude-polygon: wrong type for points"    '(extrude-polygon "hello
 run_tc_test "edge-thickness: string instead of number"  '(edge-thickness "thick")'
 run_tc_test "edge-color-inactive: wrong types"          '(edge-color-inactive "r" "g" "b")'
 run_tc_test "window-size: string instead of integer"    '(window-size "big" "small")'
+
+# ── Fillet/Chamfer ──────────────────────────────────────────────────────
+
+echo ""
+echo ":: Fillet/Chamfer (3D)"
+
+run_test "fillet all edges of a box" '
+(def c (fillet (box 10 10 10) :r 2))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "fillet selected edges" '
+(def c (fillet (box 10 10 10) :r 2 :e [0 1 2]))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "fillet eager" '
+(def c (fillet (box 10 10 10) :r 2 :eager))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "fillet hide" '
+(def c (fillet (box 10 10 10) :r 2 :hide))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "chamfer all edges of a box" '
+(def c (chamfer (box 10 10 10) :d 1))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "chamfer selected edges" '
+(def c (chamfer (box 10 10 10) :d 1 :e [0 1 2]))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "chamfer eager" '
+(def c (chamfer (box 10 10 10) :d 1 :eager))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "chamfer hide" '
+(def c (chamfer (box 10 10 10) :d 1 :hide))
+(if (= :rojcad/shape (type c))
+  (print "PASS") (do (print "FAIL: type " (type c)) (os/exit 1)))
+'
+
+run_test "edge-info returns structured data" '
+(def info (edge-info (box 10 10 10)))
+(and (> (length info) 0)
+     (= :struct (type (get info 0)))
+     (not= nil (get (get info 0) :index))
+     (not= nil (get (get info 0) :type))
+     (not= nil (get (get info 0) :start))
+     (not= nil (get (get info 0) :end)))
+(if (and (> (length info) 0)
+         (= :struct (type (get info 0)))
+         (not= nil (get (get info 0) :index))
+         (not= nil (get (get info 0) :type))
+         (not= nil (get (get info 0) :start))
+         (not= nil (get (get info 0) :end)))
+  (print "PASS") (do (print "FAIL: " info) (os/exit 1)))
+'
+
+run_test "highlight-edge accepts indices" '
+(def b (box 10))
+(highlight-edge b 0 2 4)
+(highlight-edge-clear)
+(print "PASS")
+'
 
 
 # ── Load-file tests ────────────────────────────────────────────────────
