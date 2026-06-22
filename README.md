@@ -26,6 +26,7 @@ just run
 
 # In another terminal — raw REPL (basic):
 nc 127.0.0.1 9364
+rlwrap nc 127.0.0.1 9364
 
 # Or spork REPL (line editing, tab completion, history):
 janet -e "(import spork/netrepl) (netrepl/client)"

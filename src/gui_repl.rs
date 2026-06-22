@@ -19,10 +19,10 @@ pub fn init() -> (mpsc::Sender<String>, mpsc::Receiver<String>) {
     (REQ_TX.get().unwrap().clone(), resp_rx)
 }
 
-/// FFI: Called from Janet (REPL thread). Returns next pending request string,
-/// or nil if no request is pending. Caller must free the returned string.
+/// FFI: Called from C JANET_FN (not directly from Janet). Returns next pending
+/// request string, or null if no request is pending. Caller must free the returned string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_gui_repl_poll_request() -> *mut c_char {
+pub unsafe extern "C" fn rust_gui_repl_poll_request_at() -> *mut c_char {
     let rx = match REQ_RX.get() {
         Some(rx) => rx,
         None => return std::ptr::null_mut(),
@@ -40,10 +40,10 @@ pub unsafe extern "C" fn rust_gui_repl_poll_request() -> *mut c_char {
     }
 }
 
-/// FFI: Called from Janet (REPL thread). Sends a response JSON string
-/// back to the viewer thread.
+/// FFI: Called from C JANET_FN (not directly from Janet). Sends a response
+/// JSON string back to the viewer thread.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rust_gui_repl_send_response(response: *const c_char) {
+pub unsafe extern "C" fn rust_gui_repl_send_response_at(response: *const c_char) {
     let tx = match RESP_TX.get() {
         Some(tx) => tx,
         None => return,

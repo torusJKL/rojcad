@@ -16,6 +16,7 @@
 
 mod bridge;
 mod cad;
+mod crash_handler;
 mod gui_repl;
 mod sketch;
 mod text;
@@ -48,11 +49,11 @@ std::thread_local! {
     static LAST_CAD_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
-fn set_last_error(msg: String) {
+pub(crate) fn set_last_error(msg: String) {
     LAST_CAD_ERROR.with(|e| *e.borrow_mut() = msg);
 }
 
-fn take_last_error() -> String {
+pub(crate) fn take_last_error() -> String {
     LAST_CAD_ERROR.with(|e| std::mem::take(&mut *e.borrow_mut()))
 }
 
@@ -62,6 +63,66 @@ fn take_last_error() -> String {
 pub unsafe extern "C" fn rust_take_last_error() -> *mut c_char {
     let msg = take_last_error();
     CString::new(msg).unwrap().into_raw()
+}
+
+// ── catch_unwind helpers ─────────────────────────────────────────────────────
+
+/// Extract a human-readable message from a panic payload.
+fn panic_detail(panic: &Box<dyn std::any::Any + Send>) -> String {
+    crash_handler::panic_detail(panic)
+}
+
+/// Run a CAD function that produces a ShapeData, catching panics.
+/// On success: writes ShapeData to `dest`, registers pointer, returns 0.
+/// On expected error: stores message, returns 1.
+/// On panic: extracts panic message, stores "name panicked: {msg}", returns 1.
+fn catch_cad<F>(name: &str, dest: *mut c_void, f: F) -> c_int
+where
+    F: FnOnce() -> Result<ShapeData, String>,
+{
+    let result = catch_unwind(AssertUnwindSafe(f));
+    match result {
+        Ok(Ok(sd)) => {
+            let shape_id = sd.shape_id;
+            unsafe {
+                ptr::write(dest as *mut ShapeData, sd);
+            }
+            register_shape_pointer(shape_id, dest);
+            0
+        }
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(panic) => {
+            let detail = panic_detail(&panic);
+            set_last_error(format!("{name} panicked: {detail}"));
+            1
+        }
+    }
+}
+
+/// Run a CAD function that produces no value, catching panics.
+/// On success: returns 0.
+/// On expected error: stores message, returns 1.
+/// On panic: extracts panic message, stores "name panicked: {msg}", returns 1.
+fn catch_result<F>(name: &str, f: F) -> c_int
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let result = catch_unwind(AssertUnwindSafe(f));
+    match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(msg)) => {
+            set_last_error(msg);
+            1
+        }
+        Err(panic) => {
+            let detail = panic_detail(&panic);
+            set_last_error(format!("{name} panicked: {detail}"));
+            1
+        }
+    }
 }
 
 // ── Size helper for Janet GC allocation ─────────────────────────────────────
@@ -120,32 +181,14 @@ pub unsafe extern "C" fn rust_init_box(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_box", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
         cad::make_box(width, depth, height, center, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_box".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a sphere at the given destination.
@@ -160,7 +203,7 @@ pub unsafe extern "C" fn rust_init_sphere(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_sphere", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
@@ -172,25 +215,7 @@ pub unsafe extern "C" fn rust_init_sphere(
             unsafe { Some(*angle) }
         };
         cad::make_sphere(radius, center, angle_val, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_sphere".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a cube at the given destination.
@@ -204,32 +229,14 @@ pub unsafe extern "C" fn rust_init_cube(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cube", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
         cad::make_cube(size, center, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cube".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a box from two opposite corners.
@@ -245,27 +252,9 @@ pub unsafe extern "C" fn rust_init_box_from_corners(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_box_from_corners", dest, || {
         cad::make_box_from_corners((c1x, c1y, c1z), (c2x, c2y, c2z), eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_box_from_corners".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a cylinder at the given destination.
@@ -280,32 +269,14 @@ pub unsafe extern "C" fn rust_init_cylinder(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cylinder", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
             unsafe { Some((*cx, *cy, *cz)) }
         };
         cad::make_cylinder(radius, height, center, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cylinder".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a cylinder between two points.
@@ -322,27 +293,9 @@ pub unsafe extern "C" fn rust_init_cylinder_from_points(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cylinder_from_points", dest, || {
         cad::make_cylinder_from_points((p1x, p1y, p1z), (p2x, p2y, p2z), radius, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cylinder_from_points".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a cylinder at a point extending in a direction.
@@ -360,27 +313,9 @@ pub unsafe extern "C" fn rust_init_cylinder_point_dir(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cylinder_point_dir", dest, || {
         cad::make_cylinder_point_dir((px, py, pz), radius, (dx, dy, dz), height, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cylinder_point_dir".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a cone at the given destination.
@@ -397,7 +332,7 @@ pub unsafe extern "C" fn rust_init_cone(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cone", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
@@ -409,25 +344,7 @@ pub unsafe extern "C" fn rust_init_cone(
             unsafe { Some(*angle) }
         };
         cad::make_cone(bottom_radius, top_radius, height, center, angle_val, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cone".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Initialize a ShapeData as a torus at the given destination.
@@ -448,7 +365,7 @@ pub unsafe extern "C" fn rust_init_torus(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_torus", dest, || {
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             None
         } else {
@@ -484,25 +401,7 @@ pub unsafe extern "C" fn rust_init_torus(
             a_end,
             eager,
         )
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_torus".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Sketch lifecycle ────────────────────────────────────────────────────────
@@ -627,27 +526,9 @@ pub unsafe extern "C" fn rust_init_rect(
         Some((at_x, at_y, at_z))
     };
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_rect", dest, || {
         cad::make_rect(w, d, is_wire != 0, &plane_str, at, eager)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_rect".to_string());
-            1
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -674,27 +555,9 @@ pub unsafe extern "C" fn rust_init_circle(
         Some((at_x, at_y, at_z))
     };
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_circle", dest, || {
         cad::make_circle(r, is_wire != 0, &plane_str, at, eager)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_circle".to_string());
-            1
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -723,27 +586,9 @@ pub unsafe extern "C" fn rust_init_polygon(
     };
     let pts_slice = unsafe { std::slice::from_raw_parts(pts, npts as usize) };
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_polygon", dest, || {
         cad::make_polygon(pts_slice, is_wire != 0, &plane_str, at, eager)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_polygon".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Ext/Rev Operations — operates on existing ShapeData ────────────────────
@@ -761,27 +606,9 @@ pub unsafe extern "C" fn rust_init_extrude(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_extrude", dest, || {
         cad::extrude_shape(shape, height, DVec3::new(dx, dy, dz), both != 0, eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_extrude".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Revolve a Face.
@@ -799,7 +626,7 @@ pub unsafe extern "C" fn rust_init_revolve(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_revolve", dest, || {
         cad::revolve_shape(
             shape,
             angle,
@@ -807,25 +634,7 @@ pub unsafe extern "C" fn rust_init_revolve(
             DVec3::new(dx, dy, dz),
             eager != 0,
         )
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_revolve".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// One-shot polygon extrusion.
@@ -855,27 +664,9 @@ pub unsafe extern "C" fn rust_init_extrude_polygon(
     };
     let pts_slice = unsafe { std::slice::from_raw_parts(pts, npts as usize) };
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_extrude_polygon", dest, || {
         cad::extrude_polygon_raw(pts_slice, height, &plane_str, at, eager)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_extrude_polygon".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Wire Operations ──────────────────────────────────────────────────────────
@@ -887,25 +678,7 @@ pub unsafe extern "C" fn rust_init_wire_to_face(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| cad::wire_to_face(shape, eager != 0)));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_wire_to_face".to_string());
-            1
-        }
-    }
+    catch_cad("rust_init_wire_to_face", dest, || cad::wire_to_face(shape, eager != 0))
 }
 
 #[unsafe(no_mangle)]
@@ -916,27 +689,9 @@ pub unsafe extern "C" fn rust_init_wire_fillet(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_wire_fillet", dest, || {
         cad::wire_fillet(shape, radius, eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_wire_fillet".to_string());
-            1
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -947,27 +702,9 @@ pub unsafe extern "C" fn rust_init_wire_chamfer(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_wire_chamfer", dest, || {
         cad::wire_chamfer(shape, distance, eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_wire_chamfer".to_string());
-            1
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -978,27 +715,9 @@ pub unsafe extern "C" fn rust_init_wire_offset(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_wire_offset", dest, || {
         cad::wire_offset(shape, distance, eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_wire_offset".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Helper Queries ────────────────────────────────────────────────────────────
@@ -1032,29 +751,11 @@ pub unsafe extern "C" fn rust_init_cut(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_cut", dest, || {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
         cad::cut(shape_a, shape_b, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_cut".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Intersect shape a with shape b, storing the result at dest.
@@ -1066,29 +767,11 @@ pub unsafe extern "C" fn rust_init_common(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_common", dest, || {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
         cad::common(shape_a, shape_b, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_common".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Union shape a with shape b, storing the result at dest.
@@ -1100,29 +783,11 @@ pub unsafe extern "C" fn rust_init_fuse(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_fuse", dest, || {
         let shape_a = unsafe { &*(a as *const ShapeData) };
         let shape_b = unsafe { &*(b as *const ShapeData) };
         cad::fuse(shape_a, shape_b, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_fuse".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Create a compound from multiple shapes, storing the result at dest.
@@ -1135,32 +800,14 @@ pub unsafe extern "C" fn rust_init_compound(
 ) -> c_int {
     let eager = eager != 0;
     let num = num_shapes as usize;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_compound", dest, || {
         let shapes_slice = unsafe { std::slice::from_raw_parts(shapes as *const *mut c_void, num) };
         let shape_refs: Vec<&ShapeData> = shapes_slice
             .iter()
             .map(|p| unsafe { &*(*p as *const ShapeData) })
             .collect();
         cad::make_compound(&shape_refs, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_compound".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Set a shape's render color (in-place mutation, no new shape).
@@ -1203,28 +850,10 @@ pub unsafe extern "C" fn rust_init_translate(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_translate", dest, || {
         let shape = unsafe { &*(data as *const ShapeData) };
         cad::translate(shape, dx, dy, dz, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_translate".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Rotate a shape, storing the result at dest.
@@ -1239,28 +868,10 @@ pub unsafe extern "C" fn rust_init_rotate(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_rotate", dest, || {
         let shape = unsafe { &*(data as *const ShapeData) };
         cad::rotate(shape, DVec3::new(ax, ay, az), angle, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_rotate".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Scale a shape, storing the result at dest.
@@ -1276,7 +887,7 @@ pub unsafe extern "C" fn rust_init_scale(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_scale", dest, || {
         let shape = unsafe { &*(data as *const ShapeData) };
         let center = if cx.is_null() || cy.is_null() || cz.is_null() {
             DVec3::ZERO
@@ -1284,25 +895,7 @@ pub unsafe extern "C" fn rust_init_scale(
             unsafe { DVec3::new(*cx, *cy, *cz) }
         };
         cad::scale(shape, factor, center, eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_scale".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Mirror a shape, storing the result at dest.
@@ -1319,28 +912,10 @@ pub unsafe extern "C" fn rust_init_mirror(
     eager: c_int,
 ) -> c_int {
     let eager = eager != 0;
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_mirror", dest, || {
         let shape = unsafe { &*(data as *const ShapeData) };
         cad::mirror(shape, DVec3::new(ox, oy, oz), DVec3::new(dx, dy, dz), eager)
-    }));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_mirror".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Inspection ──────────────────────────────────────────────────────────────
@@ -1397,25 +972,7 @@ pub unsafe extern "C" fn rust_init_read_step(
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    let result = catch_unwind(AssertUnwindSafe(|| cad::read_step(&path_str, eager)));
-    match result {
-        Ok(Ok(shape_data)) => {
-            let shape_id = shape_data.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, shape_data);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_read_step".to_string());
-            1
-        }
-    }
+    catch_cad("rust_init_read_step", dest, || cad::read_step(&path_str, eager))
 }
 
 // ── Text ───────────────────────────────────────────────────────────────────
@@ -1448,7 +1005,7 @@ pub unsafe extern "C" fn rust_init_text(
             .to_string()
     };
 
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_text", dest, || {
         let font = text::FontData::from_path(&font_str)?;
         let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
         let shape = text::text_to_shape(&text_str, &font, size, &wp)?;
@@ -1457,26 +1014,7 @@ pub unsafe extern "C" fn rust_init_text(
             sd.tessellate_if_needed();
         }
         Ok(sd)
-    }));
-
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_text".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// Create an extruded 3D text shape (Solid) from a string and font file.
@@ -1510,7 +1048,7 @@ pub unsafe extern "C" fn rust_init_text_extruded(
             .to_string()
     };
 
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_text_extruded", dest, || {
         let font = text::FontData::from_path(&font_str)?;
         let wp = cad::workplane_from_keyword(&plane_str, Some((ax, ay, az)));
         let shape = text::text_to_solid(&text_str, &font, size, depth, both, &wp)?;
@@ -1519,26 +1057,7 @@ pub unsafe extern "C" fn rust_init_text_extruded(
             sd.tessellate_if_needed();
         }
         Ok(sd)
-    }));
-
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_text_extruded".to_string());
-            1
-        }
-    }
+    })
 }
 
 /// List system fonts. Returns an array of "name|/path|:aspect" C strings.
@@ -2037,27 +1556,9 @@ pub unsafe extern "C" fn rust_init_fillet(
         let raw = unsafe { std::slice::from_raw_parts(idxs, count as usize) };
         Some(raw.iter().map(|&i| i as usize).collect())
     };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_fillet", dest, || {
         cad::shape_fillet(shape, radius, edge_indices.as_deref(), eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_fillet".to_string());
-            1
-        }
-    }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -2076,27 +1577,9 @@ pub unsafe extern "C" fn rust_init_chamfer(
         let raw = unsafe { std::slice::from_raw_parts(idxs, count as usize) };
         Some(raw.iter().map(|&i| i as usize).collect())
     };
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_cad("rust_init_chamfer", dest, || {
         cad::shape_chamfer(shape, distance, edge_indices.as_deref(), eager != 0)
-    }));
-    match result {
-        Ok(Ok(sd)) => {
-            let shape_id = sd.shape_id;
-            unsafe {
-                ptr::write(dest as *mut ShapeData, sd);
-            }
-            register_shape_pointer(shape_id, dest);
-            0
-        }
-        Ok(Err(msg)) => {
-            set_last_error(msg);
-            1
-        }
-        Err(_) => {
-            set_last_error("unexpected error in rust_init_chamfer".to_string());
-            1
-        }
-    }
+    })
 }
 
 // ── Edge Info FFI ──────────────────────────────────────────────────────────────
@@ -2295,6 +1778,9 @@ fn parse_repl_visibility() -> Option<bool> {
 }
 
 fn main() {
+    // Initialize crash diagnostics (signal handler, panic hook, crash log file)
+    crash_handler::init();
+
     // Parse CLI arguments
     let headless: bool = std::env::args().any(|arg| arg == "--headless");
     let spork_port: u16 = parse_spork_port_arg().unwrap_or(9365);
@@ -2357,70 +1843,9 @@ fn main() {
         cad_register_functions(env);
     }
 
-    // Register GUI REPL FFI functions as Janet C functions.
-    // These let boot.janet call rust_gui_repl_poll_request / rust_gui_repl_send_response.
-    unsafe {
-        unsafe extern "C" fn janet_gui_repl_poll_request(
-            _argc: i32,
-            _argv: *const bridge::Janet,
-        ) -> bridge::Janet {
-            let ptr = unsafe { gui_repl::rust_gui_repl_poll_request() };
-            if ptr.is_null() {
-                return unsafe { bridge::janet_wrap_nil() };
-            }
-            let jstr = unsafe { bridge::janet_cstring(ptr) };
-            let result = unsafe { bridge::janet_wrap_string(jstr) };
-            let _ = unsafe { std::ffi::CString::from_raw(ptr) };
-            result
-        }
-
-        unsafe extern "C" fn janet_gui_repl_send_response(
-            argc: i32,
-            argv: *const bridge::Janet,
-        ) -> bridge::Janet {
-            if argc != 1 {
-                unsafe { bridge::janet_panic(c"expected 1 argument".as_ptr().cast()) };
-                return unsafe { bridge::janet_wrap_nil() };
-            }
-            let arg = unsafe { *argv };
-            let ptr = unsafe { bridge::janet_unwrap_string(arg) };
-            if ptr.is_null() {
-                unsafe { bridge::janet_panic(c"expected string argument".as_ptr().cast()) };
-                return unsafe { bridge::janet_wrap_nil() };
-            }
-            let cstr = unsafe { std::ffi::CStr::from_ptr(ptr as *const i8) };
-            let s = cstr.to_str().unwrap_or("");
-            let c_string = std::ffi::CString::new(s).unwrap_or_default();
-            unsafe { gui_repl::rust_gui_repl_send_response(c_string.as_ptr()) };
-            unsafe { bridge::janet_wrap_nil() }
-        }
-
-        let regs = [
-            bridge::JanetReg {
-                name: c"rust_gui_repl_poll_request".as_ptr().cast(),
-                cfunction: janet_gui_repl_poll_request
-                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
-                documentation: c"Poll for a pending GUI REPL request".as_ptr().cast(),
-            },
-            bridge::JanetReg {
-                name: c"rust_gui_repl_send_response".as_ptr().cast(),
-                cfunction: janet_gui_repl_send_response
-                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
-                documentation: c"Send a GUI REPL response back to the viewer"
-                    .as_ptr()
-                    .cast(),
-            },
-            // Sentinel: null name terminates the array
-            bridge::JanetReg {
-                name: std::ptr::null(),
-                cfunction: janet_gui_repl_poll_request
-                    as unsafe extern "C" fn(i32, *const bridge::Janet) -> bridge::Janet,
-                documentation: std::ptr::null(),
-            },
-        ];
-        let prefix = b"\0";
-        bridge::janet_cfuns(env, prefix.as_ptr().cast(), regs.as_ptr());
-    }
+    // GUI REPL FFI functions are now registered via bridge.c JANET_FN wrappers
+    // (gui-repl-poll-request and gui-repl-send-response), registered in
+    // cad_register_functions().
 
     // Port values are injected directly into boot.janet via a prefix string
     // (see boot code assembly below).
@@ -2553,5 +1978,63 @@ fn main() {
     // If we reach here (shouldn't under normal operation), clean up.
     unsafe {
         bridge::janet_deinit();
+    }
+    crash_handler::cleanup();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_catch_cad_error() {
+        let result = catch_cad("test_fn", std::ptr::null_mut(), || {
+            Err("invalid dimension".to_string())
+        });
+        assert_eq!(result, 1);
+        assert_eq!(take_last_error(), "invalid dimension");
+    }
+
+    #[test]
+    fn test_catch_cad_panic_str() {
+        let result = catch_cad("test_fn", std::ptr::null_mut(), || {
+            panic!("oops");
+        });
+        assert_eq!(result, 1);
+        let err = take_last_error();
+        assert!(err.contains("test_fn panicked: oops"), "got: {err}");
+    }
+
+    #[test]
+    fn test_catch_cad_panic_unknown() {
+        let result = catch_cad("test_fn", std::ptr::null_mut(), || {
+            std::panic::panic_any(42);
+        });
+        assert_eq!(result, 1);
+        let err = take_last_error();
+        assert!(err.contains("test_fn panicked: (unknown)"), "got: {err}");
+    }
+
+    #[test]
+    fn test_catch_result_success() {
+        let result = catch_result("test_fn", || Ok(()));
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_catch_result_error() {
+        let result = catch_result("test_fn", || Err("write failed".to_string()));
+        assert_eq!(result, 1);
+        assert_eq!(take_last_error(), "write failed");
+    }
+
+    #[test]
+    fn test_catch_result_panic() {
+        let result = catch_result("test_fn", || {
+            panic!("result panic");
+        });
+        assert_eq!(result, 1);
+        let err = take_last_error();
+        assert!(err.contains("test_fn panicked: result panic"), "got: {err}");
     }
 }

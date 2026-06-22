@@ -62,8 +62,20 @@ Raw TCP REPL: **9364** (`--raw-port`). Spork netrepl: **9365** (`--spork-port`).
 - Disabled with `--headless`.
 - Shared state via `ShapeRegistry` (RwLock + atomic generation counter).
 
+## Crash diagnostics
+- `src/crash_handler.rs` — signal handler (SIGSEGV/SIGABRT/SIGBUS/SIGILL), panic hook, crash log.
+- Crash log at `{temp_dir}/rojcad_crash_{pid}.log` (`/tmp` on Linux/macOS, `%TEMP%` on Windows).
+- Panic hook always captures backtrace; signal handler forks for safe symbol resolution.
+- **Do NOT call `janet_panic` from Rust `extern "C"` frames** (longjmp UB). Use C JANET_FN wrappers in `bridge.c` instead.
+
+## catch_unwind helpers
+- `catch_cad(name, dest, f)` — wraps CAD ops that produce ShapeData, extracts panic message.
+- `catch_result(name, f)` — wraps CAD ops that return `()`, extracts panic message.
+- Both forward the actual panic message to the REPL instead of generic "unexpected error".
+- Unit tests in `src/main.rs` test module.
+
 ## Tests
-- Unit tests: `#[cfg(test)]` inline in `src/cad.rs`.
+- Unit tests: `#[cfg(test)]` inline in `src/cad.rs`, `src/crash_handler.rs`, `src/main.rs`.
 - REPL integration: `tests/test-variadic.sh` (`just test-repl`). Type-check error tests use `stdbuf -eL` + `timeout 2` because `janet_panic` longjmp can corrupt the stack.
 - Export tests write to `/tmp/test_rojcad_*.step` / `.stl`.
 

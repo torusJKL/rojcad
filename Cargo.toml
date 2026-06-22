@@ -24,6 +24,8 @@ egui_code_editor = "0.3"
 wgpu = "29"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
+backtrace = "0.3"
+libc = "0.2"
 
 [build-dependencies]
 cc = "1"

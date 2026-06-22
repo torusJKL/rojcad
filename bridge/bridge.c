@@ -231,6 +231,10 @@ extern int rust_init_text_extruded(void *dest, const char *text, const char *fon
 extern char **rust_list_fonts(int *count_out);
 extern void rust_free_fonts_list(char **list, int count);
 
+/* GUI REPL (poll/response) — data functions called from C JANET_FN wrappers */
+extern char *rust_gui_repl_poll_request_at(void);
+extern void rust_gui_repl_send_response_at(const char *response);
+
 /* ── Abstract type definition ───────────────────────────────────────────── */
 
 /* The abstract type descriptor for rojcad/shape.
@@ -2234,6 +2238,38 @@ JANET_FN(_cad_shape_get_id,
     return janet_wrap_number((double)id);
 }
 
+/* ── GUI REPL JANET_FN wrappers ──────────────────────────────────────── */
+
+JANET_FN(cad_gui_repl_poll_request,
+         "gui-repl-poll-request",
+         "Poll for a pending GUI REPL request. (thin primitive)\n\n"
+         "Returns a string or nil.")
+{
+    (void)argv;
+    janet_arity(argc, 0, 0);
+    char *result = rust_gui_repl_poll_request_at();
+    if (result == NULL) {
+        return janet_wrap_nil();
+    }
+    const uint8_t *s = janet_cstring(result);
+    free(result);
+    return janet_wrap_string(s);
+}
+
+JANET_FN(cad_gui_repl_send_response,
+         "gui-repl-send-response",
+         "Send a response string back to the GUI REPL. (thin primitive)\n\n"
+         "Accepts a single string argument.")
+{
+    janet_arity(argc, 1, 1);
+    const uint8_t *s = janet_unwrap_string(argv[0]);
+    if (s == NULL) {
+        janet_panic("expected string");
+    }
+    rust_gui_repl_send_response_at((const char *)s);
+    return janet_wrap_nil();
+}
+
 /* ── Registration ───────────────────────────────────────────────────────── */
 
 void cad_register_functions(JanetTable *env) {
@@ -2354,6 +2390,10 @@ void cad_register_functions(JanetTable *env) {
         {"view-fit",               _cad_view_fit,               _cad_view_fit_docstring_},
         {"view-fit-all",           _cad_view_fit_all,           _cad_view_fit_all_docstring_},
         {"view-angle",             _cad_view_angle,             _cad_view_angle_docstring_},
+
+        /* GUI REPL wrappers (migrated from Rust inline to C JANET_FN for signal safety) */
+        {"rust_gui_repl_poll_request",  cad_gui_repl_poll_request,  cad_gui_repl_poll_request_docstring_},
+        {"rust_gui_repl_send_response", cad_gui_repl_send_response, cad_gui_repl_send_response_docstring_},
 
         {NULL, NULL, NULL}
     };

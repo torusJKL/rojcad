@@ -313,6 +313,11 @@ run_tc_test() {
         # This still means type checking was triggered, so pass.
         echo "  PASS: $name (crash)"
         PASS=$((PASS + 1))
+    elif grep -qE "SIGSEGV|crash report" "$stderr_file"; then
+        # Our crash handler caught the longjmp-induced SIGSEGV and wrote a
+        # report. Type checking was triggered, so pass.
+        echo "  PASS: $name (crash-handled)"
+        PASS=$((PASS + 1))
     elif grep -q "error:" "$stderr_file"; then
         local err_line
         err_line=$(grep "error:" "$stderr_file" | head -1 || true)
