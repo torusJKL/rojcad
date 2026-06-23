@@ -198,6 +198,13 @@ extern void rust_edge_info_free(const char *s);
 extern void rust_highlight_edges(void *data, const int32_t *idxs, int32_t count);
 extern void rust_highlight_edges_clear(void);
 
+/* Edge selection */
+extern int32_t rust_poll_edge_selection(uint64_t *shape_id_out, uint8_t *action_out);
+extern uint64_t *rust_get_selected_edge_ids(size_t *count_out);
+extern void rust_free_u64_array(uint64_t *ptr, size_t count);
+
+
+
 /* Sketch */
 extern size_t rust_sketch_data_size(void);
 extern void rust_sketch_drop(void *data, size_t len);
@@ -943,20 +950,37 @@ JANET_FN(_cad_quit_requested,
 JANET_FN(_cad_poll_selection_raw,
          "_poll-selection-raw",
          "Low-level poll for selection events. (thin primitive)\n\n"
-         "Returns nil if no event, or a tuple [action id] where\n"
-         "action is 1 (selected), 2 (deselected), or 3 (cleared).")
+         "Returns nil if no event, or a triple [action shape_id edge_index] where\n"
+         "action is 1 (selected), 2 (deselected), 3 (cleared),\n"
+         "4 (edge selected), or 5 (edge deselected).\n"
+         "edge_index is -1 for non-edge events.")
 {
     janet_arity(argc, 0, 0);
     (void)argv;
+
+    // Check edge atomics first (higher priority)
+    uint64_t edge_sid = 0;
+    uint8_t edge_action = 0;
+    int32_t edge_idx = rust_poll_edge_selection(&edge_sid, &edge_action);
+    if (edge_idx >= 0 && edge_action > 0) {
+        Janet parts[3];
+        parts[0] = janet_wrap_number((double)edge_action);
+        parts[1] = janet_wrap_number((double)edge_sid);
+        parts[2] = janet_wrap_integer(edge_idx);
+        return janet_wrap_tuple(janet_tuple_n(parts, 3));
+    }
+
+    // Fallback to shape selection
     uint8_t action;
     uint64_t id = rust_poll_selection(&action);
     if (action == 0) {
         return janet_wrap_nil();
     }
-    Janet parts[2];
+    Janet parts[3];
     parts[0] = janet_wrap_number((double)action);
     parts[1] = janet_wrap_number((double)id);
-    return janet_wrap_tuple(janet_tuple_n(parts, 2));
+    parts[2] = janet_wrap_integer(-1);
+    return janet_wrap_tuple(janet_tuple_n(parts, 3));
 }
 
 JANET_FN(cad_edge_toggle_inactive,
@@ -2221,6 +2245,28 @@ JANET_FN(_cad_get_shape_by_id,
     return ptr ? janet_wrap_abstract(ptr) : janet_wrap_nil();
 }
 
+JANET_FN(_cad_edge_selection,
+         "_edge-selection-raw",
+         "Return the current edge selection as a flat tuple of\n"
+         "[shape_id edge_idx ...]. (thin primitive)\n\n"
+         "Returns an empty tuple if no edges are selected.")
+{
+    janet_arity(argc, 0, 0);
+    (void)argv;
+
+    size_t count = 0;
+    uint64_t *flat = rust_get_selected_edge_ids(&count);
+
+    Janet *parts = janet_smalloc(sizeof(Janet) * count);
+    for (size_t i = 0; i < count; i++) {
+        parts[i] = janet_wrap_number((double)flat[i]);
+    }
+    const Janet *tup = janet_tuple_n(parts, count);
+    janet_sfree(parts);
+    rust_free_u64_array(flat, count);
+    return janet_wrap_tuple(tup);
+}
+
 JANET_FN(_cad_shape_get_id,
          "_shape-get-id shape",
          "Extract the numeric ID from a rojcad/shape abstract value. (thin primitive)\n\n"
@@ -2399,4 +2445,7 @@ void cad_register_functions(JanetTable *env) {
     };
 
     janet_cfuns(env, NULL, cfuns);
+
+    /* Register edge query function at runtime (compile-time registration issue in bootstrap mode) */
+    janet_def(env, "_edge-selection-raw", janet_wrap_cfunction(_cad_edge_selection), _cad_edge_selection_docstring_);
 }

@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::sync::atomic::Ordering;
 
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+
 use crate::types::{
     REPL_PANEL_WIDTH, SHOW_BACK_EDGES, SHOW_STATS_OVERLAY, ShapeId, global_shape_registry,
 };
@@ -69,11 +71,14 @@ impl Stats {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &mut self,
         ctx: &egui::Context,
         camera: &OrbitCamera,
         selected_ids: &HashSet<ShapeId>,
+        mouse_pos: PhysicalPosition<f64>,
+        window_size: PhysicalSize<u32>,
         dt: f64,
     ) {
         if !SHOW_STATS_OVERLAY.load(Ordering::Relaxed) {
@@ -219,6 +224,24 @@ impl Stats {
 
                         ui.label("  Frame:");
                         ui.label(format!("{:.2} ms", frame_ms));
+                        ui.end_row();
+
+                        ui.strong("CURSOR");
+                        ui.label("");
+                        ui.end_row();
+
+                        let ndc_x = mouse_pos.x / window_size.width as f64 * 2.0 - 1.0;
+                        let ndc_y = 1.0 - mouse_pos.y / window_size.height as f64 * 2.0;
+                        ui.label("  Physical:");
+                        ui.label(format!("{}×{}", mouse_pos.x as i32, mouse_pos.y as i32));
+                        ui.end_row();
+
+                        ui.label("  NDC:");
+                        ui.label(format!("{:.3}×{:.3}", ndc_x, ndc_y));
+                        ui.end_row();
+
+                        ui.label("  Viewport:");
+                        ui.label(format!("{}×{}", window_size.width, window_size.height));
                         ui.end_row();
                     });
             });

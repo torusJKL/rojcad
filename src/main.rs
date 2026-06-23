@@ -32,11 +32,12 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, HELP_EXAMPLE, INACTIVE_EDGE_COLOR, LAST_SELECTION,
-    LAST_SELECTION_ACTION, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES,
-    SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_REPL_PANEL, SHOW_STATS_OVERLAY,
-    ShapeData, WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH,
-    global_shape_registry, init_edge_color_defaults, pack_color, register_shape_pointer,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, HELP_EXAMPLE, INACTIVE_EDGE_COLOR, LAST_EDGE_ACTION,
+    LAST_EDGE_INDEX, LAST_EDGE_SHAPE_ID, LAST_SELECTION, LAST_SELECTION_ACTION,
+    PROJECTION_PERSPECTIVE, QUIT_REQUESTED, ReplToViewer, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES,
+    SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES, SHOW_REPL_PANEL, SHOW_STATS_OVERLAY, ShapeData,
+    WINDOW_FULLSCREEN, WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry,
+    init_edge_color_defaults, pack_color, register_shape_pointer,
 };
 use crate::viewer::ViewerConfig;
 
@@ -106,6 +107,7 @@ where
 /// On success: returns 0.
 /// On expected error: stores message, returns 1.
 /// On panic: extracts panic message, stores "name panicked: {msg}", returns 1.
+#[allow(dead_code)]
 fn catch_result<F>(name: &str, f: F) -> c_int
 where
     F: FnOnce() -> Result<(), String>,
@@ -678,7 +680,9 @@ pub unsafe extern "C" fn rust_init_wire_to_face(
     eager: c_int,
 ) -> c_int {
     let shape = unsafe { &*(data as *const ShapeData) };
-    catch_cad("rust_init_wire_to_face", dest, || cad::wire_to_face(shape, eager != 0))
+    catch_cad("rust_init_wire_to_face", dest, || {
+        cad::wire_to_face(shape, eager != 0)
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -972,7 +976,9 @@ pub unsafe extern "C" fn rust_init_read_step(
     let path_str = unsafe { CStr::from_ptr(path) }
         .to_string_lossy()
         .to_string();
-    catch_cad("rust_init_read_step", dest, || cad::read_step(&path_str, eager))
+    catch_cad("rust_init_read_step", dest, || {
+        cad::read_step(&path_str, eager)
+    })
 }
 
 // ── Text ───────────────────────────────────────────────────────────────────
@@ -1234,6 +1240,53 @@ pub unsafe extern "C" fn rust_poll_selection(action: *mut u8) -> u64 {
         }
     }
     id
+}
+
+/// Poll for a pending edge selection event.
+/// Returns the edge index (-1 if no event pending).
+/// Writes the shape ID to `shape_id_out` if non-null.
+/// Writes the action (0=none, 4=selected, 5=deselected) to `action_out` if non-null.
+/// Resets all three edge atomics after reading.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_poll_edge_selection(
+    shape_id_out: *mut u64,
+    action_out: *mut u8,
+) -> i32 {
+    let idx = LAST_EDGE_INDEX.swap(-1, Ordering::SeqCst);
+    if !shape_id_out.is_null() {
+        unsafe {
+            *shape_id_out = LAST_EDGE_SHAPE_ID.swap(0, Ordering::SeqCst);
+        }
+    }
+    if !action_out.is_null() {
+        unsafe {
+            *action_out = LAST_EDGE_ACTION.swap(0, Ordering::SeqCst);
+        }
+    }
+    idx
+}
+
+/// Return a flat array of selected edge pairs [shape_id, edge_idx, shape_id, edge_idx, ...].
+/// Caller must free the returned array with rust_free_u64_array.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_selected_edge_ids(count_out: *mut usize) -> *mut u64 {
+    let edges = types::get_selected_edges();
+    let mut flat: Vec<u64> = Vec::new();
+    for (&sid, indices) in &edges {
+        for &idx in indices {
+            flat.push(sid);
+            flat.push(idx as u64);
+        }
+    }
+    let count = flat.len();
+    let ptr = flat.as_ptr() as *mut u64;
+    std::mem::forget(flat);
+    if !count_out.is_null() {
+        unsafe {
+            *count_out = count;
+        }
+    }
+    ptr
 }
 
 /// Check if the application should quit (Ctrl+Q or window close).

@@ -102,3 +102,17 @@ fn fs_active_dashed(input: DashedInput) -> @location(0) vec4<f32> {
     }
     return uniforms.active_color;
 }
+
+@fragment
+fn fs_selected_solid() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0, 0.5, 0.0, 1.0);
+}
+
+@fragment
+fn fs_selected_dashed(input: DashedInput) -> @location(0) vec4<f32> {
+    let pattern = sin(input.clip_position.x * 20.0 + input.clip_position.y * 20.0);
+    if pattern < 0.0 {
+        discard;
+    }
+    return vec4<f32>(1.0, 0.5, 0.0, 1.0);
+}

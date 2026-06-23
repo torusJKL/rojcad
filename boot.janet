@@ -14,6 +14,33 @@
   ~(let [,orig ((get core-env ',name) :value)]
      (put (get core-env ',name) :value (fn ,arglist ,;body))))
 
+(def shape-bindings @{})
+
+(def __shape_name_impl (fn [shape]
+  (var found nil)
+  (each [k v] (pairs shape-bindings)
+    (when (= v shape) (set found k)))
+  (string found)))
+
+(def __es (fn []
+  (def entry (get core-env '_edge-selection-raw))
+  (var edge-fn nil)
+  (var flat ())
+  (if entry (set edge-fn (entry :value)))
+  (if edge-fn (set flat (edge-fn)))
+  (def result @[])
+  (loop [i :range [0 (length flat) 2]]
+    (def sid (in flat i))
+    (def eidx (in flat (+ i 1)))
+    (def shape-entry (find |(= (in $0 :sid) sid) result))
+    (if shape-entry
+      (array/push (shape-entry :edges) eidx)
+      (array/push result @{:sid sid :edges @[eidx]})))
+  (each entry result
+    (put entry :shape (_get-shape (entry :sid)))
+    (put entry :name (__shape_name_impl (entry :shape))))
+  result))
+
 (defn setmeta [sym cat &opt doc]
   (def t (get core-env sym))
   (when (= :table (type t))
@@ -832,6 +859,10 @@
 (defn edge-info [shape]
   (map table->struct (json-decode (_edge-info-raw shape) true)))
 
+
+
+
+
 (wrap-c-fn highlight-edge _highlight-edge [shape & indices]
   (apply _highlight-edge shape indices))
 
@@ -881,16 +912,23 @@
       (def raw (_poll-selection-raw))
       (when raw
         (def action (in raw 0))
-        (def id (in raw 1))
+        (def shape-id (in raw 1))
+        (def edge-idx (in raw 2))
         (def event
           (case action
             3 :deselected
-            2 [:deselected id]
-            id))
+            2 (let [s (_get-shape shape-id)]
+                {:type :deselected :shape s :name (__shape_name_impl s) :edge -1})
+            4 (let [s (_get-shape shape-id)]
+                {:type :edge-selected :shape s :name (__shape_name_impl s) :edge edge-idx})
+            5 (let [s (_get-shape shape-id)]
+                {:type :edge-deselected :shape s :name (__shape_name_impl s) :edge edge-idx})
+            1 (let [s (_get-shape shape-id)]
+                {:type :shape-selected :shape s :name (__shape_name_impl s) :edge -1})))
         (when *on-select-callback* (*on-select-callback* event))
         event)))}) 
 (defmeta poll-selection "selection"
-  "(poll-selection)\n\nPoll for a selection event. Returns a shape if one is selected,\n:deselected if all deselected, [:deselected id] if a specific shape\nwas deselected, or nil if no event.\n\nThis is called internally by the event loop.\n\nExamples:\n  (poll-selection)  # returns shape, keyword, tuple, or nil")
+   "(poll-selection)\n\nPoll for a selection event.\nReturns :deselected if all deselected,\nor a struct with :type, :shape, :name for shape/edge events.\n:type is :shape-selected, :edge-selected, :edge-deselected, or :deselected.\nEdge events also have :edge field with the edge index.\n\nExamples:\n  (poll-selection)\n  # => {:type :edge-selected :shape #<rojcad/shape> :name \"b\" :edge 3}")
 
 # ── Shape query wrappers ─────────────────────────────────────────────────────
 
@@ -898,8 +936,54 @@
 (def _get-shape ((get core-env '_get-shape) :value))
 (put core-env 'selected-shapes @{:value (fn []
     (tuple/slice (seq [id :in (_get-selected-ids)] (_get-shape id))))})
+(put core-env 'edge-selection @{:value __es})
+(defmeta edge-selection "queries"
+  "(edge-selection)\n\nReturn the current edge selection as an array of structs.\nEach struct has :sid (numeric shape id), :shape (abstract),\n:name (string or nil), and :edges (array of edge indices).\n\nExamples:\n  (edge-selection)\n  # => @[{:sid 1 :shape #<rojcad/shape> :name \"b\" :edges @[0 3]}]\n\nReturns an array of structs, or empty array if no edges selected.")
+
+
+
 (defmeta selected-shapes "queries"
-  "(selected-shapes)\n\nReturn an array of currently selected shapes in the viewer.\n\nExamples:\n  (selected-shapes)  # returns @[shape ...]\n\nReturns an array of rojcad/shape values.")
+    "(selected-shapes)\n\nReturn an array of currently selected shapes in the viewer.\n\nExamples:\n  (selected-shapes)  # returns @[shape ...]\n\nReturns an array of rojcad/shape values.")
+
+(defn fillet-selected [&keys {:r r :eager eager}]
+  (unless r (error "fillet-selected: :r (radius) is required"))
+  (def raw-entry (get core-env '_edge-selection-raw))
+  (def flat (if raw-entry ((raw-entry :value)) ()))
+  (def sel @[])
+  (loop [i :range [0 (length flat) 2]]
+    (def sid (in flat i))
+    (def shape-entry (find |(= (in $0 :shape-id) sid) sel))
+    (if shape-entry
+      (array/push (shape-entry :edges) (in flat (+ i 1)))
+      (array/push sel {:shape-id sid :edges @[(in flat (+ i 1))]})))
+  (if (empty? sel)
+    (error "no edge selected")
+    (each entry sel
+      (def s (_get-shape (entry :shape-id)))
+      (fillet s :r r :e (tuple ;(entry :edges)) :eager eager)))
+  nil)
+(setmeta fillet-selected "operations"
+  "(fillet-selected &keys :r :eager)\n\nApply fillet to all currently selected edges, grouped by parent shape.\n:r (radius) is required.\n\nExamples:\n  (fillet-selected :r 2)\n\nReturns nil. Signals error if no edges selected.")
+
+(defn chamfer-selected [&keys {:d d :eager eager}]
+  (unless d (error "chamfer-selected: :d (distance) is required"))
+  (def raw-entry (get core-env '_edge-selection-raw))
+  (def flat (if raw-entry ((raw-entry :value)) ()))
+  (def sel @[])
+  (loop [i :range [0 (length flat) 2]]
+    (def sid (in flat i))
+    (def shape-entry (find |(= (in $0 :shape-id) sid) sel))
+    (if shape-entry
+      (array/push (shape-entry :edges) (in flat (+ i 1)))
+      (array/push sel {:shape-id sid :edges @[(in flat (+ i 1))]})))
+  (if (empty? sel)
+    (error "no edge selected")
+    (each entry sel
+      (def s (_get-shape (entry :shape-id)))
+      (chamfer s :d d :e (tuple ;(entry :edges)) :eager eager)))
+  nil)
+(setmeta chamfer-selected "operations"
+  "(chamfer-selected &keys :d :eager)\n\nApply chamfer to all currently selected edges, grouped by parent shape.\n:d (distance) is required.\n\nExamples:\n  (chamfer-selected :d 1)\n\nReturns nil. Signals error if no edges selected.")
 
 (def _get-registered-ids ((get core-env '_get-registered-ids) :value))
 (put core-env 'list-shapes @{:value (fn [&keys {:visible visible :hidden hidden}]
@@ -1082,8 +1166,6 @@
   (def p (parser/new))
   (parser/consume p str)
   (parser/produce p))
-
-(def shape-bindings @{})
 
 (defn my-eval [form _env]
   (def compiled (compile form core-env))
@@ -1582,6 +1664,9 @@
 (defmeta highlight-edge-clear "view"
   "(highlight-edge-clear)\n\nRemove all edge highlighting from the viewer.\n\nExamples:\n  (highlight-edge-clear)")
 
+(defn- display-name [event]
+  (or (in event :name) (string "<shape " (in event :shape) ">")))
+
 (defn poll-viewer []
   (while true
     (when (quit-requested) (os/exit 0))
@@ -1589,8 +1674,11 @@
     (when event
       (case (type event)
         :tuple (eprint "■ deselected: " (in event 1))
-        (case event
-          :deselected (eprint "■ deselected all")
+        :deselected (eprint "■ deselected all")
+        (case (in event :type)
+          :shape-selected (eprint "■ " (display-name event) " selected")
+          :edge-selected (eprint "■ edge " (in event :edge) " of " (display-name event) " selected")
+          :edge-deselected (eprint "■ edge " (in event :edge) " of " (display-name event) " deselected")
           (eprint "■ selected: " event))))
     (ev/sleep 0.1)))
 

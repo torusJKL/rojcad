@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
-use glam::DVec3;
+use glam::{DVec2, DVec3};
 
 use wgpu::{self, util::DeviceExt};
 #[cfg(target_os = "linux")]
@@ -18,17 +18,18 @@ use winit::{
 };
 
 use crate::types::{
-    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_SELECTION, LAST_SELECTION_ACTION,
-    MeshData, PROJECTION_PERSPECTIVE, QUIT_REQUESTED, REGISTRY_GENERATION, REPL_PANEL_WIDTH,
-    ReplToViewer, SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY,
-    SHOW_INACTIVE_EDGES, SHOW_REPL_PANEL, SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN,
-    WINDOW_HEIGHT, WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, unpack_color,
+    ACTIVE_EDGE_COLOR, EDGE_THICKNESS, INACTIVE_EDGE_COLOR, LAST_EDGE_ACTION, LAST_EDGE_INDEX,
+    LAST_EDGE_SHAPE_ID, LAST_SELECTION, LAST_SELECTION_ACTION, MeshData, PROJECTION_PERSPECTIVE,
+    QUIT_REQUESTED, REGISTRY_GENERATION, REPL_PANEL_WIDTH, ReplToViewer, SELECTED_EDGES,
+    SELECTED_IDS, SHOW_ACTIVE_EDGES, SHOW_BACK_EDGES, SHOW_HELP_OVERLAY, SHOW_INACTIVE_EDGES,
+    SHOW_REPL_PANEL, SHOW_STATS_OVERLAY, ShapeId, WINDOW_FULLSCREEN, WINDOW_HEIGHT,
+    WINDOW_MAXIMIZED, WINDOW_WIDTH, global_shape_registry, unpack_color,
 };
 
 use super::camera::OrbitCamera;
 use super::gizmo::GizmoRenderer;
 use super::help::Help;
-use super::pick::pick_shape;
+use super::pick::{is_edge_hidden, pick_edge, pick_shape};
 use super::stats::Stats;
 
 use super::{ViewerConfig, ViewerToRepl};
@@ -486,6 +487,8 @@ pub struct EdgeDrawer {
     inactive_dashed_pipeline: wgpu::RenderPipeline,
     active_solid_pipeline: wgpu::RenderPipeline,
     active_dashed_pipeline: wgpu::RenderPipeline,
+    selected_solid_pipeline: wgpu::RenderPipeline,
+    selected_dashed_pipeline: wgpu::RenderPipeline,
     pub uniform_bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
 }
@@ -629,6 +632,30 @@ impl EdgeDrawer {
             Some(wgpu::CompareFunction::Greater),
             edge_depth_bias,
         );
+        let selected_solid_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "vs_line",
+            "fs_selected_solid",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
+            Some(wgpu::CompareFunction::Always),
+            edge_depth_bias,
+        );
+        let selected_dashed_pipeline = Self::build_pipeline(
+            device,
+            &pipeline_layout,
+            surface_format,
+            depth_format,
+            "vs_line",
+            "fs_selected_dashed",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            &[instance_layout()],
+            Some(wgpu::CompareFunction::Greater),
+            edge_depth_bias,
+        );
 
         EdgeDrawer {
             grid_pipeline,
@@ -636,6 +663,8 @@ impl EdgeDrawer {
             inactive_dashed_pipeline,
             active_solid_pipeline,
             active_dashed_pipeline,
+            selected_solid_pipeline,
+            selected_dashed_pipeline,
             uniform_bind_group,
             uniform_buffer,
         }
@@ -730,6 +759,8 @@ impl EdgeDrawer {
         inactive_num_instances: u32,
         active_buffer: &wgpu::Buffer,
         active_num_instances: u32,
+        selected_buffer: &wgpu::Buffer,
+        selected_num_instances: u32,
         show_dashed: bool,
     ) {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
@@ -737,7 +768,7 @@ impl EdgeDrawer {
         let show_inactive = SHOW_INACTIVE_EDGES.load(std::sync::atomic::Ordering::Relaxed);
         let show_active = SHOW_ACTIVE_EDGES.load(std::sync::atomic::Ordering::Relaxed);
 
-        // Inactive edges (light grey) — 4 verts per instance (TriangleStrip quad)
+        // Inactive edges (light grey)
         if show_inactive && inactive_num_instances > 0 {
             pass.set_vertex_buffer(0, inactive_buffer.slice(..));
             if show_dashed {
@@ -748,7 +779,7 @@ impl EdgeDrawer {
             pass.draw(0..4, 0..inactive_num_instances);
         }
 
-        // Active edges (light blue, rendered on top)
+        // API-highlighted edges (blue, from uniform active_color)
         if show_active && active_num_instances > 0 {
             pass.set_vertex_buffer(0, active_buffer.slice(..));
             if show_dashed {
@@ -757,6 +788,17 @@ impl EdgeDrawer {
             }
             pass.set_pipeline(&self.active_solid_pipeline);
             pass.draw(0..4, 0..active_num_instances);
+        }
+
+        // User-selected edges (orange) — drawn on top with Always depth test
+        if show_active && selected_num_instances > 0 {
+            pass.set_vertex_buffer(0, selected_buffer.slice(..));
+            if show_dashed {
+                pass.set_pipeline(&self.selected_dashed_pipeline);
+                pass.draw(0..4, 0..selected_num_instances);
+            }
+            pass.set_pipeline(&self.selected_solid_pipeline);
+            pass.draw(0..4, 0..selected_num_instances);
         }
     }
 }
@@ -844,6 +886,8 @@ pub struct ViewerState {
     inactive_num_instances: u32,
     active_instance_buffer: wgpu::Buffer,
     active_num_instances: u32,
+    selected_instance_buffer: wgpu::Buffer,
+    selected_num_instances: u32,
     grid_renderer: GridRenderer,
     gizmo_renderer: GizmoRenderer,
     gizmo_depth: wgpu::Texture,
@@ -868,6 +912,7 @@ pub struct ViewerState {
     repl: super::repl::ReplPanel,
     highlighted_shape: Option<ShapeId>,
     highlighted_edges: HashMap<ShapeId, HashSet<usize>>,
+    selected_edges: HashMap<ShapeId, HashSet<usize>>,
 }
 
 // ── ViewerApp ─────────────────────────────────────────────────────────────
@@ -1031,6 +1076,13 @@ impl ApplicationHandler for ViewerApp {
             mapped_at_creation: false,
         });
         let active_num_instances = 0u32;
+        let selected_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("selected_edge_instances"),
+            size: 1,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        let selected_num_instances = 0u32;
 
         let sf = window.scale_factor();
         let gizmo_viewport_size = (200.0 * sf) as u32;
@@ -1069,6 +1121,8 @@ impl ApplicationHandler for ViewerApp {
             inactive_num_instances,
             active_instance_buffer,
             active_num_instances,
+            selected_instance_buffer,
+            selected_num_instances,
             grid_renderer,
             gizmo_renderer,
             gizmo_depth,
@@ -1093,6 +1147,7 @@ impl ApplicationHandler for ViewerApp {
             repl: super::repl::ReplPanel::new(self.gui_req_tx.clone()),
             highlighted_shape: None,
             highlighted_edges: HashMap::new(),
+            selected_edges: HashMap::new(),
         });
     }
 
@@ -1355,7 +1410,7 @@ const VIEW_TARGETS: [(f64, f64); 6] = [
 
 impl ViewerApp {
     fn handle_click(state: &mut ViewerState, viewer_tx: &Sender<ViewerToRepl>) {
-        // Shape picking from mouse click
+        // Compute ray from click position
         let aspect = state.size.width as f64 / state.size.height.max(1) as f64;
         let view_proj = state.camera.matrix(aspect);
         let inv_view_proj = view_proj.inverse();
@@ -1363,6 +1418,7 @@ impl ViewerApp {
         // Normalize mouse position to NDC [-1, 1]
         let ndc_x = (state.mouse_pos.x / state.size.width as f64) * 2.0 - 1.0;
         let ndc_y = 1.0 - (state.mouse_pos.y / state.size.height as f64) * 2.0;
+        let click_ndc = DVec2::new(ndc_x, ndc_y);
 
         let near_h = inv_view_proj * glam::DVec4::new(ndc_x, ndc_y, -1.0, 1.0);
         let far_h = inv_view_proj * glam::DVec4::new(ndc_x, ndc_y, 1.0, 1.0);
@@ -1372,7 +1428,7 @@ impl ViewerApp {
         let origin = near;
         let dir = (far - near).normalize();
 
-        // Collect visible mesh data for picking
+        // Collect visible shape data
         let registry = global_shape_registry();
         let visible = registry.visible_shapes();
         let mesh_refs: Vec<(u64, &MeshData)> = visible
@@ -1383,53 +1439,140 @@ impl ViewerApp {
         let ctrl = state.modifiers.control_key();
         let shift = state.modifiers.shift_key();
 
-        if let Some(result) = pick_shape(origin, dir, &mesh_refs) {
+        // Try edge picking first — edges win over mesh surface
+        const EDGE_CLICK_THRESHOLD_PX: f32 = 6.0;
+        let mut edge_hit = pick_edge(
+            click_ndc,
+            view_proj,
+            (state.size.width as f32, state.size.height as f32),
+            &visible,
+            EDGE_CLICK_THRESHOLD_PX,
+        );
+
+        // Reject hidden edges if back edges are disabled
+        if let Some(ref hit) = edge_hit {
+            let show_back = SHOW_BACK_EDGES.load(Ordering::Relaxed);
+            if !show_back && is_edge_hidden(hit.hit_point, hit.shape_id, &mesh_refs, origin) {
+                edge_hit = None;
+            }
+        }
+
+        if let Some(edge_result) = edge_hit {
+            let sid = edge_result.shape_id;
+            let eidx = edge_result.edge_index;
+            let was_selected = state
+                .selected_edges
+                .get(&sid)
+                .is_some_and(|s| s.contains(&eidx));
+
+            REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+
             if ctrl {
-                // Toggle clicked shape in/out of selection
-                if state.selected_ids.contains(&result.shape_id) {
-                    state.selected_ids.remove(&result.shape_id);
-                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
-                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
-                    LAST_SELECTION_ACTION.store(2, Ordering::SeqCst);
+                // Toggle this edge
+                if was_selected {
+                    state.selected_edges.entry(sid).or_default().remove(&eidx);
+                    if state.selected_edges.get(&sid).is_some_and(|s| s.is_empty()) {
+                        state.selected_edges.remove(&sid);
+                    }
+                    LAST_EDGE_SHAPE_ID.store(sid, Ordering::SeqCst);
+                    LAST_EDGE_INDEX.store(eidx as i32, Ordering::SeqCst);
+                    LAST_EDGE_ACTION.store(5, Ordering::SeqCst);
                 } else {
-                    state.selected_ids.insert(result.shape_id);
-                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
-                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    state.selected_edges.entry(sid).or_default().insert(eidx);
+                    state.selected_ids.insert(sid);
+                    LAST_EDGE_SHAPE_ID.store(sid, Ordering::SeqCst);
+                    LAST_EDGE_INDEX.store(eidx as i32, Ordering::SeqCst);
+                    LAST_EDGE_ACTION.store(4, Ordering::SeqCst);
+                    LAST_SELECTION.store(sid, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
                 }
             } else if shift {
-                // Additive — insert if not already present
-                if state.selected_ids.insert(result.shape_id) {
-                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
-                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                // Additive — insert edge if not already present
+                if !was_selected {
+                    state.selected_edges.entry(sid).or_default().insert(eidx);
+                    state.selected_ids.insert(sid);
+                    LAST_EDGE_SHAPE_ID.store(sid, Ordering::SeqCst);
+                    LAST_EDGE_INDEX.store(eidx as i32, Ordering::SeqCst);
+                    LAST_EDGE_ACTION.store(4, Ordering::SeqCst);
+                    LAST_SELECTION.store(sid, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
                 }
             } else {
-                // Plain click — replace selection
+                // Plain click — replace edge selection, also select parent shape
+                state.selected_edges.clear();
+                state.selected_edges.entry(sid).or_default().insert(eidx);
                 state.selected_ids.clear();
-                state.selected_ids.insert(result.shape_id);
+                state.selected_ids.insert(sid);
+                LAST_EDGE_SHAPE_ID.store(sid, Ordering::SeqCst);
+                LAST_EDGE_INDEX.store(eidx as i32, Ordering::SeqCst);
+                LAST_EDGE_ACTION.store(4, Ordering::SeqCst);
+                LAST_SELECTION.store(sid, Ordering::SeqCst);
+                LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
                 viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+            }
+            viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+        } else if let Some(result) = pick_shape(origin, dir, &mesh_refs) {
+            // No edge hit — fall back to shape picking
+            REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+            if ctrl {
+                if state.selected_ids.contains(&result.shape_id) {
+                    state.selected_ids.remove(&result.shape_id);
+                    state.selected_edges.remove(&result.shape_id);
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(2, Ordering::SeqCst);
+                    LAST_EDGE_SHAPE_ID.store(result.shape_id, Ordering::SeqCst);
+                    LAST_EDGE_INDEX.store(-1, Ordering::SeqCst);
+                    LAST_EDGE_ACTION.store(5, Ordering::SeqCst);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                } else {
+                    state.selected_ids.insert(result.shape_id);
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                }
+            } else if shift {
+                if state.selected_ids.insert(result.shape_id) {
+                    LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
+                    LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                }
+            } else {
+                state.selected_ids.clear();
+                state.selected_edges.clear();
+                state.selected_ids.insert(result.shape_id);
                 LAST_SELECTION.store(result.shape_id, Ordering::SeqCst);
                 LAST_SELECTION_ACTION.store(1, Ordering::SeqCst);
+                viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
             }
         } else {
-            // Miss — no shape under cursor
+            // Miss — no edge, no shape under cursor
             if !ctrl && !shift {
-                // Plain click on empty space: clear selection
                 let was_selected = !state.selected_ids.is_empty();
+                let had_edges = !state.selected_edges.is_empty();
                 state.selected_ids.clear();
+                state.selected_edges.clear();
+                if was_selected || had_edges {
+                    REGISTRY_GENERATION.fetch_add(1, Ordering::SeqCst);
+                }
                 if was_selected {
-                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
                     LAST_SELECTION.store(u64::MAX, Ordering::SeqCst);
                     LAST_SELECTION_ACTION.store(3, Ordering::SeqCst);
+                    viewer_tx.send(ViewerToRepl::SelectionChanged).ok();
+                }
+                if had_edges {
+                    LAST_EDGE_SHAPE_ID.store(u64::MAX, Ordering::SeqCst);
+                    LAST_EDGE_INDEX.store(-1, Ordering::SeqCst);
+                    LAST_EDGE_ACTION.store(5, Ordering::SeqCst);
                 }
             }
-            // Ctrl/Shift click on empty space: no-op
         }
 
-        // Sync selection state to the global for Janet queries
+        // Sync selections to globals for Janet queries
         if let Some(selected) = SELECTED_IDS.get() {
             *selected.write().unwrap() = state.selected_ids.clone();
+        }
+        if let Some(selected) = SELECTED_EDGES.get() {
+            *selected.write().unwrap() = state.selected_edges.clone();
         }
     }
 
@@ -1593,20 +1736,30 @@ impl ViewerApp {
             state.surface_drawer.set_meshes(meshes);
 
             // Build SegmentInstance arrays for instanced line rendering
+            // Three categories: inactive (grey), api-highlighted (blue), user-selected (orange)
             let selected_ids = &state.selected_ids;
             let highlighted_id = state.highlighted_shape;
             let highlighted_edges = &state.highlighted_edges;
+            let selected_edges = &state.selected_edges;
+
             let mut inactive_instances: Vec<SegmentInstance> = Vec::new();
             let mut active_instances: Vec<SegmentInstance> = Vec::new();
+            let mut selected_instances: Vec<SegmentInstance> = Vec::new();
 
             for entry in &visible {
                 let is_shape_highlighted = selected_ids.contains(&entry.shape_id)
                     || highlighted_id.is_some_and(|hid| hid == entry.shape_id);
                 for (edge_idx, polyline) in entry.edge_polylines.iter().enumerate() {
-                    let is_edge_highlighted = highlighted_edges
+                    let is_api_highlighted = is_shape_highlighted
+                        || highlighted_edges
+                            .get(&entry.shape_id)
+                            .is_some_and(|set| set.contains(&edge_idx));
+                    let is_user_selected = selected_edges
                         .get(&entry.shape_id)
                         .is_some_and(|set| set.contains(&edge_idx));
-                    let target = if is_shape_highlighted || is_edge_highlighted {
+                    let target = if is_user_selected {
+                        &mut selected_instances
+                    } else if is_api_highlighted {
                         &mut active_instances
                     } else {
                         &mut inactive_instances
@@ -1634,7 +1787,7 @@ impl ViewerApp {
             }
             state.inactive_num_instances = inactive_instances.len() as u32;
 
-            // Build active instance buffer
+            // Build active (API-highlighted) instance buffer
             if !active_instances.is_empty() {
                 state.active_instance_buffer =
                     state
@@ -1646,6 +1799,19 @@ impl ViewerApp {
                         });
             }
             state.active_num_instances = active_instances.len() as u32;
+
+            // Build selected (user-clicked) instance buffer
+            if !selected_instances.is_empty() {
+                state.selected_instance_buffer =
+                    state
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("selected_edge_instances"),
+                            contents: bytemuck::cast_slice(&selected_instances),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+            }
+            state.selected_num_instances = selected_instances.len() as u32;
         }
 
         let frame = match state.surface.get_current_texture() {
@@ -1712,6 +1878,8 @@ impl ViewerApp {
                 state.inactive_num_instances,
                 &state.active_instance_buffer,
                 state.active_num_instances,
+                &state.selected_instance_buffer,
+                state.selected_num_instances,
                 SHOW_BACK_EDGES.load(Ordering::Relaxed),
             );
         }
@@ -1768,7 +1936,15 @@ impl ViewerApp {
                 if state.repl.visible() {
                     state.repl.ui(ctx);
                 }
-                state.stats.ui(ctx, &state.camera, &state.selected_ids, dt);
+                let mouse_pos = state.mouse_pos;
+                state.stats.ui(
+                    ctx,
+                    &state.camera,
+                    &state.selected_ids,
+                    mouse_pos,
+                    state.size,
+                    dt,
+                );
                 state.help.ui(ctx);
             });
 

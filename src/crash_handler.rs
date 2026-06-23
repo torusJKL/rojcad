@@ -79,14 +79,14 @@ fn install_panic_hook() {
         let msg = payload_message(info.payload());
         let bt = Backtrace::new();
 
-        if let Some(mtx) = CRASH_FILE.get() {
-            if let Ok(mut file) = mtx.lock() {
-                let _ = writeln!(file, "PANIC");
-                let _ = writeln!(file, "  at {location}");
-                let _ = writeln!(file, "  {msg}");
-                let _ = writeln!(file, "Backtrace:\n{bt:?}");
-                let _ = file.flush();
-            }
+        if let Some(mtx) = CRASH_FILE.get()
+            && let Ok(mut file) = mtx.lock()
+        {
+            let _ = writeln!(file, "PANIC");
+            let _ = writeln!(file, "  at {location}");
+            let _ = writeln!(file, "  {msg}");
+            let _ = writeln!(file, "Backtrace:\n{bt:?}");
+            let _ = file.flush();
         }
 
         eprintln!("thread 'main' panicked at {location}:");
@@ -138,7 +138,7 @@ fn install_signal_handler() {
         (*ss).ss_size = alt_stack_size;
         (*ss).ss_flags = 0;
         if libc::sigaltstack(ss, std::ptr::null_mut()) != 0 {
-            let _ = libc::free((*ss).ss_sp);
+            libc::free((*ss).ss_sp);
             eprintln!("rojcad: warning: could not set alternate signal stack");
             return;
         }
@@ -177,7 +177,13 @@ extern "C" fn crash_signal_handler(
         _ => b"UNKNOWN\n\0" as *const u8,
     };
     let prelude = b"rojcad: ";
-    let _ = unsafe { libc::write(libc::STDERR_FILENO, prelude.as_ptr() as *const _, prelude.len()) };
+    let _ = unsafe {
+        libc::write(
+            libc::STDERR_FILENO,
+            prelude.as_ptr() as *const _,
+            prelude.len(),
+        )
+    };
     let tag_len = unsafe { libc::strlen(sig_tag_ptr as *const _) };
     let _ = unsafe { libc::write(libc::STDERR_FILENO, sig_tag_ptr as *const _, tag_len) };
 

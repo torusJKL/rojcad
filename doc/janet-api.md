@@ -1,4 +1,4 @@
-# rojcad Janet API Reference — 743607c-dirty
+# rojcad Janet API Reference — 7baf096-dirty
 
 ## Operations
 
@@ -106,16 +106,19 @@ Pass nil to unregister.
 
 **Usage:** `(poll-selection)`
 
-This is called internally by the event loop.
+
 
 **Examples:**
 ```janet
-(poll-selection)  # returns shape, keyword, tuple, or nil
+(poll-selection)
+# => {:type :edge-selected :shape #<rojcad/shape> :name "b" :edge 3}
 ```
 
-**Poll for a selection event. Returns a shape if one is selected,
-:deselected if all deselected, [:deselected id] if a specific shape
-was deselected, or nil if no event.**
+**Poll for a selection event.
+Returns :deselected if all deselected,
+or a struct with :type, :shape, :name for shape/edge events.
+:type is :shape-selected, :edge-selected, :edge-deselected, or :deselected.
+Edge events also have :edge field with the edge index.**
 
 ## I/O
 
@@ -1068,6 +1071,22 @@ Use with fillet/chamfer :e keyword to select edges by index.
 ```janet
 (edge-info my-box)   # returns @[{:index 0 :type "line" ...} ...]
 ```
+
+### `edge-selection`
+
+**Usage:** `(edge-selection)`
+
+Return the current edge selection as an array of structs.
+Each struct has :sid (numeric shape id), :shape (abstract),
+:name (string or nil), and :edges (array of edge indices).
+
+**Examples:**
+```janet
+(edge-selection)
+# => @[{:sid 1 :shape #<rojcad/shape> :name "b" :edges @[0 3]}]
+```
+
+**Returns an array of structs, or empty array if no edges selected.**
 
 ### `face?`
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference — 743607c-dirty</title>
+<title>rojcad Janet API Reference — 7baf096-dirty</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -131,6 +131,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#fuse">fuse</a></li>
 <li class="cat"><a href="#queries">Queries</a></li>
 <li class="fn"><a href="#edge-info">edge-info</a></li>
+<li class="fn"><a href="#edge-selection">edge-selection</a></li>
 <li class="fn"><a href="#face?">face?</a></li>
 <li class="fn"><a href="#list-shapes">list-shapes</a></li>
 <li class="fn"><a href="#selected-shapes">selected-shapes</a></li>
@@ -161,7 +162,7 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference — 743607c-dirty</h1>
+<h1>rojcad Janet API Reference — 7baf096-dirty</h1>
 <section id="operations">
 <h2>Operations</h2>
 <article id="chamfer">
@@ -259,14 +260,16 @@ Pass nil to unregister.</p>
 <h3>poll-selection</h3>
 <div class="usage">(poll-selection)</div>
 <div class="desc">
-<p>This is called internally by the event loop.</p>
 </div>
 <div class="examples">
-<pre><code>(poll-selection)  # returns shape, keyword, tuple, or <span class="tok-sp">nil</span></code></pre>
+<pre><code>(poll-selection)
+# =&amp;gt; {<span class="tok-k">:type</span> <span class="tok-k">:edge-selected</span> <span class="tok-k">:shape</span> #&amp;lt;rojcad/shape&amp;gt; <span class="tok-k">:name</span> <span class="tok-s">"b"</span> <span class="tok-k">:edge</span> <span class="tok-n">3</span>}</code></pre>
 </div>
-<div class="returns">Poll for a selection event. Returns a shape if one is selected,
-:deselected if all deselected, [:deselected id] if a specific shape
-was deselected, or nil if no event.</div>
+<div class="returns">Poll for a selection event.
+Returns :deselected if all deselected,
+or a struct with :type, :shape, :name for shape/edge events.
+:type is :shape-selected, :edge-selected, :edge-deselected, or :deselected.
+Edge events also have :edge field with the edge index.</div>
 </article>
 </section>
 <section id="io">
@@ -1128,6 +1131,20 @@ Use with fillet/chamfer :e keyword to select edges by index.</p>
 <div class="examples">
 <pre><code>(edge-info my-box)   # returns @[{<span class="tok-k">:index</span> <span class="tok-n">0</span> <span class="tok-k">:type</span> <span class="tok-s">"line"</span> ...} ...]</code></pre>
 </div>
+</article>
+<article id="edge-selection">
+<h3>edge-selection</h3>
+<div class="usage">(edge-selection)</div>
+<div class="desc">
+<p>Return the current edge selection as an array of structs.
+Each struct has :sid (numeric shape id), :shape (abstract),
+:name (string or nil), and :edges (array of edge indices).</p>
+</div>
+<div class="examples">
+<pre><code>(edge-selection)
+# =&amp;gt; @[{<span class="tok-k">:sid</span> <span class="tok-n">1</span> <span class="tok-k">:shape</span> #&amp;lt;rojcad/shape&amp;gt; <span class="tok-k">:name</span> <span class="tok-s">"b"</span> <span class="tok-k">:edges</span> @[<span class="tok-n">0</span> <span class="tok-n">3</span>]}]</code></pre>
+</div>
+<div class="returns">Returns an array of structs, or empty array if no edges selected.</div>
 </article>
 <article id="face?">
 <h3>face?</h3>

@@ -54,6 +54,12 @@ pub fn extract_edge_polylines(shape: &Shape) -> Vec<Vec<[f64; 3]>> {
     polylines
 }
 
+/// Count the number of topological edges in an OCCT shape.
+#[allow(dead_code)]
+pub fn topological_edge_count(shape: &Shape) -> usize {
+    shape.edges().count()
+}
+
 /// Generate a minimal synthetic wireframe for curved shapes:
 /// an equator circle (horizontal) and a meridian circle (vertical),
 /// computed from the mesh bounding sphere.
@@ -1832,5 +1838,54 @@ mod tests {
         assert!(json.contains("edge_type"));
         assert!(json.contains("start"));
         assert!(json.contains("end"));
+    }
+
+    #[test]
+    fn test_topological_edge_count_box() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let count = topological_edge_count(&sd.shape);
+        assert!(
+            count > 0,
+            "a box should have topological edges, got {count}"
+        );
+        // Note: OCCT counts can vary (e.g., box edges may be 12 or 24 depending
+        // on how the edge explorer handles shared edges vs face-owned edges)
+    }
+
+    #[test]
+    fn test_topological_edge_count_sphere() {
+        let sd = unwrap_sphere(5.0, None, None, false);
+        let count = topological_edge_count(&sd.shape);
+        assert!(
+            count > 0,
+            "a sphere should have topological edges, got {count}"
+        );
+    }
+
+    #[test]
+    fn test_topological_edge_count_cylinder() {
+        let sd = make_cylinder(5.0, 10.0, None, false).unwrap();
+        let count = topological_edge_count(&sd.shape);
+        assert!(
+            count > 0,
+            "a cylinder should have topological edges, got {count}"
+        );
+    }
+
+    #[test]
+    fn test_topo_edge_count_passed_to_entry() {
+        let mut sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        sd.tessellate_if_needed();
+        assert!(
+            sd.topo_edge_count > 0,
+            "topo_edge_count should be > 0 after tessellation, got {}",
+            sd.topo_edge_count
+        );
+        assert!(
+            sd.edge_polylines.len() >= sd.topo_edge_count,
+            "edge_polylines should contain at least topo_edge_count entries ({} >= {})",
+            sd.edge_polylines.len(),
+            sd.topo_edge_count
+        );
     }
 }

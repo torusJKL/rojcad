@@ -495,6 +495,21 @@ run_test "highlight-edge accepts indices" '
 (print "PASS")
 '
 
+run_test "edge-selection returns empty when nothing selected" '
+(def b (box 10))
+(def sel (edge-selection))
+(if (and (= :array (type sel)) (= 0 (length sel)))
+  (print "PASS") (do (print "FAIL: " sel) (os/exit 1)))
+'
+
+run_test "edge-selection called twice returns empty" '
+(def b (box 10))
+(def sel1 (edge-selection))
+(def sel2 (edge-selection))
+(if (and (= :array (type sel1)) (= :array (type sel2)) (= 0 (length sel1)) (= 0 (length sel2)))
+  (print "PASS") (do (print "FAIL: " sel1 " " sel2) (os/exit 1)))
+'
+
 
 # ── Load-file tests ────────────────────────────────────────────────────
 

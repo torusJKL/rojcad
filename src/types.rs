@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use glam::DVec3;
@@ -25,6 +25,17 @@ pub static LAST_SELECTION: AtomicU64 = AtomicU64::new(0);
 /// Action type for the last selection event.
 /// 0 = none, 1 = toggled_on, 2 = toggled_off, 3 = cleared.
 pub static LAST_SELECTION_ACTION: AtomicU8 = AtomicU8::new(0);
+
+/// Last selected edge's shape ID, used to propagate edge selection events to Janet.
+/// 0 = no event pending.
+pub static LAST_EDGE_SHAPE_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Last selected edge index. -1 = no event pending, 0+ = edge index.
+pub static LAST_EDGE_INDEX: AtomicI32 = AtomicI32::new(-1);
+
+/// Action type for the last edge selection event.
+/// 0 = none, 4 = edge selected, 5 = edge deselected.
+pub static LAST_EDGE_ACTION: AtomicU8 = AtomicU8::new(0);
 
 /// Edge visibility toggles, controlled from the Janet REPL.
 pub static SHOW_INACTIVE_EDGES: AtomicBool = AtomicBool::new(true);
@@ -173,12 +184,25 @@ pub fn get_shape_pointer(id: ShapeId) -> *mut c_void {
 /// Global set of currently selected shape IDs, synced from the viewer thread.
 pub static SELECTED_IDS: OnceLock<RwLock<HashSet<ShapeId>>> = OnceLock::new();
 
+/// Global set of currently selected edges, synced from the viewer thread.
+/// Maps shape_id → set of edge indices.
+pub static SELECTED_EDGES: OnceLock<RwLock<HashMap<ShapeId, HashSet<usize>>>> = OnceLock::new();
+
 /// Read the current selection set. Returns an empty HashSet if not initialized.
 pub fn get_selected_ids() -> HashSet<ShapeId> {
     SELECTED_IDS
         .get_or_init(|| RwLock::new(HashSet::new()))
         .read()
         .expect("SELECTED_IDS lock poisoned")
+        .clone()
+}
+
+/// Read the current edge selection set. Returns an empty HashMap if not initialized.
+pub fn get_selected_edges() -> HashMap<ShapeId, HashSet<usize>> {
+    SELECTED_EDGES
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .read()
+        .expect("SELECTED_EDGES lock poisoned")
         .clone()
 }
 
@@ -214,6 +238,7 @@ pub struct ShapeEntry {
     pub shape_id: ShapeId,
     pub mesh: Option<MeshData>,
     pub edge_polylines: Vec<Vec<[f64; 3]>>,
+    pub topo_edge_count: usize,
     pub visible: bool,
     pub color: Option<[f64; 3]>,
 }
@@ -256,6 +281,7 @@ impl ShapeRegistry {
                 shape_id: e.shape_id,
                 mesh: e.mesh.clone(),
                 edge_polylines: e.edge_polylines.clone(),
+                topo_edge_count: e.topo_edge_count,
                 visible: e.visible,
                 color: e.color,
             })
@@ -271,6 +297,7 @@ impl ShapeRegistry {
                 shape_id: e.shape_id,
                 mesh: e.mesh.clone(),
                 edge_polylines: e.edge_polylines.clone(),
+                topo_edge_count: e.topo_edge_count,
                 visible: e.visible,
                 color: e.color,
             })
@@ -286,6 +313,7 @@ impl ShapeRegistry {
                 shape_id: e.shape_id,
                 mesh: e.mesh.clone(),
                 edge_polylines: e.edge_polylines.clone(),
+                topo_edge_count: e.topo_edge_count,
                 visible: e.visible,
                 color: e.color,
             })
@@ -339,6 +367,7 @@ pub struct ShapeData {
     pub color: Option<[f64; 3]>,
     pub mesh: Option<MeshData>,
     pub edge_polylines: Vec<Vec<[f64; 3]>>,
+    pub topo_edge_count: usize,
     pub registered: bool,
     pub purged: bool,
 }
@@ -357,6 +386,7 @@ impl ShapeData {
             color: None,
             mesh: None,
             edge_polylines: Vec::new(),
+            topo_edge_count: 0,
             registered: false,
             purged: false,
         }
@@ -370,6 +400,7 @@ impl ShapeData {
         }
         let mesh = crate::cad::extract_mesh(&self.shape);
         let mut edge_polylines = crate::cad::extract_edge_polylines(&self.shape);
+        self.topo_edge_count = edge_polylines.len();
         if edge_polylines.len() < crate::cad::SYNTHETIC_WIREFRAME_THRESHOLD
             && let Some(ref m) = mesh
         {
@@ -397,6 +428,7 @@ impl ShapeData {
                 shape_id: self.shape_id,
                 mesh: self.mesh.clone(),
                 edge_polylines: self.edge_polylines.clone(),
+                topo_edge_count: self.topo_edge_count,
                 visible: true,
                 color: self.color,
             };
