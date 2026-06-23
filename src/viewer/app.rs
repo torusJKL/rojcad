@@ -1314,7 +1314,7 @@ impl ApplicationHandler for ViewerApp {
                 if button == MouseButton::Left {
                     if pressed {
                         state.click_start_pos = state.mouse_pos;
-                    } else {
+                    } else if !state.egui_ctx.egui_wants_pointer_input() {
                         // Released — fire click only if not a drag
                         let dx = state.mouse_pos.x - state.click_start_pos.x;
                         let dy = state.mouse_pos.y - state.click_start_pos.y;
