@@ -117,10 +117,10 @@ pub fn is_edge_hidden(
             let v0: DVec3 = mesh.vertices[i0].map(|x| x as f64).into();
             let v1: DVec3 = mesh.vertices[i1].map(|x| x as f64).into();
             let v2: DVec3 = mesh.vertices[i2].map(|x| x as f64).into();
-            if let Some(t) = ray_triangle_intersect(origin, dir, v0, v1, v2) {
-                if t < point_dist - 0.1 {
-                    return true;
-                }
+            if let Some(t) = ray_triangle_intersect(origin, dir, v0, v1, v2)
+                && t < point_dist - 0.1
+            {
+                return true;
             }
         }
     }
