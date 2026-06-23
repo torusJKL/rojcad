@@ -359,6 +359,9 @@ pub fn make_torus(
 /// Returns a `ShapeData` wrapping the resulting shape.
 /// Panics if the result is a null/empty shape (`ShapeType::Shape`).
 pub fn cut(a: &ShapeData, b: &ShapeData, eager: bool) -> Result<ShapeData, String> {
+    if a.shape.shape_type() == ShapeType::Face && b.shape.shape_type() == ShapeType::Face {
+        return Err("cut: cannot cut two planar faces. Extrude one or both to solids first (e.g. with `prism`)".to_string());
+    }
     let result = a.shape.subtract(&b.shape);
     let shape = result.shape;
     if shape.shape_type() == ShapeType::Shape {
@@ -1868,6 +1871,46 @@ mod tests {
         let refs = [&a, &b];
         let result = make_compound(&refs, false).unwrap();
         assert_eq!(result.type_string(), "COMPOUND");
+    }
+
+    // ── Boolean guard tests (Face-Face rejection) ──────────────────────────
+
+    fn make_face_rect(w: f64, h: f64) -> ShapeData {
+        make_rect(w, h, false, "xy", None, false).unwrap()
+    }
+
+    fn make_solid_box(w: f64, d: f64, h: f64) -> ShapeData {
+        make_box(w, d, h, None, false).unwrap()
+    }
+
+    #[test]
+    fn test_cut_rejects_face_face() {
+        let face_a = make_face_rect(10.0, 10.0);
+        let face_b = make_face_rect(5.0, 5.0);
+        let result = cut(&face_a, &face_b, false);
+        match result {
+            Err(msg) => {
+                assert!(msg.contains("cannot cut"), "{}", msg);
+                assert!(msg.contains("Extrude"), "missing workaround hint: {}", msg);
+            }
+            Ok(_) => panic!("expected error for face-face cut"),
+        }
+    }
+
+    #[test]
+    fn test_cut_accepts_face_solid() {
+        let face = make_face_rect(10.0, 10.0);
+        let solid = make_solid_box(20.0, 20.0, 5.0);
+        let result = cut(&face, &solid, false);
+        assert!(result.is_ok(), "face-solid cut should pass, got error");
+    }
+
+    #[test]
+    fn test_cut_accepts_solid_solid() {
+        let solid_a = make_solid_box(10.0, 10.0, 10.0);
+        let solid_b = make_solid_box(5.0, 5.0, 5.0);
+        let result = cut(&solid_a, &solid_b, false);
+        assert!(result.is_ok(), "solid-solid cut should pass, got error");
     }
 
     #[test]
