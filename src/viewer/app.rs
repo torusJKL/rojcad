@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -1568,12 +1568,8 @@ impl ViewerApp {
         }
 
         // Sync selections to globals for Janet queries
-        if let Some(selected) = SELECTED_IDS.get() {
-            *selected.write().unwrap() = state.selected_ids.clone();
-        }
-        if let Some(selected) = SELECTED_EDGES.get() {
-            *selected.write().unwrap() = state.selected_edges.clone();
-        }
+        SELECTED_IDS.get_or_init(|| RwLock::new(HashSet::new())).write().unwrap().clone_from(&state.selected_ids);
+        SELECTED_EDGES.get_or_init(|| RwLock::new(HashMap::new())).write().unwrap().clone_from(&state.selected_edges);
     }
 
     fn check_repl_commands(rx: &Receiver<ReplToViewer>, state: &mut ViewerState) {
