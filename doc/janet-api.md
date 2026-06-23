@@ -1,4 +1,4 @@
-# rojcad Janet API Reference — 7baf096-dirty
+# rojcad Janet API Reference — 89b8582-dirty
 
 ## Operations
 
@@ -1064,12 +1064,13 @@ Keywords: :eager, :hide
 **Usage:** `(edge-info shape)`
 
 Return metadata for all edges of a shape as an array of structs.
-Each struct has keys :index, :type, :start, :end.
+Each struct has keys :index, :type, :length, :start, :end, :radius, :axis, :center.
 Use with fillet/chamfer :e keyword to select edges by index.
 
 **Examples:**
 ```janet
-(edge-info my-box)   # returns @[{:index 0 :type "line" ...} ...]
+(edge-info my-box)
+(filter (fn [e] (= (e :type) "circle")) (edge-info my-part))
 ```
 
 ### `edge-selection`
@@ -1088,6 +1089,20 @@ Each struct has :sid (numeric shape id), :shape (abstract),
 
 **Returns an array of structs, or empty array if no edges selected.**
 
+### `face-info`
+
+**Usage:** `(face-info shape)`
+
+Return metadata for all faces of a shape as an array of structs.
+Each struct has keys :index, :type, :area, :center, :normal, :axis, :radius.
+Use with get-face to extract a face for operations.
+
+**Examples:**
+```janet
+(face-info my-box)
+(filter (fn [f] (= (f :type) "cylinder")) (face-info my-part))
+```
+
 ### `face?`
 
 **Usage:** `(face? & shapes)`
@@ -1100,6 +1115,37 @@ Check if one or more shapes are Faces.
 ```
 
 **Returns boolean or array of booleans.**
+
+### `get-edge`
+
+**Usage:** `(get-edge shape index)`
+
+
+
+**Examples:**
+```janet
+(get-edge my-box 0)
+```
+
+**Extract an edge sub-shape by its index (from edge-info).
+Returns a rojcad/shape abstract. Not shown in the viewer.**
+
+### `get-face`
+
+**Usage:** `(get-face shape index)`
+
+
+
+**Examples:**
+```janet
+(get-face my-box 0)
+(extrude (get-face my-box 0) :h 5)
+```
+
+**Extract a face sub-shape by its index (from face-info).
+Returns a rojcad/shape abstract that can be passed to extrude, revolve,
+face-offset, face-fillet, face-chamfer, or face-workplane.
+The returned face is not shown in the viewer.**
 
 ### `list-shapes`
 
@@ -1366,6 +1412,65 @@ Keywords: :t [dx dy dz], :eager, :hide
 **Returns a rojcad/shape abstract value.**
 
 ## Other
+
+### `face-chamfer`
+
+**Usage:** `(face-chamfer face &keys :d :eager :hide)`
+
+
+
+**Examples:**
+```janet
+(face-chamfer my-face :d 2 :eager)
+```
+
+**Chamfer (bevel) all vertices of a face's boundary. Returns a new Face.**
+
+### `face-fillet`
+
+**Usage:** `(face-fillet face &keys :r :eager :hide)`
+
+
+
+**Examples:**
+```janet
+(face-fillet my-face :r 2 :eager)
+```
+
+**Fillet (round) all vertices of a face's boundary. Returns a new Face.**
+
+### `face-offset`
+
+**Usage:** `(face-offset face &keys :d :eager :hide)`
+
+
+
+**Examples:**
+```janet
+(face-offset my-face :d 2 :eager)
+```
+
+**Offset a face by a given distance. Returns a new Face.**
+
+### `face-workplane`
+
+**Usage:** `(face-workplane face)`
+
+
+
+**Examples:**
+```janet
+(def f (-> (face-workplane (get-face my-box 0))
+(move-to 2 2)
+(line-to 8 2)
+(line-to 8 8)
+(line-to 2 8)
+(close-sketch :eager)))
+```
+
+**Create a sketch (workplane) aligned to a face.
+The sketch is positioned at the face's center with Z along the face normal.
+Returns a sketch that can be used directly with move-to, line-to, etc.**
 
 ### `color`
 

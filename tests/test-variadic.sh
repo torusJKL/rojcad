@@ -590,6 +590,148 @@ else
     FAILED_TESTS="$FAILED_TESTS  - REPL returns 3 for (+ 1 2)"$'\n'
 fi
 
+# ── Face/Edge Query & Extraction Tests ────────────────────────────────────
+
+echo ":: Face/edge queries"
+
+run_test "face-info returns array of structs" '
+(def b (box 10 20 30))
+(def infos (face-info b))
+(if (and (array? infos) (= 6 (length infos)))
+  (print "PASS") (do (print "FAIL: expected 6 faces, got " (length infos)) (os/exit 1)))
+'
+
+run_test "face-info contains type, area, center, normal" '
+(def b (box 10 20 30))
+(def info (first (face-info b)))
+(if (and (= :string (type (info :type)))
+         (= :number (type (info :area)))
+         (tuple? (info :center))
+         (tuple? (info :normal)))
+  (print "PASS") (do (print "FAIL: missing keys in " info) (os/exit 1)))
+'
+
+run_test "edge-info has enriched fields" '
+(def b (box 10 20 30))
+(def info (first (edge-info b)))
+(if (and (= :number (type (info :length)))
+         (= :number (type (info :radius)))
+         (tuple? (info :axis))
+         (tuple? (info :center)))
+  (print "PASS") (do (print "FAIL: missing enriched fields in " info) (os/exit 1)))
+'
+
+echo ":: Extraction (get-face / get-edge)"
+
+run_test "get-face returns FACE shape" '
+(def b (box 10 20 30))
+(def f (get-face b 0))
+(if (= "FACE" (shape-type f))
+  (print "PASS") (do (print "FAIL: expected FACE, got " (shape-type f)) (os/exit 1)))
+'
+
+run_test "get-edge returns EDGE shape" '
+(def b (box 10 20 30))
+(def e (get-edge b 0))
+(if (= "EDGE" (shape-type e))
+  (print "PASS") (do (print "FAIL: expected EDGE, got " (shape-type e)) (os/exit 1)))
+'
+
+run_test "get-face error on out-of-range index" '
+(def b (box 10 20 30))
+(try
+  (get-face b 999)
+  (fn [e] (if (string/find "out of range" e)
+    (print "PASS")
+    (do (print "FAIL: wrong error: " e) (os/exit 1))))
+  (fn [] (print "FAIL: expected error") (os/exit 1)))
+'
+
+run_test "get-face error on non-shape" '
+(try
+  (get-face "not-a-shape" 0)
+  (fn [e] (if (string/find "expected rojcad/shape" e)
+    (print "PASS")
+    (do (print "FAIL: wrong error: " e) (os/exit 1))))
+  (fn [] (print "FAIL: expected error") (os/exit 1)))
+'
+
+echo ":: Filter → Extract → Operate"
+
+run_test "extrude a filtered face" '
+(def b (box 10 20 30))
+(def faces (face-info b))
+(def top-faces (filter (fn [f] (= (f :normal) [0 0 1])) faces))
+(if (= 0 (length top-faces))
+  (do (print "FAIL: expected at least one top face") (os/exit 1)))
+(def top-face (get-face b ((first top-faces) :index)))
+(def result (extrude top-face :h 5 :hide))
+(if (= "SOLID" (shape-type result))
+  (print "PASS") (do (print "FAIL: expected SOLID, got " (shape-type result)) (os/exit 1)))
+'
+
+run_test "revolve a filtered face" '
+(def b (box 10 20 30))
+(def info (first (face-info b)))
+(def f (get-face b (info :index)))
+(def result (revolve f :ar 3.14159 :dir [0 0 1] :hide))
+(if (= "SOLID" (shape-type result))
+  (print "PASS") (do (print "FAIL: expected SOLID, got " (shape-type result)) (os/exit 1)))
+'
+
+run_test "faces convenience returns all face shapes" '
+(def b (box 10 20 30))
+(def all-faces (faces b))
+(if (= 6 (length all-faces))
+  (print "PASS") (do (print "FAIL: expected 6 faces, got " (length all-faces)) (os/exit 1)))
+'
+
+run_test "edges convenience returns all edge shapes" '
+(def b (box 10 20 30))
+(def all-edges (edges b))
+(if (= 12 (length all-edges))
+  (print "PASS") (do (print "FAIL: expected 12 edges, got " (length all-edges)) (os/exit 1)))
+'
+
+echo ":: Face operations"
+
+run_test "face-offset works on a face" '
+(def r (rect 10 20))
+(def result (face-offset r :d 2 :eager :hide))
+(if (= "FACE" (shape-type result))
+  (print "PASS") (do (print "FAIL: expected FACE, got " (shape-type result)) (os/exit 1)))
+'
+
+run_test "face-offset errors on non-face input" '
+(try
+  (face-offset (box 10 20 30) :d 2)
+  (fn [e] (if (string/find "expected Face" e)
+    (print "PASS")
+    (do (print "FAIL: wrong error: " e) (os/exit 1))))
+  (fn [] (print "FAIL: expected error") (os/exit 1)))
+'
+
+run_test "face-fillet works on a rectangular face" '
+(def r (rect 10 20))
+(def result (face-fillet r :r 2 :eager :hide))
+(if (= "FACE" (shape-type result))
+  (print "PASS") (do (print "FAIL: expected FACE, got " (shape-type result)) (os/exit 1)))
+'
+
+run_test "face-chamfer works on a rectangular face" '
+(def r (rect 10 20))
+(def result (face-chamfer r :d 2 :eager :hide))
+(if (= "FACE" (shape-type result))
+  (print "PASS") (do (print "FAIL: expected FACE, got " (shape-type result)) (os/exit 1)))
+'
+
+run_test "face-workplane creates a sketch" '
+(def r (rect 10 20))
+(def wp (face-workplane r))
+(if (= :core/type (type wp))
+  (print "PASS") (do (print "FAIL: expected sketch from face-workplane, got " (type wp)) (os/exit 1)))
+'
+
 # ── Results ────────────────────────────────────────────────────────────
 
 echo ""

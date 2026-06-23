@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, RwLock};
 
 use glam::{DVec2, DVec3};
 
@@ -1568,8 +1568,16 @@ impl ViewerApp {
         }
 
         // Sync selections to globals for Janet queries
-        SELECTED_IDS.get_or_init(|| RwLock::new(HashSet::new())).write().unwrap().clone_from(&state.selected_ids);
-        SELECTED_EDGES.get_or_init(|| RwLock::new(HashMap::new())).write().unwrap().clone_from(&state.selected_edges);
+        SELECTED_IDS
+            .get_or_init(|| RwLock::new(HashSet::new()))
+            .write()
+            .unwrap()
+            .clone_from(&state.selected_ids);
+        SELECTED_EDGES
+            .get_or_init(|| RwLock::new(HashMap::new()))
+            .write()
+            .unwrap()
+            .clone_from(&state.selected_edges);
     }
 
     fn check_repl_commands(rx: &Receiver<ReplToViewer>, state: &mut ViewerState) {

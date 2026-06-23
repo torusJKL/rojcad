@@ -858,10 +858,71 @@
 
 (defn edge-info [shape]
   (map table->struct (json-decode (_edge-info-raw shape) true)))
+(defmeta edge-info "queries"
+  "(edge-info shape)\n\nReturn metadata for all edges of a shape as an array of structs.\nEach struct has keys :index, :type, :length, :start, :end, :radius, :axis, :center.\nUse with fillet/chamfer :e keyword to select edges by index.\n\nExamples:\n  (edge-info my-box)\n  (filter (fn [e] (= (e :type) \"circle\")) (edge-info my-part))")
 
+(defn face-info [shape]
+  (map table->struct (json-decode (_face-info-raw shape) true)))
+(defmeta face-info "queries"
+  "(face-info shape)\n\nReturn metadata for all faces of a shape as an array of structs.\nEach struct has keys :index, :type, :area, :center, :normal, :axis, :radius.\nUse with get-face to extract a face for operations.\n\nExamples:\n  (face-info my-box)\n  (filter (fn [f] (= (f :type) \"cylinder\")) (face-info my-part))")
 
+(defn get-face [shape idx]
+  (_get-face shape idx))
+(defmeta get-face "queries"
+  "(get-face shape index)\n\nExtract a face sub-shape by its index (from face-info).\nReturns a rojcad/shape abstract that can be passed to extrude, revolve,\nface-offset, face-fillet, face-chamfer, or face-workplane.\nThe returned face is not shown in the viewer.\n\nExamples:\n  (get-face my-box 0)\n  (extrude (get-face my-box 0) :h 5)")
 
+(defn get-edge [shape idx]
+  (_get-edge shape idx))
+(defmeta get-edge "queries"
+  "(get-edge shape index)\n\nExtract an edge sub-shape by its index (from edge-info).\nReturns a rojcad/shape abstract. Not shown in the viewer.\n\nExamples:\n  (get-edge my-box 0)")
 
+(defn faces [shape]
+  (def infos (face-info shape))
+  (map (fn [f] (get-face shape (f :index))) infos))
+
+(defn edges [shape]
+  (def infos (edge-info shape))
+  (map (fn [e] (get-edge shape (e :index))) infos))
+
+# ── Face operations ──────────────────────────────────────────────────────────
+
+(wrap-c-fn face-offset _face-offset [face &keys {:d d :eager eager :hide hide}]
+  (unless d (error "face-offset: :d (distance) is required"))
+  (def args @[face :d d])
+  (when eager (array/push args :eager))
+  (when hide (array/push args :hide))
+  (def s (apply _face-offset args))
+  (when hide (hide s))
+  s)
+(defmeta face-offset "face-operations"
+  "(face-offset face &keys :d :eager :hide)\n\nOffset a face by a given distance. Returns a new Face.\n\nExamples:\n  (face-offset my-face :d 2 :eager)")
+
+(wrap-c-fn face-fillet _face-fillet [face &keys {:r r :eager eager :hide hide}]
+  (unless r (error "face-fillet: :r (radius) is required"))
+  (def args @[face :r r])
+  (when eager (array/push args :eager))
+  (when hide (array/push args :hide))
+  (def s (apply _face-fillet args))
+  (when hide (hide s))
+  s)
+(defmeta face-fillet "face-operations"
+  "(face-fillet face &keys :r :eager :hide)\n\nFillet (round) all vertices of a face's boundary. Returns a new Face.\n\nExamples:\n  (face-fillet my-face :r 2 :eager)")
+
+(wrap-c-fn face-chamfer _face-chamfer [face &keys {:d d :eager eager :hide hide}]
+  (unless d (error "face-chamfer: :d (distance) is required"))
+  (def args @[face :d d])
+  (when eager (array/push args :eager))
+  (when hide (array/push args :hide))
+  (def s (apply _face-chamfer args))
+  (when hide (hide s))
+  s)
+(defmeta face-chamfer "face-operations"
+  "(face-chamfer face &keys :d :eager :hide)\n\nChamfer (bevel) all vertices of a face's boundary. Returns a new Face.\n\nExamples:\n  (face-chamfer my-face :d 2 :eager)")
+
+(wrap-c-fn face-workplane _face-workplane [face]
+  (_face-workplane face))
+(defmeta face-workplane "face-operations"
+  "(face-workplane face)\n\nCreate a sketch (workplane) aligned to a face.\nThe sketch is positioned at the face's center with Z along the face normal.\nReturns a sketch that can be used directly with move-to, line-to, etc.\n\nExamples:\n  (def f (-> (face-workplane (get-face my-box 0))\n             (move-to 2 2)\n             (line-to 8 2)\n             (line-to 8 8)\n             (line-to 2 8)\n             (close-sketch :eager)))")
 
 (wrap-c-fn highlight-edge _highlight-edge [shape & indices]
   (apply _highlight-edge shape indices))
@@ -1657,8 +1718,6 @@
   "(fillet shape &keys :r :e :eager :hide)\n\nRound edges of a 3D shape by radius :r.\nWith :e, only the specified edges are filleted.\n:r is required, :e is an optional tuple of edge indices.\nKeywords: :r (required), :e (optional), :eager, :hide\n\nExamples:\n  (fillet my-box :r 2)              # fillet all edges\n  (fillet my-box :r 2 :e [0 1 2])   # fillet selected edges")
 (defmeta chamfer "operations"
   "(chamfer shape &keys :d :e :eager :hide)\n\nBevel edges of a 3D shape by distance :d.\nWith :e, only the specified edges are chamfered.\n:d is required, :e is an optional tuple of edge indices.\nKeywords: :d (required), :e (optional), :eager, :hide\n\nExamples:\n  (chamfer my-box :d 1)              # chamfer all edges\n  (chamfer my-box :d 1 :e [0 1 2])   # chamfer selected edges")
-(defmeta edge-info "queries"
-  "(edge-info shape)\n\nReturn metadata for all edges of a shape as an array of structs.\nEach struct has keys :index, :type, :start, :end.\nUse with fillet/chamfer :e keyword to select edges by index.\n\nExamples:\n  (edge-info my-box)   # returns @[{:index 0 :type \"line\" ...} ...]")
 (defmeta highlight-edge "view"
   "(highlight-edge shape & indices)\n\nHighlight specific edges of a shape in the viewer by their indices.\nEdges are rendered with active edge color (blue).\n\nExamples:\n  (highlight-edge my-box 0 2 4)   # highlight edges 0, 2, 4\n  (highlight-edge my-box)          # no-op")
 (defmeta highlight-edge-clear "view"

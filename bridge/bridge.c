@@ -190,6 +190,20 @@ extern int rust_init_fillet(void *dest, void *data, double radius,
 extern int rust_init_chamfer(void *dest, void *data, double distance,
                               const int32_t *idxs, int32_t count, int eager);
 
+/* Face info */
+extern const char *rust_face_info(void *data);
+extern void rust_face_info_free(const char *s);
+
+/* Get face / edge */
+extern int rust_get_face(void *dest, void *data, int32_t index);
+extern int rust_get_edge(void *dest, void *data, int32_t index);
+
+/* Face operations */
+extern int rust_face_offset(void *dest, void *data, double distance, int eager);
+extern int rust_face_fillet(void *dest, void *data, double radius, int eager);
+extern int rust_face_chamfer(void *dest, void *data, double distance, int eager);
+extern int rust_face_workplane(void *dest, void *data);
+
 /* Edge info */
 extern const char *rust_edge_info(void *data);
 extern void rust_edge_info_free(const char *s);
@@ -1904,6 +1918,107 @@ JANET_FN(_cad_chamfer,
     return janet_wrap_abstract(shape);
 }
 
+// ── Face Info ──────────────────────────────────────────────────────────────
+
+JANET_FN(_cad_face_info_raw,
+         "(_face-info-raw shape)",
+         "Return JSON metadata for all faces of a shape. (thin primitive)")
+{
+    janet_fixarity(argc, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    const char *json = rust_face_info(data);
+    Janet result = janet_cstringv(json);
+    rust_face_info_free(json);
+    return result;
+}
+
+// ── Get Face / Edge ────────────────────────────────────────────────────────
+
+JANET_FN(_cad_get_face,
+         "(_get-face shape index)",
+         "Extract a face sub-shape by index. (thin primitive)")
+{
+    janet_fixarity(argc, 2);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int32_t idx = janet_getinteger(argv, 1);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_get_face(shape, data, idx));
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_get_edge,
+         "(_get-edge shape index)",
+         "Extract an edge sub-shape by index. (thin primitive)")
+{
+    janet_fixarity(argc, 2);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int32_t idx = janet_getinteger(argv, 1);
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_get_edge(shape, data, idx));
+    return janet_wrap_abstract(shape);
+}
+
+// ── Face Operations ────────────────────────────────────────────────────────
+
+JANET_FN(_cad_face_offset,
+         "(_face-offset face &keys :d :eager :hide)",
+         "Offset a face by a distance. (thin primitive)")
+{
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int eager = has_eager(argv, argc);
+    double dist;
+    if (!kw_double(argv, argc, "d", &dist)) {
+        janet_panic("face-offset: :d (distance) is required");
+    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_face_offset(shape, data, dist, eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_face_fillet,
+         "(_face-fillet face &keys :r :eager :hide)",
+         "Fillet (round) all vertices of a face's boundary. (thin primitive)")
+{
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int eager = has_eager(argv, argc);
+    double radius;
+    if (!kw_double(argv, argc, "r", &radius)) {
+        janet_panic("face-fillet: :r (radius) is required");
+    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_face_fillet(shape, data, radius, eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_face_chamfer,
+         "(_face-chamfer face &keys :d :eager :hide)",
+         "Chamfer (bevel) all vertices of a face's boundary. (thin primitive)")
+{
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    int eager = has_eager(argv, argc);
+    double dist;
+    if (!kw_double(argv, argc, "d", &dist)) {
+        janet_panic("face-chamfer: :d (distance) is required");
+    }
+    void *shape = alloc_shape();
+    CAD_CHECK(rust_face_chamfer(shape, data, dist, eager));
+    maybe_hide(shape, argv, argc);
+    return janet_wrap_abstract(shape);
+}
+
+JANET_FN(_cad_face_workplane,
+         "(_face-workplane face)",
+         "Create a sketch from a face's workplane. (thin primitive)")
+{
+    janet_fixarity(argc, 1);
+    void *data = unwrap_shape_or_panic(argv[0], 0);
+    void *sk = alloc_sketch();
+    CAD_CHECK(rust_face_workplane(sk, data));
+    return janet_wrap_abstract(sk);
+}
+
 // ── Edge Info ──────────────────────────────────────────────────────────────
 
 JANET_FN(_cad_edge_info_raw,
@@ -2407,6 +2522,9 @@ void cad_register_functions(JanetTable *env) {
         {"fillet",                 _cad_fillet,                 _cad_fillet_docstring_},
         {"chamfer",                _cad_chamfer,                _cad_chamfer_docstring_},
         {"_edge-info-raw",         _cad_edge_info_raw,          _cad_edge_info_raw_docstring_},
+        {"_face-info-raw",         _cad_face_info_raw,          _cad_face_info_raw_docstring_},
+        {"_get-face",              _cad_get_face,               _cad_get_face_docstring_},
+        {"_get-edge",              _cad_get_edge,               _cad_get_edge_docstring_},
         {"highlight-edge",         _cad_highlight_edge,         _cad_highlight_edge_docstring_},
         {"_highlight-edge-clear",  _cad_highlight_edge_clear,   _cad_highlight_edge_clear_docstring_},
 
@@ -2415,6 +2533,12 @@ void cad_register_functions(JanetTable *env) {
         {"wire-fillet",            _cad_wire_fillet,            _cad_wire_fillet_docstring_},
         {"wire-chamfer",           _cad_wire_chamfer,           _cad_wire_chamfer_docstring_},
         {"wire-offset",            _cad_wire_offset,            _cad_wire_offset_docstring_},
+
+        /* Face operations (non-underscore only) */
+        {"face-offset",            _cad_face_offset,            _cad_face_offset_docstring_},
+        {"face-fillet",            _cad_face_fillet,            _cad_face_fillet_docstring_},
+        {"face-chamfer",           _cad_face_chamfer,           _cad_face_chamfer_docstring_},
+        {"face-workplane",         _cad_face_workplane,         _cad_face_workplane_docstring_},
 
         /* Sketch (non-underscore only) */
         {"sketch",                 _cad_sketch,                _cad_sketch_docstring_},

@@ -1635,6 +1635,122 @@ pub unsafe extern "C" fn rust_init_chamfer(
     })
 }
 
+// ── Face Info FFI ──────────────────────────────────────────────────────────────
+
+/// Get face info JSON for a shape. Caller must free with rust_face_info_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_info(data: *mut c_void) -> *mut c_char {
+    if data.is_null() {
+        return CString::new("[]").unwrap().into_raw();
+    }
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let json = cad::face_info_json(shape);
+    CString::new(json)
+        .unwrap_or_else(|_| CString::new("[]").unwrap())
+        .into_raw()
+}
+
+/// Free a string returned by rust_face_info.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_info_free(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            drop(CString::from_raw(s));
+        }
+    }
+}
+
+// ── Get Face / Edge FFI ────────────────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_face(
+    dest: *mut c_void,
+    data: *mut c_void,
+    index: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    catch_cad("rust_get_face", dest, || {
+        cad::get_nth_face(shape, index as usize)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_get_edge(
+    dest: *mut c_void,
+    data: *mut c_void,
+    index: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    catch_cad("rust_get_edge", dest, || {
+        cad::get_nth_edge(shape, index as usize)
+    })
+}
+
+// ── Face Operation FFI ─────────────────────────────────────────────────────────
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_offset(
+    dest: *mut c_void,
+    data: *mut c_void,
+    distance: c_double,
+    eager: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    catch_cad("rust_face_offset", dest, || {
+        cad::face_offset(shape, distance, eager != 0)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_fillet(
+    dest: *mut c_void,
+    data: *mut c_void,
+    radius: c_double,
+    eager: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    catch_cad("rust_face_fillet", dest, || {
+        cad::face_fillet(shape, radius, eager != 0)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_chamfer(
+    dest: *mut c_void,
+    data: *mut c_void,
+    distance: c_double,
+    eager: c_int,
+) -> c_int {
+    let shape = unsafe { &*(data as *const ShapeData) };
+    catch_cad("rust_face_chamfer", dest, || {
+        cad::face_chamfer(shape, distance, eager != 0)
+    })
+}
+
+/// Create a sketch from a face's workplane. Returns a rojcad/sketch abstract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_face_workplane(dest: *mut c_void, data: *mut c_void) -> c_int {
+    if data.is_null() {
+        return 1;
+    }
+    let shape = unsafe { &*(data as *const ShapeData) };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let face = shape.shape.expect_face();
+        let wp = face.workplane();
+        let sk = sketch::SketchData::new(wp);
+        unsafe {
+            ptr::write(dest as *mut sketch::SketchData, sk);
+        }
+    }));
+    match result {
+        Ok(()) => 0,
+        Err(_) => {
+            set_last_error("face-workplane: expected a Face shape".into());
+            1
+        }
+    }
+}
+
 // ── Edge Info FFI ──────────────────────────────────────────────────────────────
 
 /// Get edge info JSON for a shape. Caller must free with rust_edge_info_free.

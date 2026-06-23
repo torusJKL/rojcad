@@ -7,10 +7,10 @@ use std::f64::consts::TAU;
 use glam::{DQuat, DVec3};
 use opencascade::angle::Angle;
 use opencascade::primitives::{
-    Compound, Edge, EdgeType, Face, JoinType, Shape, ShapeType, Solid, Wire,
+    Compound, Edge, EdgeType, Face, JoinType, Shape, ShapeType, Solid, SurfaceType, Wire,
 };
 use opencascade::workplane::Workplane;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::{MeshData, ShapeData, global_shape_registry};
 
@@ -815,8 +815,24 @@ pub fn wire_offset(data: &ShapeData, distance: f64, eager: bool) -> Result<Shape
 pub struct EdgeInfo {
     pub index: usize,
     pub edge_type: String,
+    pub length: f64,
     pub start: [f64; 3],
     pub end: [f64; 3],
+    pub radius: f64,
+    pub axis: [f64; 3],
+    pub center: [f64; 3],
+}
+
+/// Information about a single face of a shape.
+#[derive(Serialize, Deserialize)]
+pub struct FaceInfo {
+    pub index: usize,
+    pub face_type: String,
+    pub area: f64,
+    pub center: [f64; 3],
+    pub normal: [f64; 3],
+    pub axis: [f64; 3],
+    pub radius: f64,
 }
 
 /// Check whether a shape has any renderable geometry (mesh vertices + edge polylines).
@@ -970,15 +986,145 @@ pub fn edge_info_json(data: &ShapeData) -> String {
         .map(|(i, edge)| EdgeInfo {
             index: i,
             edge_type: edge_type_string(edge.edge_type()),
+            length: edge.length(),
             start: [
                 edge.start_point().x,
                 edge.start_point().y,
                 edge.start_point().z,
             ],
             end: [edge.end_point().x, edge.end_point().y, edge.end_point().z],
+            radius: edge.radius(),
+            axis: {
+                let d = edge.direction();
+                [d.x, d.y, d.z]
+            },
+            center: {
+                let c = edge.center();
+                [c.x, c.y, c.z]
+            },
         })
         .collect();
     serde_json::to_string(&infos).unwrap_or_else(|_| "[]".to_string())
+}
+
+fn surface_type_string(ty: SurfaceType) -> String {
+    match ty {
+        SurfaceType::Plane => "plane".into(),
+        SurfaceType::Cylinder => "cylinder".into(),
+        SurfaceType::Cone => "cone".into(),
+        SurfaceType::Sphere => "sphere".into(),
+        SurfaceType::Torus => "torus".into(),
+        SurfaceType::BezierSurface => "bezier-surface".into(),
+        SurfaceType::BSplineSurface => "bspline-surface".into(),
+        SurfaceType::SurfaceOfRevolution => "surface-of-revolution".into(),
+        SurfaceType::SurfaceOfExtrusion => "surface-of-extrusion".into(),
+        SurfaceType::OffsetSurface => "offset-surface".into(),
+        SurfaceType::OtherSurface => "other".into(),
+    }
+}
+
+/// Get metadata for all faces of a shape as a JSON string.
+pub fn face_info_json(data: &ShapeData) -> String {
+    let infos: Vec<FaceInfo> = data
+        .shape
+        .faces()
+        .enumerate()
+        .map(|(i, face)| {
+            let st = face.surface_type();
+            // Normal is only well-defined for planar faces; for curved faces
+            // the center of mass may lie on the axis (infinite projection solutions).
+            let normal = if st == SurfaceType::Plane {
+                let n = face.normal_at_center();
+                [n.x, n.y, n.z]
+            } else {
+                [0.0; 3]
+            };
+            let axis = face.surface_axis();
+            FaceInfo {
+                index: i,
+                face_type: surface_type_string(st),
+                area: face.surface_area(),
+                center: {
+                    let c = face.center_of_mass();
+                    [c.x, c.y, c.z]
+                },
+                normal,
+                axis: [axis.x, axis.y, axis.z],
+                radius: face.surface_radius(),
+            }
+        })
+        .collect();
+    serde_json::to_string(&infos).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Extract a face sub-shape by 1-based stable index. Returns error if out of range.
+pub fn get_nth_face(data: &ShapeData, index: usize) -> Result<ShapeData, String> {
+    let face = data.shape.faces().nth(index).ok_or_else(|| {
+        format!(
+            "face index {} out of range (0..{})",
+            index,
+            data.shape.faces().count().saturating_sub(1)
+        )
+    })?;
+    let mut sd = ShapeData::new(Shape::from(face));
+    sd.visible = false;
+    Ok(sd)
+}
+
+/// Extract an edge sub-shape by 1-based stable index. Returns error if out of range.
+pub fn get_nth_edge(data: &ShapeData, index: usize) -> Result<ShapeData, String> {
+    let edge = data.shape.edges().nth(index).ok_or_else(|| {
+        format!(
+            "edge index {} out of range (0..{})",
+            index,
+            data.shape.edges().count().saturating_sub(1)
+        )
+    })?;
+    let mut sd = ShapeData::new(Shape::from(edge));
+    sd.visible = false;
+    Ok(sd)
+}
+
+/// Offset a Face by a given distance.
+pub fn face_offset(data: &ShapeData, distance: f64, eager: bool) -> Result<ShapeData, String> {
+    validate_dimension(distance, "distance")?;
+    let face = data.shape.expect_face();
+    let result = face.offset(distance, JoinType::Arc);
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "face-offset")?;
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
+/// 2D Fillet on all vertices of a face's boundary edges.
+pub fn face_fillet(data: &ShapeData, radius: f64, eager: bool) -> Result<ShapeData, String> {
+    validate_dimension(radius, "radius")?;
+    let face = data.shape.expect_face();
+    let result = face.fillet(radius);
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "face-fillet")?;
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
+}
+
+/// 2D Chamfer on all vertices of a face's boundary edges.
+pub fn face_chamfer(data: &ShapeData, distance: f64, eager: bool) -> Result<ShapeData, String> {
+    validate_dimension(distance, "distance")?;
+    let face = data.shape.expect_face();
+    let result = face.chamfer(distance);
+    let shape = Shape::from(result);
+    validate_has_geometry(&shape, "face-chamfer")?;
+    let mut sd = ShapeData::new(shape);
+    if eager {
+        sd.tessellate_if_needed();
+    }
+    Ok(sd)
 }
 
 // ── Helper Queries ──────────────────────────────────────────────────────────
@@ -1887,5 +2033,114 @@ mod tests {
             sd.edge_polylines.len(),
             sd.topo_edge_count
         );
+    }
+
+    // ── Enriched EdgeInfo tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_edge_info_json_enriched_fields() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let json = edge_info_json(&sd);
+        assert!(json.contains("length"));
+        assert!(json.contains("radius"));
+        assert!(json.contains("axis"));
+        assert!(json.contains("center"));
+    }
+
+    #[test]
+    fn test_edge_info_cylinder_has_circles() {
+        let sd = make_cylinder(5.0, 10.0, None, false).unwrap();
+        let json = edge_info_json(&sd);
+        assert!(json.contains("\"edge_type\":\"circle\""));
+        assert!(json.contains("\"radius\":5.0"));
+    }
+
+    // ── FaceInfo tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_face_info_json_box() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let json = face_info_json(&sd);
+        assert!(json.starts_with('['));
+        assert!(json.contains("\"face_type\":\"plane\""));
+        assert!(json.contains("\"area\""));
+        assert!(json.contains("\"normal\""));
+        assert!(json.contains("\"center\""));
+    }
+
+    #[test]
+    fn test_face_info_box_has_6_faces() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let json = face_info_json(&sd);
+        let infos: Vec<FaceInfo> = serde_json::from_str(&json).unwrap();
+        assert_eq!(infos.len(), 6);
+        for info in &infos {
+            assert_eq!(info.face_type, "plane");
+        }
+    }
+
+    #[test]
+    fn test_face_info_cylinder_has_cylindrical_face() {
+        let sd = make_cylinder(5.0, 10.0, None, false).unwrap();
+        let json = face_info_json(&sd);
+        assert!(json.contains("\"face_type\":\"cylinder\""));
+    }
+
+    #[test]
+    fn test_face_info_sphere() {
+        let sd = unwrap_sphere(5.0, None, None, false);
+        let json = face_info_json(&sd);
+        assert!(json.contains("\"face_type\":\"sphere\""));
+        assert!(json.contains("\"radius\":5.0"));
+    }
+
+    // ── get_nth_face / get_nth_edge tests ──────────────────────────────────
+
+    #[test]
+    fn test_get_nth_face_valid() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let face = get_nth_face(&sd, 0).unwrap();
+        assert_eq!(face.type_string(), "FACE");
+        assert!(!face.visible);
+    }
+
+    #[test]
+    fn test_get_nth_face_out_of_range() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = get_nth_face(&sd, 999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_nth_edge_valid() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let edge = get_nth_edge(&sd, 0).unwrap();
+        assert_eq!(edge.type_string(), "EDGE");
+        assert!(!edge.visible);
+    }
+
+    #[test]
+    fn test_get_nth_edge_out_of_range() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = get_nth_edge(&sd, 999);
+        assert!(result.is_err());
+    }
+
+    // ── Face operation tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_face_offset_planar() {
+        let face_sd = make_rect(10.0, 20.0, false, "xy", None, false).unwrap();
+        let result = face_offset(&face_sd, 2.0, false).unwrap();
+        assert_eq!(result.type_string(), "FACE");
+    }
+
+    #[test]
+    fn test_face_offset_errors_on_non_face() {
+        let sd = unwrap_box(10.0, 10.0, 10.0, None, false);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            face_offset(&sd, 2.0, false).ok()
+        }));
+        assert!(result.is_err());
     }
 }

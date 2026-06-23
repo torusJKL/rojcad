@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rojcad Janet API Reference — 7baf096-dirty</title>
+<title>rojcad Janet API Reference — 89b8582-dirty</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
@@ -132,7 +132,10 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="cat"><a href="#queries">Queries</a></li>
 <li class="fn"><a href="#edge-info">edge-info</a></li>
 <li class="fn"><a href="#edge-selection">edge-selection</a></li>
+<li class="fn"><a href="#face-info">face-info</a></li>
 <li class="fn"><a href="#face?">face?</a></li>
+<li class="fn"><a href="#get-edge">get-edge</a></li>
+<li class="fn"><a href="#get-face">get-face</a></li>
 <li class="fn"><a href="#list-shapes">list-shapes</a></li>
 <li class="fn"><a href="#selected-shapes">selected-shapes</a></li>
 <li class="fn"><a href="#shape-type">shape-type</a></li>
@@ -156,13 +159,17 @@ article h3{font-size:18px;margin-bottom:8px;font-family:monospace;color:#06c}
 <li class="fn"><a href="#scale">scale</a></li>
 <li class="fn"><a href="#translate">translate</a></li>
 <li class="cat"><a href="#other">Other</a></li>
+<li class="fn"><a href="#face-chamfer">face-chamfer</a></li>
+<li class="fn"><a href="#face-fillet">face-fillet</a></li>
+<li class="fn"><a href="#face-offset">face-offset</a></li>
+<li class="fn"><a href="#face-workplane">face-workplane</a></li>
 <li class="fn"><a href="#color">color</a></li>
 <li class="fn"><a href="#compound">compound</a></li>
 <li class="fn"><a href="#get-color">get-color</a></li>
 </ul>
 </nav>
 <main>
-<h1>rojcad Janet API Reference — 7baf096-dirty</h1>
+<h1>rojcad Janet API Reference — 89b8582-dirty</h1>
 <section id="operations">
 <h2>Operations</h2>
 <article id="chamfer">
@@ -1125,11 +1132,12 @@ Keywords: :eager, :hide</p>
 <div class="usage">(edge-info shape)</div>
 <div class="desc">
 <p>Return metadata for all edges of a shape as an array of structs.
-Each struct has keys :index, :type, :start, :end.
+Each struct has keys :index, :type, :length, :start, :end, :radius, :axis, :center.
 Use with fillet/chamfer :e keyword to select edges by index.</p>
 </div>
 <div class="examples">
-<pre><code>(edge-info my-box)   # returns @[{<span class="tok-k">:index</span> <span class="tok-n">0</span> <span class="tok-k">:type</span> <span class="tok-s">"line"</span> ...} ...]</code></pre>
+<pre><code>(edge-info my-box)
+(filter (<span class="tok-sp">fn</span> [e] (= (e <span class="tok-k">:type</span>) <span class="tok-s">"circle"</span>)) (edge-info my-part))</code></pre>
 </div>
 </article>
 <article id="edge-selection">
@@ -1146,6 +1154,19 @@ Each struct has :sid (numeric shape id), :shape (abstract),
 </div>
 <div class="returns">Returns an array of structs, or empty array if no edges selected.</div>
 </article>
+<article id="face-info">
+<h3>face-info</h3>
+<div class="usage">(face-info shape)</div>
+<div class="desc">
+<p>Return metadata for all faces of a shape as an array of structs.
+Each struct has keys :index, :type, :area, :center, :normal, :axis, :radius.
+Use with get-face to extract a face for operations.</p>
+</div>
+<div class="examples">
+<pre><code>(face-info my-box)
+(filter (<span class="tok-sp">fn</span> [f] (= (f <span class="tok-k">:type</span>) <span class="tok-s">"cylinder"</span>)) (face-info my-part))</code></pre>
+</div>
+</article>
 <article id="face?">
 <h3>face?</h3>
 <div class="usage">(face? &amp; shapes)</div>
@@ -1156,6 +1177,31 @@ Each struct has :sid (numeric shape id), :shape (abstract),
 <pre><code>(face? my-shape)  # returns <span class="tok-sp">true</span> or <span class="tok-sp">false</span></code></pre>
 </div>
 <div class="returns">Returns boolean or array of booleans.</div>
+</article>
+<article id="get-edge">
+<h3>get-edge</h3>
+<div class="usage">(get-edge shape index)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(get-edge my-box <span class="tok-n">0</span>)</code></pre>
+</div>
+<div class="returns">Extract an edge sub-shape by its index (from edge-info).
+Returns a rojcad/shape abstract. Not shown in the viewer.</div>
+</article>
+<article id="get-face">
+<h3>get-face</h3>
+<div class="usage">(get-face shape index)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(get-face my-box <span class="tok-n">0</span>)
+(extrude (get-face my-box <span class="tok-n">0</span>) <span class="tok-k">:h</span> <span class="tok-n">5</span>)</code></pre>
+</div>
+<div class="returns">Extract a face sub-shape by its index (from face-info).
+Returns a rojcad/shape abstract that can be passed to extrude, revolve,
+face-offset, face-fillet, face-chamfer, or face-workplane.
+The returned face is not shown in the viewer.</div>
 </article>
 <article id="list-shapes">
 <h3>list-shapes</h3>
@@ -1397,6 +1443,53 @@ Keywords: :t [dx dy dz], :eager, :hide</p>
 </section>
 <section id="other">
 <h2>Other</h2>
+<article id="face-chamfer">
+<h3>face-chamfer</h3>
+<div class="usage">(face-chamfer face &amp;keys :d :eager :hide)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(face-chamfer my-face <span class="tok-k">:d</span> <span class="tok-n">2</span> <span class="tok-k">:eager</span>)</code></pre>
+</div>
+<div class="returns">Chamfer (bevel) all vertices of a face's boundary. Returns a new Face.</div>
+</article>
+<article id="face-fillet">
+<h3>face-fillet</h3>
+<div class="usage">(face-fillet face &amp;keys :r :eager :hide)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(face-fillet my-face <span class="tok-k">:r</span> <span class="tok-n">2</span> <span class="tok-k">:eager</span>)</code></pre>
+</div>
+<div class="returns">Fillet (round) all vertices of a face's boundary. Returns a new Face.</div>
+</article>
+<article id="face-offset">
+<h3>face-offset</h3>
+<div class="usage">(face-offset face &amp;keys :d :eager :hide)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(face-offset my-face <span class="tok-k">:d</span> <span class="tok-n">2</span> <span class="tok-k">:eager</span>)</code></pre>
+</div>
+<div class="returns">Offset a face by a given distance. Returns a new Face.</div>
+</article>
+<article id="face-workplane">
+<h3>face-workplane</h3>
+<div class="usage">(face-workplane face)</div>
+<div class="desc">
+</div>
+<div class="examples">
+<pre><code>(<span class="tok-sp">def</span> f (-&amp;gt; (face-workplane (get-face my-box <span class="tok-n">0</span>))
+(move-to <span class="tok-n">2</span> <span class="tok-n">2</span>)
+(line-to <span class="tok-n">8</span> <span class="tok-n">2</span>)
+(line-to <span class="tok-n">8</span> <span class="tok-n">8</span>)
+(line-to <span class="tok-n">2</span> <span class="tok-n">8</span>)
+(close-sketch <span class="tok-k">:eager</span>)))</code></pre>
+</div>
+<div class="returns">Create a sketch (workplane) aligned to a face.
+The sketch is positioned at the face's center with Z along the face normal.
+Returns a sketch that can be used directly with move-to, line-to, etc.</div>
+</article>
 <article id="color">
 <h3>color</h3>
 <div class="usage">(color shape r g b)</div>
