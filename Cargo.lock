@@ -1263,7 +1263,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kicad-parser"
 version = "0.1.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git?branch=main#fc6b0690a93f0c7c15a190857402c39d85206727"
+source = "git+https://github.com/bschwind/opencascade-rs.git?rev=b6374512949727609335fa8258a25b5c94f426cb#b6374512949727609335fa8258a25b5c94f426cb"
 dependencies = [
  "sexp",
  "thiserror 1.0.69",
@@ -1832,7 +1832,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "opencascade"
 version = "0.2.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git?branch=main#fc6b0690a93f0c7c15a190857402c39d85206727"
+source = "git+https://github.com/bschwind/opencascade-rs.git?rev=b6374512949727609335fa8258a25b5c94f426cb#b6374512949727609335fa8258a25b5c94f426cb"
 dependencies = [
  "cxx",
  "glam",
@@ -1844,7 +1844,7 @@ dependencies = [
 [[package]]
 name = "opencascade-sys"
 version = "0.2.0"
-source = "git+https://github.com/bschwind/opencascade-rs.git?branch=main#fc6b0690a93f0c7c15a190857402c39d85206727"
+source = "git+https://github.com/bschwind/opencascade-rs.git?rev=b6374512949727609335fa8258a25b5c94f426cb#b6374512949727609335fa8258a25b5c94f426cb"
 dependencies = [
  "cmake",
  "cxx",
